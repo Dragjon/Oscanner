@@ -19,6 +19,24 @@ class DocumentRepository(private val db: OscannerDatabase) {
     /** True once the library holds any document, regardless of filters. */
     fun observeHasDocuments(): Flow<Boolean> =
         db.documents().observeCount().map { it > 0 }.distinctUntilChanged()
+
+    fun observeDocument(id: Long): Flow<Document?> =
+        db.documents().observeRow(id).map { it?.toModel() }
+
+    fun observeTrash(): Flow<List<Document>> =
+        db.documents().observeTrash().map { rows -> rows.map(DocumentRow::toModel) }
+
+    suspend fun rename(id: Long, title: String) {
+        if (title.isBlank()) return
+        db.documents().rename(id, title.trim(), System.currentTimeMillis())
+    }
+
+    suspend fun move(id: Long, folderId: Long?) = db.documents().move(id, folderId)
+
+    /** Into Trash; kept 30 days, see [PageStore.purgeTrash]. */
+    suspend fun moveToTrash(id: Long) = db.documents().setDeletedAt(id, System.currentTimeMillis())
+
+    suspend fun restore(id: Long) = db.documents().setDeletedAt(id, null)
 }
 
 class FolderRepository(private val db: OscannerDatabase) {
@@ -30,7 +48,7 @@ class FolderRepository(private val db: OscannerDatabase) {
         db.folders().insert(FolderEntity(name = name.trim(), createdAt = System.currentTimeMillis()))
 }
 
-private fun DocumentRow.toModel() = Document(
+internal fun DocumentRow.toModel() = Document(
     id = id,
     title = title,
     folderId = folderId,
@@ -40,4 +58,5 @@ private fun DocumentRow.toModel() = Document(
     createdAt = createdAt,
     updatedAt = updatedAt,
     state = runCatching { ProcessingState.valueOf(state) }.getOrDefault(ProcessingState.Idle),
+    deletedAt = deletedAt,
 )

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="document_back">Back</string>
+    <string name="document_page_of">Page %1$d of %2$d</string>
+    <string name="document_edit">Edit</string>
+    <string name="document_share">Share</string>
+    <string name="document_more">More</string>
+    <string name="document_share_pdf">Share as PDF</string>
+    <string name="document_share_pdf_description">One file with every page</string>
+    <string name="document_share_images">Share as images</string>
+    <string name="document_share_images_description">One JPEG picture per page</string>
+    <string name="document_scan_more">Scan more pages</string>
+    <string name="document_scan_more_description">Take pictures and add them to the end</string>
+    <string name="document_import_more">Add from photos</string>
+    <string name="document_import_more_description">Pick pictures from your gallery or files</string>
+    <string name="document_rename">Rename</string>
+    <string name="document_rename_description">Give this document a name you\'ll find again</string>
+    <string name="document_move">Move to folder</string>
+    <string name="document_save_pdf">Save PDF to device</string>
+    <string name="document_save_pdf_description">To Downloads, Drive or any app that keeps files</string>
+    <string name="document_print">Print</string>
+    <string name="document_print_description">Any printer this phone can reach</string>
+    <string name="document_trash">Move to Trash</string>
+    <string name="document_trash_description">Kept for 30 days, then deleted</string>
+    <string name="document_no_folder">No folder</string>
+    <string name="document_name_hint">Name</string>
+    <string name="document_ok">Save</string>
+    <string name="document_cancel">Cancel</string>
+    <string name="document_preparing_pdf">Making PDF…</string>
+    <string name="document_preparing_images">Preparing pictures…</string>
+    <string name="document_saving">Saving…</string>
+    <string name="document_importing">Adding pages…</string>
+    <string name="document_saved">PDF saved</string>
+    <string name="document_failed">Something went wrong. Nothing was changed.</string>
+    <string name="document_no_share_app">No app on this phone can receive it.</string>
+    <string name="document_still_enhancing">Enhancing…</string>
+</resources>

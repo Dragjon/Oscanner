@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="capture_close">Close</string>
+    <string name="capture_status_searching">Looking for a page…</string>
+    <string name="capture_status_hold">Hold steady</string>
+    <string name="capture_status_captured">Captured</string>
+    <string name="capture_flash_off">Flash off</string>
+    <string name="capture_flash_on">Flash on</string>
+    <string name="capture_auto">Auto</string>
+    <string name="capture_manual">Manual</string>
+    <string name="capture_shutter">Take picture</string>
+    <string name="capture_done">Done</string>
+    <plurals name="capture_pages_taken">
+        <item quantity="one">%d page taken</item>
+        <item quantity="other">%d pages taken</item>
+    </plurals>
+    <string name="capture_permission_title">Oscanner needs the camera to scan pages.</string>
+    <string name="capture_permission_body">Pictures stay on this phone.</string>
+    <string name="capture_permission_allow">Allow camera</string>
+    <string name="capture_permission_settings">Open settings</string>
+    <plurals name="capture_keep_title">
+        <item quantity="one">Keep the scanned page?</item>
+        <item quantity="other">Keep %d scanned pages?</item>
+    </plurals>
+    <string name="capture_keep_save">Save</string>
+    <string name="capture_keep_discard">Discard</string>
+    <string name="capture_failed">Couldn\'t take the picture. Try again.</string>
+    <string name="capture_default_title">Scan %1$s</string>
+</resources>

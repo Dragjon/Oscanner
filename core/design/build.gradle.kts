@@ -14,6 +14,7 @@ android {
 dependencies {
     api(project(":core:model"))
     implementation(platform(libs.compose.bom))
+    implementation(libs.androidx.exifinterface)
     implementation(libs.compose.ui)
     implementation(libs.compose.foundation)
     api(libs.compose.material3)

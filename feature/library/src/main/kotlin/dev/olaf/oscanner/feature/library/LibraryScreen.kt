@@ -25,6 +25,7 @@ import androidx.compose.material.icons.automirrored.rounded.Sort
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AddPhotoAlternate
 import androidx.compose.material.icons.rounded.CreateNewFolder
+import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.DocumentScanner
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.Settings
@@ -77,6 +78,7 @@ fun LibraryRoute(
     onImport: () -> Unit,
     onOpenDocument: (Long) -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenTrash: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     LibraryScreen(
@@ -90,6 +92,7 @@ fun LibraryRoute(
         onImport = onImport,
         onOpenDocument = onOpenDocument,
         onOpenSettings = onOpenSettings,
+        onOpenTrash = onOpenTrash,
     )
 }
 
@@ -106,6 +109,7 @@ fun LibraryScreen(
     onImport: () -> Unit,
     onOpenDocument: (Long) -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenTrash: () -> Unit,
 ) {
     var showMore by rememberSaveable { mutableStateOf(false) }
     var showNewFolder by rememberSaveable { mutableStateOf(false) }
@@ -222,6 +226,10 @@ fun LibraryScreen(
                     showMore = false
                     onOpenSettings()
                 },
+                onOpenTrash = {
+                    showMore = false
+                    onOpenTrash()
+                },
             )
         }
     }
@@ -297,6 +305,7 @@ private fun MoreSheet(
     onSortOrderChange: (SortOrder) -> Unit,
     onNewFolder: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenTrash: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -310,6 +319,12 @@ private fun MoreSheet(
             title = stringResource(R.string.library_new_folder),
             description = stringResource(R.string.library_new_folder_description),
             onClick = onNewFolder,
+        )
+        SheetAction(
+            icon = Icons.Rounded.DeleteOutline,
+            title = stringResource(R.string.library_trash),
+            description = stringResource(R.string.library_trash_description),
+            onClick = onOpenTrash,
         )
         SheetAction(
             icon = Icons.Rounded.Settings,

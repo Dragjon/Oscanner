@@ -1,36 +1,94 @@
 package dev.olaf.oscanner
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import dev.olaf.oscanner.core.data.DataContainer
+import dev.olaf.oscanner.feature.capture.CaptureRoute
+import dev.olaf.oscanner.feature.capture.CaptureViewModel
+import dev.olaf.oscanner.feature.document.DocumentRoute
+import dev.olaf.oscanner.feature.document.DocumentViewModel
 import dev.olaf.oscanner.feature.library.LibraryRoute
 import dev.olaf.oscanner.feature.library.LibraryViewModel
+import dev.olaf.oscanner.feature.library.TrashRoute
+import dev.olaf.oscanner.feature.library.TrashViewModel
+import dev.olaf.oscanner.feature.review.ReviewRoute
+import dev.olaf.oscanner.feature.review.ReviewViewModel
 import dev.olaf.oscanner.feature.settings.SettingsRoute
 import dev.olaf.oscanner.feature.settings.SettingsViewModel
 import kotlinx.coroutines.launch
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 
 private object Routes {
     const val LIBRARY = "library"
     const val SETTINGS = "settings"
+    const val TRASH = "trash"
+    const val CAPTURE = "capture?documentId={documentId}"
+    const val REVIEW = "review/{documentId}?page={page}"
+    const val DOCUMENT = "document/{documentId}"
+
+    fun capture(documentId: Long? = null) = "capture?documentId=${documentId ?: -1}"
+    fun review(documentId: Long, page: Int = 0) = "review/$documentId?page=$page"
+    fun document(documentId: Long) = "document/$documentId"
 }
 
 @Composable
-fun OscannerNavHost(container: DataContainer) {
+fun OscannerNavHost(
+    container: DataContainer,
+    /** Images another app shared to us; consumed once they're imported. */
+    sharedImages: List<Uri>?,
+    onSharedImagesHandled: () -> Unit,
+) {
     val navController = rememberNavController()
+    val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    // Capture, Import and the document view arrive in Phase 1; until then say so plainly.
-    val notYet = stringResource(R.string.app_not_built_yet)
-    val showNotYet: () -> Unit = { scope.launch { snackbarHostState.showSnackbar(notYet) } }
+    val importFailed = stringResource(R.string.app_import_failed)
+    val movedToTrash = stringResource(R.string.app_moved_to_trash)
+    val undo = stringResource(R.string.app_undo)
+    val importTitle = stringResource(
+        R.string.app_import_title,
+        LocalDateTime.now().format(DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)),
+    )
+
+    fun import(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        scope.launch {
+            runCatching { container.pages.importImages(uris, importTitle) }
+                .onSuccess { navController.navigate(Routes.review(it)) }
+                .onFailure { snackbarHostState.showSnackbar(importFailed) }
+        }
+    }
+
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { import(it) }
+
+    LaunchedEffect(sharedImages) {
+        sharedImages?.let {
+            onSharedImagesHandled()
+            import(it)
+        }
+    }
 
     NavHost(navController = navController, startDestination = Routes.LIBRARY) {
         composable(Routes.LIBRARY) {
@@ -42,10 +100,11 @@ fun OscannerNavHost(container: DataContainer) {
             LibraryRoute(
                 viewModel = viewModel,
                 snackbarHostState = snackbarHostState,
-                onScan = showNotYet,
-                onImport = showNotYet,
-                onOpenDocument = { showNotYet() },
+                onScan = { navController.navigate(Routes.capture()) },
+                onImport = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                onOpenDocument = { navController.navigate(Routes.document(it)) },
                 onOpenSettings = { navController.navigate(Routes.SETTINGS) { launchSingleTop = true } },
+                onOpenTrash = { navController.navigate(Routes.TRASH) { launchSingleTop = true } },
             )
         }
         composable(Routes.SETTINGS) {
@@ -61,6 +120,89 @@ fun OscannerNavHost(container: DataContainer) {
                 versionName = BuildConfig.VERSION_NAME,
                 onBack = { navController.popBackStack() },
             )
+        }
+        composable(Routes.TRASH) {
+            val viewModel: TrashViewModel = viewModel(
+                factory = viewModelFactory { initializer { TrashViewModel(container.documents, container.pages) } },
+            )
+            TrashRoute(viewModel = viewModel, onBack = { navController.popBackStack() })
+        }
+        composable(
+            Routes.CAPTURE,
+            arguments = listOf(navArgument("documentId") { type = NavType.LongType; defaultValue = -1L }),
+        ) { entry ->
+            val documentId = entry.arguments?.getLong("documentId")?.takeIf { it >= 0 }
+            val viewModel: CaptureViewModel = viewModel(
+                factory = viewModelFactory {
+                    initializer { CaptureViewModel(container.pages, context.cacheDir, documentId) }
+                },
+            )
+            CaptureRoute(
+                viewModel = viewModel,
+                onClose = { navController.popBackStack() },
+                onSaved = { saved ->
+                    navController.navigate(Routes.review(saved.documentId, saved.firstNewPage)) {
+                        popUpTo(Routes.CAPTURE) { inclusive = true }
+                    }
+                },
+            )
+        }
+        composable(
+            Routes.REVIEW,
+            arguments = listOf(
+                navArgument("documentId") { type = NavType.LongType },
+                navArgument("page") { type = NavType.IntType; defaultValue = 0 },
+            ),
+        ) { entry ->
+            val documentId = entry.arguments!!.getLong("documentId")
+            val page = entry.arguments!!.getInt("page")
+            val viewModel: ReviewViewModel = viewModel(
+                factory = viewModelFactory { initializer { ReviewViewModel(container.pages, documentId) } },
+            )
+            ReviewRoute(
+                viewModel = viewModel,
+                startPage = page,
+                onBack = { navController.popBackStack() },
+                onSaved = { navController.showDocument(it) },
+            )
+        }
+        composable(
+            Routes.DOCUMENT,
+            arguments = listOf(navArgument("documentId") { type = NavType.LongType }),
+        ) { entry ->
+            val documentId = entry.arguments!!.getLong("documentId")
+            val viewModel: DocumentViewModel = viewModel(
+                factory = viewModelFactory {
+                    initializer { DocumentViewModel(container.documents, container.folders, container.pages, documentId) }
+                },
+            )
+            DocumentRoute(
+                viewModel = viewModel,
+                onBack = { navController.popBackStack() },
+                onEdit = { id, page -> navController.navigate(Routes.review(id, page)) },
+                onScanMore = { navController.navigate(Routes.capture(it)) },
+                onTrashed = { id ->
+                    navController.popBackStack(Routes.LIBRARY, inclusive = false)
+                    scope.launch {
+                        val result = snackbarHostState.showSnackbar(movedToTrash, actionLabel = undo, duration = SnackbarDuration.Short)
+                        if (result == SnackbarResult.ActionPerformed) container.documents.restore(id)
+                    }
+                },
+            )
+        }
+    }
+}
+
+/** After Review: back to the document if we came from it, otherwise open it in Review's place. */
+private fun NavHostController.showDocument(documentId: Long) {
+    val previous = previousBackStackEntry
+    val cameFromDocument = previous?.destination?.route == Routes.DOCUMENT &&
+        previous.arguments?.getLong("documentId") == documentId
+    if (cameFromDocument) {
+        popBackStack()
+    } else {
+        navigate(Routes.document(documentId)) {
+            popUpTo(Routes.REVIEW) { inclusive = true }
         }
     }
 }

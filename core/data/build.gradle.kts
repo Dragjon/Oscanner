@@ -10,6 +10,8 @@ android {
 
 dependencies {
     api(project(":core:model"))
+    implementation(project(":core:imaging"))
+    implementation(project(":core:pdf"))
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)

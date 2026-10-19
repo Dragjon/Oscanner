@@ -1,6 +1,5 @@
 package dev.olaf.oscanner.core.design
 
-import android.graphics.BitmapFactory
 import android.text.format.Formatter
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
@@ -30,13 +29,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
@@ -45,8 +41,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.olaf.oscanner.core.model.Document
 import dev.olaf.oscanner.core.model.ProcessingState
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -177,13 +171,7 @@ fun StatusChip(state: ProcessingState, modifier: Modifier = Modifier) {
 /** A page image in a rounded well, letterboxed so receipts and ID cards keep their shape. */
 @Composable
 fun PageThumbnail(path: String?, modifier: Modifier = Modifier) {
-    val bitmap by produceState<ImageBitmap?>(initialValue = null, path) {
-        value = path?.let { file ->
-            withContext(Dispatchers.IO) {
-                runCatching { BitmapFactory.decodeFile(file)?.asImageBitmap() }.getOrNull()
-            }
-        }
-    }
+    val bitmap by rememberPageImage(path, maxSide = 320)
     Box(
         modifier = modifier
             .clip(MaterialTheme.shapes.small)

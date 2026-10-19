@@ -20,6 +20,7 @@ import androidx.room.RoomDatabase
 abstract class OscannerDatabase : RoomDatabase() {
     abstract fun documents(): DocumentDao
     abstract fun folders(): FolderDao
+    abstract fun pages(): PageDao
 
     companion object {
         fun create(context: Context): OscannerDatabase =

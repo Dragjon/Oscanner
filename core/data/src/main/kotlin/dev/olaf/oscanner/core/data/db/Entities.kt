@@ -40,8 +40,8 @@ data class DocumentEntity(
 )
 
 /**
- * One page. [originalPath] is never overwritten; [editsJson] is the ordered edit recipe
- * (quad, filter, erase masks, rotation) and [renderPath] is a rebuildable cache of it.
+ * One page. [originalPath] is never overwritten; [editsJson] is the edit recipe
+ * (quad, filter, rotation; erase masks later, see EditsJson) and [renderPath] is a rebuildable cache of it.
  */
 @Entity(
     tableName = "pages",
@@ -65,7 +65,7 @@ data class PageEntity(
     val width: Int,
     val height: Int,
     val sizeBytes: Long = 0,
-    val editsJson: String = "[]",
+    val editsJson: String = "{}",
     val ocrText: String? = null,
 )
 
@@ -104,6 +104,7 @@ data class DocumentRow(
     val createdAt: Long,
     val updatedAt: Long,
     val state: String,
+    val deletedAt: Long?,
     val pageCount: Int,
     val sizeBytes: Long,
     val coverThumbPath: String?,

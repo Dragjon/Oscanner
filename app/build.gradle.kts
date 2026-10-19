@@ -38,6 +38,9 @@ dependencies {
     implementation(project(":core:data"))
     implementation(project(":feature:library"))
     implementation(project(":feature:settings"))
+    implementation(project(":feature:capture"))
+    implementation(project(":feature:review"))
+    implementation(project(":feature:document"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

@@ -10,6 +10,7 @@ class DataContainer(context: Context) {
 
     val documents by lazy { DocumentRepository(database) }
     val folders by lazy { FolderRepository(database) }
+    val pages by lazy { PageStore(appContext, database) }
     val settings by lazy { SettingsRepository(appContext) }
     val sampleData by lazy { SampleData(appContext, database) }
 }
