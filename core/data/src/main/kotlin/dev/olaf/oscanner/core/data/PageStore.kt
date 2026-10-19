@@ -118,6 +118,47 @@ class PageStore(
         text.scheduleIfWanted(documentId, delay = Duration.ofSeconds(30))
     }
 
+    /**
+     * Combines [documentIds], in that order, into one new document of copied pages, then moves
+     * the originals to Trash, so the merge can be undone with [unmerge]. Returns the new id.
+     */
+    suspend fun merge(documentIds: List<Long>, title: String): Long {
+        require(documentIds.size >= 2)
+        val first = db.documents().getRow(documentIds.first())
+        val now = System.currentTimeMillis()
+        val target = db.documents().insert(
+            DocumentEntity(title = title, folderId = first?.folderId, createdAt = now, updatedAt = now),
+        )
+        val sources = documentIds.flatMap { db.pages().forDocument(it) }
+        val copies = withContext(Dispatchers.IO) {
+            sources.mapIndexed { index, page ->
+                val from = File(page.originalPath).parentFile!!
+                val to = File(docsDir, "$target/${UUID.randomUUID()}")
+                from.copyRecursively(to, overwrite = true)
+                fun moved(path: String?) = path?.let { File(to, File(it).name).path }
+                page.copy(
+                    id = 0,
+                    documentId = target,
+                    position = index,
+                    originalPath = moved(page.originalPath)!!,
+                    renderPath = moved(page.renderPath),
+                    thumbPath = moved(page.thumbPath),
+                )
+            }
+        }
+        db.withTransaction {
+            copies.forEach { db.pages().insert(it) }
+            documentIds.forEach { db.documents().setDeletedAt(it, now) }
+        }
+        return target
+    }
+
+    /** Undoes [merge]: the merged copy goes, the originals come back. */
+    suspend fun unmerge(mergedId: Long, originalIds: List<Long>) {
+        originalIds.forEach { db.documents().setDeletedAt(it, null) }
+        deleteForever(mergedId)
+    }
+
     /** Review is done with [documentId]: read its text now rather than after the delay. */
     suspend fun finishedEditing(documentId: Long) = text.scheduleIfWanted(documentId)
 

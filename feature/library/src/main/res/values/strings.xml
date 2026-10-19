@@ -21,6 +21,21 @@
     <string name="library_no_results">Nothing matches “%1$s”.</string>
     <string name="library_folder_empty">This folder is empty.</string>
     <string name="library_back">Back</string>
+    <string name="library_select">Select</string>
+    <string name="library_select_description">Choose documents to merge, move or delete together</string>
+    <string name="library_stop_selecting">Stop selecting</string>
+    <plurals name="library_selected">
+        <item quantity="one">%d selected</item>
+        <item quantity="other">%d selected</item>
+    </plurals>
+    <string name="library_move">Move</string>
+    <string name="library_move_to">Move to folder</string>
+    <string name="library_no_folder">No folder</string>
+    <string name="library_merge">Merge</string>
+    <string name="library_delete">Delete</string>
+    <string name="library_moved_to_trash">Moved to Trash</string>
+    <string name="library_merged">Merged into one document. The originals are in Trash.</string>
+    <string name="library_undo">Undo</string>
     <string name="library_trash">Trash</string>
     <string name="library_trash_description">Deleted documents, kept for 30 days</string>
     <string name="library_trash_explain">Documents here are deleted for good after 30 days.</string>

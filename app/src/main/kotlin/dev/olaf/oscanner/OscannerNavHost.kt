@@ -101,7 +101,7 @@ fun OscannerNavHost(
         composable(Routes.LIBRARY) {
             val viewModel: LibraryViewModel = viewModel(
                 factory = viewModelFactory {
-                    initializer { LibraryViewModel(container.documents, container.folders, container.settings) }
+                    initializer { LibraryViewModel(container.documents, container.folders, container.settings, container.pages) }
                 },
             )
             LibraryRoute(

@@ -5,6 +5,14 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material3.ripple
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -52,29 +60,46 @@ private val CardHeight = 116.dp
 /**
  * One document, always with the same plate: cover, name, then pages · date · size.
  * Height is fixed so a status appearing or clearing never moves the list.
+ * While [selected] is non-null the library is choosing documents: the card shows a checkmark.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DocumentCard(
     document: Document,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
+    selected: Boolean? = null,
 ) {
     val interaction = remember { MutableInteractionSource() }
+    val colors = MaterialTheme.colorScheme
     Surface(
-        onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
             .height(CardHeight)
-            .pressScale(interaction),
+            .pressScale(interaction)
+            .clip(MaterialTheme.shapes.large)
+            .combinedClickable(
+                interactionSource = interaction,
+                indication = ripple(),
+                onClick = onClick,
+                onLongClick = onLongClick,
+            )
+            .then(if (selected != null) Modifier.semantics { this.selected = selected } else Modifier),
         shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        interactionSource = interaction,
+        color = if (selected == true) colors.primaryContainer else colors.surfaceContainer,
+        border = if (selected == true) BorderStroke(2.dp, colors.primary) else null,
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            PageThumbnail(path = document.coverThumbPath, modifier = Modifier.size(width = 64.dp, height = 84.dp))
+            Box {
+                PageThumbnail(path = document.coverThumbPath, modifier = Modifier.size(width = 64.dp, height = 84.dp))
+                if (selected != null) {
+                    SelectMark(selected, Modifier.align(Alignment.TopStart).padding(4.dp))
+                }
+            }
             Spacer(Modifier.width(16.dp))
             Column(
                 modifier = Modifier
@@ -111,6 +136,22 @@ fun DocumentCard(
                 }
             }
         }
+    }
+}
+
+/** A round checkmark: filled orange when chosen, an empty ring when not. */
+@Composable
+private fun SelectMark(selected: Boolean, modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    Box(
+        modifier
+            .size(24.dp)
+            .clip(CircleShape)
+            .background(if (selected) colors.primary else colors.surfaceContainer.copy(alpha = 0.85f))
+            .border(2.dp, if (selected) colors.primary else colors.onSurfaceVariant, CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (selected) Icon(Icons.Rounded.Check, contentDescription = null, tint = colors.onPrimary, modifier = Modifier.size(16.dp))
     }
 }
 

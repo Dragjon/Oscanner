@@ -24,12 +24,28 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Sort
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AddPhotoAlternate
+import androidx.compose.material.icons.rounded.CallMerge
+import androidx.compose.material.icons.rounded.Checklist
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CreateNewFolder
+import androidx.compose.material.icons.rounded.DriveFileMove
+import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.FolderOff
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.DocumentScanner
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.Settings
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -81,8 +97,37 @@ fun LibraryRoute(
     onOpenTrash: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val selection by viewModel.selection.collectAsStateWithLifecycle()
+    val trashed = stringResource(R.string.library_moved_to_trash)
+    val merged = stringResource(R.string.library_merged)
+    val undo = stringResource(R.string.library_undo)
+    LaunchedEffect(viewModel) {
+        viewModel.eventFlow.collect { event ->
+            val text = when (event) {
+                is LibraryEvent.Trashed -> trashed
+                is LibraryEvent.Merged -> merged
+            }
+            val result = snackbarHostState.showSnackbar(text, actionLabel = undo, duration = SnackbarDuration.Long)
+            if (result == SnackbarResult.ActionPerformed) {
+                when (event) {
+                    is LibraryEvent.Trashed -> viewModel.restore(event.ids)
+                    is LibraryEvent.Merged -> viewModel.unmerge(event)
+                }
+            }
+        }
+    }
+    BackHandler(enabled = selection != null) { viewModel.stopSelecting() }
     LibraryScreen(
         state = state,
+        selection = Selection(
+            chosen = selection,
+            start = viewModel::startSelecting,
+            toggle = viewModel::toggleSelected,
+            stop = viewModel::stopSelecting,
+            move = viewModel::moveSelected,
+            merge = viewModel::mergeSelected,
+            trash = viewModel::trashSelected,
+        ),
         snackbarHostState = snackbarHostState,
         onQueryChange = viewModel::onQueryChange,
         onFolderSelected = viewModel::onFolderSelected,
@@ -96,10 +141,22 @@ fun LibraryRoute(
     )
 }
 
+/** Choosing several documents at once; [chosen] is null when not choosing. */
+class Selection(
+    val chosen: List<Long>?,
+    val start: (Long?) -> Unit,
+    val toggle: (Long) -> Unit,
+    val stop: () -> Unit,
+    val move: (Long?) -> Unit,
+    val merge: () -> Unit,
+    val trash: () -> Unit,
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(
     state: LibraryUiState,
+    selection: Selection,
     snackbarHostState: SnackbarHostState,
     onQueryChange: (String) -> Unit,
     onFolderSelected: (Long?) -> Unit,
@@ -113,6 +170,8 @@ fun LibraryScreen(
 ) {
     var showMore by rememberSaveable { mutableStateOf(false) }
     var showNewFolder by rememberSaveable { mutableStateOf(false) }
+    var showMoveSelected by rememberSaveable { mutableStateOf(false) }
+    val chosen = selection.chosen
     val statusBar = WindowInsets.statusBars.asPaddingValues()
     val navBar = WindowInsets.navigationBars.asPaddingValues()
 
@@ -132,12 +191,26 @@ fun LibraryScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item(key = "title") {
-                Text(
-                    stringResource(R.string.library_title),
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
-                )
+                if (chosen == null) {
+                    Text(
+                        stringResource(R.string.library_title),
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
+                    )
+                } else {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
+                        IconButton(onClick = selection.stop) {
+                            Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.library_stop_selecting))
+                        }
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            pluralStringResource(R.plurals.library_selected, chosen.size, chosen.size),
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = MaterialTheme.colorScheme.onBackground,
+                        )
+                    }
+                }
             }
             if (state.hasDocuments) {
                 item(key = "search") {
@@ -172,7 +245,9 @@ fun LibraryScreen(
                 items(state.documents, key = { it.id }) { document ->
                     DocumentCard(
                         document = document,
-                        onClick = { onOpenDocument(document.id) },
+                        onClick = { if (chosen != null) selection.toggle(document.id) else onOpenDocument(document.id) },
+                        onLongClick = { if (chosen == null) selection.start(document.id) else selection.toggle(document.id) },
+                        selected = chosen?.let { document.id in it },
                         modifier = Modifier.animateItem(),
                     )
                 }
@@ -202,9 +277,20 @@ fun LibraryScreen(
         ) {
             SnackbarHost(snackbarHostState)
             Dock(modifier = Modifier.widthIn(max = 480.dp).fillMaxWidth()) {
-                DockAction(Icons.Rounded.AddPhotoAlternate, stringResource(R.string.library_import), onImport)
-                PrimaryPill(Icons.Rounded.DocumentScanner, stringResource(R.string.library_scan), onScan)
-                DockAction(Icons.Rounded.MoreHoriz, stringResource(R.string.library_more), { showMore = true })
+                if (chosen == null) {
+                    DockAction(Icons.Rounded.AddPhotoAlternate, stringResource(R.string.library_import), onImport)
+                    PrimaryPill(Icons.Rounded.DocumentScanner, stringResource(R.string.library_scan), onScan)
+                    DockAction(Icons.Rounded.MoreHoriz, stringResource(R.string.library_more), { showMore = true })
+                } else {
+                    val any = chosen.isNotEmpty()
+                    DockAction(Icons.Rounded.DriveFileMove, stringResource(R.string.library_move), { showMoveSelected = true }, enabled = any)
+                    if (chosen.size >= 2) {
+                        PrimaryPill(Icons.Rounded.CallMerge, stringResource(R.string.library_merge), selection.merge)
+                    } else {
+                        DockAction(Icons.Rounded.CallMerge, stringResource(R.string.library_merge), {}, enabled = false)
+                    }
+                    DockAction(Icons.Rounded.DeleteOutline, stringResource(R.string.library_delete), selection.trash, enabled = any)
+                }
             }
         }
     }
@@ -230,8 +316,23 @@ fun LibraryScreen(
                     showMore = false
                     onOpenTrash()
                 },
+                onSelect = {
+                    showMore = false
+                    selection.start(null)
+                },
             )
         }
+    }
+
+    if (showMoveSelected) {
+        FolderPicker(
+            folders = state.folders,
+            onPick = {
+                showMoveSelected = false
+                selection.move(it)
+            },
+            onDismiss = { showMoveSelected = false },
+        )
     }
 
     if (showNewFolder) {
@@ -306,6 +407,7 @@ private fun MoreSheet(
     onNewFolder: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenTrash: () -> Unit,
+    onSelect: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -314,6 +416,12 @@ private fun MoreSheet(
             .padding(start = 16.dp, end = 16.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        SheetAction(
+            icon = Icons.Rounded.Checklist,
+            title = stringResource(R.string.library_select),
+            description = stringResource(R.string.library_select_description),
+            onClick = onSelect,
+        )
         SheetAction(
             icon = Icons.Rounded.CreateNewFolder,
             title = stringResource(R.string.library_new_folder),
@@ -402,6 +510,30 @@ private fun NewFolderDialog(onCreate: (String) -> Unit, onDismiss: () -> Unit) {
             TextButton(onClick = onDismiss) {
                 Text(stringResource(R.string.library_cancel), color = colors.onSurfaceVariant)
             }
+        },
+    )
+}
+
+/** Where to move the chosen documents: no folder, or one of the folders. */
+@Composable
+private fun FolderPicker(folders: List<Folder>, onPick: (Long?) -> Unit, onDismiss: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = colors.surfaceContainer,
+        title = { Text(stringResource(R.string.library_move_to)) },
+        text = {
+            Column(
+                Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                SheetAction(Icons.Rounded.FolderOff, stringResource(R.string.library_no_folder), null, { onPick(null) })
+                folders.forEach { folder -> SheetAction(Icons.Rounded.Folder, folder.name, null, { onPick(folder.id) }) }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.library_cancel), color = colors.onSurfaceVariant) }
         },
     )
 }
