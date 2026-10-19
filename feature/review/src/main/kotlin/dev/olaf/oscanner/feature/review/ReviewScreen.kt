@@ -365,4 +365,5 @@ internal fun PageFilter.label(): Int = when (this) {
     PageFilter.Bright -> R.string.review_filter_bright
     PageFilter.Gray -> R.string.review_filter_gray
     PageFilter.Ink -> R.string.review_filter_ink
+    PageFilter.Board -> R.string.review_filter_board
 }

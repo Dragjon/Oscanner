@@ -37,6 +37,8 @@ data class DocumentEntity(
     val note: String? = null,
     /** Set when moved to Trash; purged after 30 days. */
     val deletedAt: Long? = null,
+    /** [dev.olaf.oscanner.core.model.DocumentKind] name. Added in schema 2. */
+    @ColumnInfo(defaultValue = "Document") val kind: String = "Document",
 )
 
 /**
@@ -105,6 +107,7 @@ data class DocumentRow(
     val updatedAt: Long,
     val state: String,
     val deletedAt: Long?,
+    val kind: String,
     val pageCount: Int,
     val sizeBytes: Long,
     val coverThumbPath: String?,

@@ -19,6 +19,7 @@
     <string name="review_filter_bright">Bright</string>
     <string name="review_filter_gray">Gray</string>
     <string name="review_filter_ink">Ink</string>
+    <string name="review_filter_board">Board</string>
     <string name="review_adjust">Adjust</string>
     <string name="review_brightness">Brightness</string>
     <string name="review_contrast">Contrast</string>

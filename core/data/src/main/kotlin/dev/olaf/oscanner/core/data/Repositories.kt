@@ -4,6 +4,7 @@ import dev.olaf.oscanner.core.data.db.DocumentRow
 import dev.olaf.oscanner.core.data.db.FolderEntity
 import dev.olaf.oscanner.core.data.db.OscannerDatabase
 import dev.olaf.oscanner.core.model.Document
+import dev.olaf.oscanner.core.model.DocumentKind
 import dev.olaf.oscanner.core.model.Folder
 import dev.olaf.oscanner.core.model.ProcessingState
 import dev.olaf.oscanner.core.model.SortOrder
@@ -77,4 +78,5 @@ internal fun DocumentRow.toModel() = Document(
     updatedAt = updatedAt,
     state = runCatching { ProcessingState.valueOf(state) }.getOrDefault(ProcessingState.Idle),
     deletedAt = deletedAt,
+    kind = runCatching { DocumentKind.valueOf(kind) }.getOrDefault(DocumentKind.Document),
 )

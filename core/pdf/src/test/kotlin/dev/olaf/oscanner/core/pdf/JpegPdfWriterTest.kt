@@ -92,6 +92,24 @@ class JpegPdfWriterTest {
     }
 
     @Test
+    fun cardsPrintTwoPerA4SheetAtTrueSize() {
+        val out = ByteArrayOutputStream()
+        val cards = listOf(PdfPage(jpeg("f.jpg", 1011, 638)), PdfPage(jpeg("b.jpg", 1011, 638)), PdfPage(jpeg("c.jpg", 1011, 638)))
+        JpegPdfWriter(PdfPageSize.A4).writeCards(cards, out)
+        val text = String(out.toByteArray(), Charsets.ISO_8859_1)
+        // Three cards: two sheets, three images.
+        assertTrue(text.contains("/Count 2"))
+        assertEquals(3, Regex("/Subtype /Image").findAll(text).count())
+        assertTrue(text.contains("/MediaBox [0 0 595.28 841.89]"))
+        // 85.60 mm = 242.65 pt; 53.98 mm = 153.01 pt.
+        assertTrue(text, text.contains("q 242.65 0 0 153.01 "))
+        val xrefAt = text.substringAfterLast("startxref\n").trim().removeSuffix("%%EOF").trim().toInt()
+        text.substring(xrefAt).lines().drop(3).takeWhile { it.endsWith(" n ") }.forEachIndexed { index, line ->
+            assertTrue("object ${index + 1}", text.startsWith("${index + 1} 0 obj", line.take(10).toInt()))
+        }
+    }
+
+    @Test
     fun autoPageTakesImageShape() {
         val out = ByteArrayOutputStream()
         JpegPdfWriter(PdfPageSize.Auto).write(listOf(jpeg("w.jpg", 400, 200)), out)

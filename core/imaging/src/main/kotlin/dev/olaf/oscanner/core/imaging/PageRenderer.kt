@@ -112,7 +112,13 @@ object PageRenderer {
         val rgb = toRgb(source)
         val w = source.width
         val h = source.height
-        val (outW, outH) = QuadGeometry.warpSize(edits.quad, w, h)
+        val (outW, outH) = QuadGeometry.warpSize(edits.quad, w, h).let { (mw, mh) ->
+            val aspect = edits.aspect ?: return@let mw to mh
+            // Keep the longer measured side for resolution; derive the other from the aspect.
+            val long = maxOf(mw, mh)
+            val short = (long / aspect).toInt().coerceAtLeast(1)
+            if (mw >= mh) long to short else short to long
+        }
         val scale = min(1.0, maxSide.toDouble() / max(outW, outH))
         val dstW = (outW * scale).coerceAtLeast(1.0)
         val dstH = (outH * scale).coerceAtLeast(1.0)

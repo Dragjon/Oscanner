@@ -6,7 +6,7 @@ import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 
 private const val ROW_COLUMNS = """
-    d.id, d.title, d.folderId, d.createdAt, d.updatedAt, d.state, d.deletedAt,
+    d.id, d.title, d.folderId, d.createdAt, d.updatedAt, d.state, d.deletedAt, d.kind,
     (SELECT COUNT(*) FROM pages p WHERE p.documentId = d.id) AS pageCount,
     (SELECT COALESCE(SUM(p.sizeBytes), 0) FROM pages p WHERE p.documentId = d.id) AS sizeBytes,
     (SELECT p.thumbPath FROM pages p WHERE p.documentId = d.id ORDER BY p.position LIMIT 1) AS coverThumbPath

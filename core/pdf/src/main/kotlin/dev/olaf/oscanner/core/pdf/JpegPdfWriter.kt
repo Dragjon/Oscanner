@@ -30,6 +30,48 @@ class JpegPdfWriter(private val pageSize: PdfPageSize = PdfPageSize.Auto) {
 
     fun writePages(pages: List<PdfPage>, out: OutputStream, title: String? = null) {
         require(pages.isNotEmpty()) { "A PDF needs at least one page" }
+        val sheets = pages.map { page ->
+            val info = JpegInfo.read(page.jpeg.readBytes())
+            val box = layout(info.width, info.height)
+            Sheet(box.pageW, box.pageH, listOf(Placed(page, box)))
+        }
+        writeSheets(sheets, out, title)
+    }
+
+    /**
+     * ID cards: each pair of images (front, back) printed on one A4 or Letter sheet at true
+     * ISO/IEC 7810 ID-1 size, 85.60 × 53.98 mm, one above the other, so a print can be cut out
+     * and is the same size as the card (PLAN.md §5.6).
+     */
+    fun writeCards(cards: List<PdfPage>, out: OutputStream, title: String? = null) {
+        require(cards.isNotEmpty()) { "A PDF needs at least one card" }
+        val (pageW, pageH) = if (pageSize == PdfPageSize.Letter) LETTER_SHORT to LETTER_LONG else A4_SHORT to A4_LONG
+        val sheets = cards.chunked(2).map { pair ->
+            val gap = 20 * MM
+            val totalH = pair.sumOf { cardSize(it).second } + gap * (pair.size - 1)
+            var top = (pageH + totalH) / 2
+            val placed = pair.map { card ->
+                val (w, h) = cardSize(card)
+                val box = ImageBox(pageW, pageH, (pageW - w) / 2, top - h, w, h)
+                top -= h + gap
+                Placed(card, box)
+            }
+            Sheet(pageW, pageH, placed)
+        }
+        writeSheets(sheets, out, title)
+    }
+
+    /** True card size in points; a portrait-shaped image is a card held upright. */
+    private fun cardSize(card: PdfPage): Pair<Double, Double> {
+        val info = JpegInfo.read(card.jpeg.readBytes())
+        return if (info.width >= info.height) CARD_LONG to CARD_SHORT else CARD_SHORT to CARD_LONG
+    }
+
+    private class Placed(val page: PdfPage, val box: ImageBox)
+
+    private class Sheet(val width: Double, val height: Double, val images: List<Placed>)
+
+    private fun writeSheets(sheets: List<Sheet>, out: OutputStream, title: String?) {
         val pdf = CountingStream(out)
         val offsets = mutableListOf<Long>()
         fun obj(body: () -> Unit) {
@@ -43,51 +85,58 @@ class JpegPdfWriter(private val pageSize: PdfPageSize = PdfPageSize.Auto) {
         pdf.write(byteArrayOf('%'.code.toByte(), 0xE2.toByte(), 0xE3.toByte(), 0xCF.toByte(), 0xD3.toByte(), '\n'.code.toByte()))
 
         // Object numbers: 1 catalog, 2 page tree, 3 info, 4–9 the text font (only if any page
-        // has words), then 3 per page (page, image, content).
-        val searchable = pages.any { it.words.isNotEmpty() }
-        val firstPageId = if (searchable) 10 else 4
-        val pageIds = pages.indices.map { firstPageId + it * 3 }
+        // has words), then per sheet: the page, its content stream, then one per image.
+        val searchable = sheets.any { sheet -> sheet.images.any { it.page.words.isNotEmpty() } }
+        var next = if (searchable) 10 else 4
+        val sheetIds = sheets.map { sheet -> next.also { next += 2 + sheet.images.size } }
         obj { pdf.ascii("<< /Type /Catalog /Pages 2 0 R >>") }
-        obj { pdf.ascii("<< /Type /Pages /Kids [${pageIds.joinToString(" ") { "$it 0 R" }}] /Count ${pages.size} >>") }
+        obj { pdf.ascii("<< /Type /Pages /Kids [${sheetIds.joinToString(" ") { "$it 0 R" }}] /Count ${sheets.size} >>") }
         obj {
             val titleEntry = title?.let { " /Title ${literal(it)}" }.orEmpty()
             pdf.ascii("<< /Producer (Oscanner)$titleEntry >>")
         }
         if (searchable) writeFont(::obj, pdf)
 
-        pages.forEachIndexed { index, page ->
-            val bytes = page.jpeg.readBytes()
-            val info = JpegInfo.read(bytes)
-            val box = layout(info.width, info.height)
-            val pageId = pageIds[index]
+        sheets.forEachIndexed { index, sheet ->
+            val pageId = sheetIds[index]
+            val imageIds = sheet.images.indices.map { pageId + 2 + it }
             obj {
-                val font = if (page.words.isNotEmpty()) " /Font << /F1 4 0 R >>" else ""
+                val font = if (sheet.images.any { it.page.words.isNotEmpty() }) " /Font << /F1 4 0 R >>" else ""
+                val xobjects = imageIds.mapIndexed { i, id -> "/Im$i $id 0 R" }.joinToString(" ")
                 pdf.ascii(
-                    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${fmt(box.pageW)} ${fmt(box.pageH)}] " +
-                        "/Resources << /XObject << /Im0 ${pageId + 1} 0 R >>$font >> /Contents ${pageId + 2} 0 R >>",
+                    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${fmt(sheet.width)} ${fmt(sheet.height)}] " +
+                        "/Resources << /XObject << $xobjects >>$font >> /Contents ${pageId + 1} 0 R >>",
                 )
-            }
-            obj {
-                val colorSpace = when (info.components) {
-                    1 -> "/DeviceGray"
-                    4 -> "/DeviceCMYK"
-                    else -> "/DeviceRGB"
-                }
-                pdf.ascii(
-                    "<< /Type /XObject /Subtype /Image /Width ${info.width} /Height ${info.height} " +
-                        "/ColorSpace $colorSpace /BitsPerComponent 8 /Filter /DCTDecode /Length ${bytes.size} >>\nstream\n",
-                )
-                pdf.write(bytes)
-                pdf.ascii("\nendstream")
             }
             obj {
                 val content = buildString {
-                    append("q ${fmt(box.w)} 0 0 ${fmt(box.h)} ${fmt(box.x)} ${fmt(box.y)} cm /Im0 Do Q")
-                    if (page.words.isNotEmpty()) append(textLayer(page.words, box))
+                    sheet.images.forEachIndexed { i, placed ->
+                        val box = placed.box
+                        if (i > 0) append('\n')
+                        append("q ${fmt(box.w)} 0 0 ${fmt(box.h)} ${fmt(box.x)} ${fmt(box.y)} cm /Im$i Do Q")
+                        if (placed.page.words.isNotEmpty()) append(textLayer(placed.page.words, box))
+                    }
                 }.toByteArray(Charsets.ISO_8859_1)
                 pdf.ascii("<< /Length ${content.size} >>\nstream\n")
                 pdf.write(content)
                 pdf.ascii("\nendstream")
+            }
+            sheet.images.forEach { placed ->
+                val bytes = placed.page.jpeg.readBytes()
+                val info = JpegInfo.read(bytes)
+                obj {
+                    val colorSpace = when (info.components) {
+                        1 -> "/DeviceGray"
+                        4 -> "/DeviceCMYK"
+                        else -> "/DeviceRGB"
+                    }
+                    pdf.ascii(
+                        "<< /Type /XObject /Subtype /Image /Width ${info.width} /Height ${info.height} " +
+                            "/ColorSpace $colorSpace /BitsPerComponent 8 /Filter /DCTDecode /Length ${bytes.size} >>\nstream\n",
+                    )
+                    pdf.write(bytes)
+                    pdf.ascii("\nendstream")
+                }
             }
         }
 
@@ -269,6 +318,11 @@ class JpegPdfWriter(private val pageSize: PdfPageSize = PdfPageSize.Auto) {
         const val A4_LONG = 841.89
         const val LETTER_SHORT = 612.0
         const val LETTER_LONG = 792.0
+        /** One millimetre in points. */
+        const val MM = 72.0 / 25.4
+        /** ISO/IEC 7810 ID-1, in points. */
+        const val CARD_LONG = 85.60 * MM
+        const val CARD_SHORT = 53.98 * MM
         /** Advance width of the blank glyph, in 1/1000 em. */
         const val GLYPH_WIDTH = 500
         /** Tesseract's GlyphLessFont (tessdata/pdf.ttf, Apache-2.0): one blank glyph. */

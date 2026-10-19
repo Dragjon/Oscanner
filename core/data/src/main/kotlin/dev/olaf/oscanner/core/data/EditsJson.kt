@@ -22,6 +22,7 @@ internal object EditsJson {
         .put("brightness", edits.brightness.toDouble())
         .put("contrast", edits.contrast.toDouble())
         .put("detail", edits.detail.toDouble())
+        .apply { edits.aspect?.let { put("aspect", it.toDouble()) } }
         .toString()
 
     fun read(json: String): PageEdits {
@@ -34,6 +35,7 @@ internal object EditsJson {
         val filter = PageFilter.entries.firstOrNull { it.name == obj.optString("filter") } ?: PageFilter.Auto
         val rotation = obj.optInt("rotation", 0).let { ((it % 360) + 360) % 360 / 90 * 90 }
         fun unit(name: String, min: Float) = obj.optDouble(name, 0.0).toFloat().takeUnless { it.isNaN() }?.coerceIn(min, 1f) ?: 0f
-        return PageEdits(quad, filter, rotation, unit("brightness", -1f), unit("contrast", -1f), unit("detail", 0f))
+        val aspect = obj.optDouble("aspect", Double.NaN).toFloat().takeIf { it.isFinite() && it > 0f }
+        return PageEdits(quad, filter, rotation, unit("brightness", -1f), unit("contrast", -1f), unit("detail", 0f), aspect)
     }
 }

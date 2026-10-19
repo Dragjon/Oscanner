@@ -25,7 +25,10 @@ data class Detection(val quad: Quad?, val sharpness: Double)
  * edge maps (auto-threshold Canny, Otsu), outer contours, convex hull, polygon fit to four
  * corners, then score candidates on area and corner angles. Not thread-safe: one per thread.
  */
-class DocumentDetector {
+class DocumentDetector(
+    /** How far from square a corner may look, in degrees. Whiteboards are shot at steeper angles. */
+    private val angleTolerance: Double = 35.0,
+) {
 
     private val blur = Mat()
     private val edges = Mat()
@@ -151,8 +154,8 @@ class DocumentDetector {
         val onBorder = quad.corners.count { it.x < BORDER || it.x > 1 - BORDER || it.y < BORDER || it.y > 1 - BORDER }
         if (onBorder >= 2) return null
         val angles = QuadGeometry.angles(quad)
-        if (angles.any { it < 55.0 || it > 125.0 }) return null
-        val skew = angles.sumOf { abs(it - 90.0) } / 4 / 35.0
+        if (angles.any { abs(it - 90.0) > angleTolerance }) return null
+        val skew = angles.sumOf { abs(it - 90.0) } / 4 / angleTolerance
         return inset(quad) to areaRatio * (1.0 - 0.5 * skew)
     }
 

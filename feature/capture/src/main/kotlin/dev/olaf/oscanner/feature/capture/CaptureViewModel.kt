@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.olaf.oscanner.core.data.CapturedImage
 import dev.olaf.oscanner.core.data.PageStore
+import dev.olaf.oscanner.core.model.DocumentKind
 import dev.olaf.oscanner.core.model.Quad
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
@@ -19,6 +20,21 @@ import java.util.UUID
 
 enum class CaptureStatus { Searching, HoldSteady, Captured }
 
+/** What the camera is set up to scan. Each page mode makes one kind of document. */
+enum class CaptureMode(val kind: DocumentKind?) {
+    Document(DocumentKind.Document),
+    IdCard(DocumentKind.IdCard),
+    Book(DocumentKind.Book),
+    Whiteboard(DocumentKind.Whiteboard),
+    /** QR codes and barcodes: read live, nothing is saved. */
+    Code(null),
+    ;
+
+    companion object {
+        fun of(kind: DocumentKind) = entries.first { it.kind == kind }
+    }
+}
+
 data class CaptureUiState(
     /** Page outline in normalized upright-frame coordinates. */
     val quad: Quad? = null,
@@ -28,6 +44,11 @@ data class CaptureUiState(
     val status: CaptureStatus = CaptureStatus.Searching,
     val captures: List<CapturedImage> = emptyList(),
     val autoCapture: Boolean = true,
+    val mode: CaptureMode = CaptureMode.Document,
+    /** Adding pages to an existing document keeps that document's mode. */
+    val modeLocked: Boolean = false,
+    /** A code that was just read; scanning pauses until it's dismissed. */
+    val code: ScannedCode? = null,
     val flash: Boolean = false,
     /** A photo is being taken; the shutter ignores taps until it lands. */
     val busy: Boolean = false,
@@ -57,6 +78,28 @@ class CaptureViewModel(
     val savedScans: Flow<SavedScan> = saved.receiveAsFlow()
 
     private var capturedAt = 0L
+
+    init {
+        if (documentId != null) {
+            _state.update { it.copy(modeLocked = true) }
+            viewModelScope.launch {
+                val kind = pages.kindOf(documentId)
+                _state.update { it.copy(mode = CaptureMode.of(kind)) }
+            }
+        }
+    }
+
+    /** Switches mode; not while a batch is in progress, since a batch is one kind of document. */
+    fun setMode(mode: CaptureMode) {
+        _state.update { if (it.modeLocked || it.captures.isNotEmpty()) it else it.copy(mode = mode, code = null) }
+    }
+
+    /** Called on the analysis thread when a code is read. */
+    fun onCode(code: ScannedCode) {
+        _state.update { if (it.code == null && it.mode == CaptureMode.Code) it.copy(code = code) else it }
+    }
+
+    fun dismissCode() = _state.update { it.copy(code = null) }
 
     /** Called on the analysis thread for every frame. */
     fun onFrame(quad: Quad?, sharpness: Double, frameAspect: Float, now: Long = System.currentTimeMillis()) {
@@ -104,7 +147,8 @@ class CaptureViewModel(
         viewModelScope.launch {
             val result = runCatching {
                 if (documentId == null) {
-                    SavedScan(pages.createDocument(title, folderId = null, captures), 0)
+                    val kind = _state.value.mode.kind ?: DocumentKind.Document
+                    SavedScan(pages.createDocument(title, folderId = null, captures, kind), 0)
                 } else {
                     val before = pages.pages(documentId).size
                     pages.addPages(documentId, captures)
@@ -113,6 +157,21 @@ class CaptureViewModel(
             }
             result.onSuccess { saved.send(it) }
             _state.update { it.copy(saving = false, captures = if (result.isSuccess) emptyList() else it.captures) }
+        }
+    }
+
+    /** Imports photos as the current mode, e.g. an old picture of a book spread. */
+    fun import(uris: List<android.net.Uri>, title: String) {
+        if (uris.isEmpty() || _state.value.saving) return
+        _state.update { it.copy(saving = true) }
+        viewModelScope.launch {
+            val result = runCatching {
+                val before = documentId?.let { pages.pages(it).size } ?: 0
+                val kind = _state.value.mode.kind ?: DocumentKind.Document
+                SavedScan(pages.importImages(uris, title, documentId, kind), before)
+            }
+            _state.update { it.copy(saving = false) }
+            result.onSuccess { saved.send(it) }
         }
     }
 

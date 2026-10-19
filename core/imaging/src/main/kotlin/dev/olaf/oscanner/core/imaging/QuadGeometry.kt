@@ -137,6 +137,14 @@ object QuadGeometry {
         from.corners.zip(to.corners) { a, b -> Corner(a.x + (b.x - a.x) * alpha, a.y + (b.y - a.y) * alpha) },
     )
 
+    /** Left and right halves, cut between the midpoints of the top and bottom edges. */
+    fun splitInHalf(quad: Quad): Pair<Quad, Quad> {
+        fun mid(a: Corner, b: Corner) = Corner((a.x + b.x) / 2, (a.y + b.y) / 2)
+        val top = mid(quad.topLeft, quad.topRight)
+        val bottom = mid(quad.bottomLeft, quad.bottomRight)
+        return Quad(quad.topLeft, top, bottom, quad.bottomLeft) to Quad(top, quad.topRight, quad.bottomRight, bottom)
+    }
+
     fun clampToUnit(quad: Quad): Quad = Quad.of(quad.corners.map { Corner(it.x.coerceIn(0f, 1f), it.y.coerceIn(0f, 1f)) })
 
     /** Output size for a warp: averaged opposite edges, in the pixel space of a [width]×[height] image. */

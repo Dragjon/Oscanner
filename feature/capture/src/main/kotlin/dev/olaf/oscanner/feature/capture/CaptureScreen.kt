@@ -11,6 +11,7 @@ import android.provider.Settings
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
@@ -43,12 +44,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AddPhotoAlternate
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.FlashOff
 import androidx.compose.material.icons.rounded.FlashOn
+import androidx.compose.material.icons.rounded.MotionPhotosAuto
+import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -80,6 +86,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -168,11 +175,14 @@ fun CaptureRoute(
         }
 
         TopChrome(
-            status = if (granted) state.status else null,
+            status = if (granted) statusText(state) else null,
             flash = state.flash,
-            showFlash = granted,
+            autoCapture = state.autoCapture,
+            showCameraControls = granted,
+            showAuto = granted && state.mode != CaptureMode.Code,
             onClose = leave,
             onToggleFlash = viewModel::toggleFlash,
+            onToggleAuto = { viewModel.setAutoCapture(!state.autoCapture) },
             modifier = Modifier.align(Alignment.TopCenter),
         )
     }
@@ -228,7 +238,11 @@ private fun CameraLayer(viewModel: CaptureViewModel, state: CaptureUiState, titl
 
     DisposableEffect(controller, lifecycleOwner) {
         val executor = Executors.newSingleThreadExecutor()
-        val analyzer = PageAnalyzer { quad, sharpness, aspect -> viewModel.onFrame(quad, sharpness, aspect) }
+        val analyzer = PageAnalyzer(
+            mode = { viewModel.state.value.mode },
+            onCode = viewModel::onCode,
+            onResult = { quad, sharpness, aspect -> viewModel.onFrame(quad, sharpness, aspect) },
+        )
         controller.setImageAnalysisAnalyzer(executor, analyzer)
         controller.bindToLifecycle(lifecycleOwner)
         onDispose {
@@ -271,6 +285,12 @@ private fun CameraLayer(viewModel: CaptureViewModel, state: CaptureUiState, titl
         }
     }
     LaunchedEffect(viewModel) { viewModel.shutterRequests.collect { takePicture() } }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { viewModel.import(it, title) }
+
+    // ID cards are two pictures, front then back; the second one finishes the scan.
+    LaunchedEffect(state.mode, state.captures.size) {
+        if (state.mode == CaptureMode.IdCard && state.captures.size >= 2 && !state.modeLocked) viewModel.save(title)
+    }
 
     Box(Modifier.fillMaxSize()) {
         AndroidView(
@@ -282,7 +302,9 @@ private fun CameraLayer(viewModel: CaptureViewModel, state: CaptureUiState, titl
             },
             modifier = Modifier.fillMaxSize(),
         )
-        QuadOverlay(quad = state.quad, frameAspect = state.frameAspect, modifier = Modifier.fillMaxSize())
+        if (state.mode != CaptureMode.Code) {
+            QuadOverlay(quad = state.quad, frameAspect = state.frameAspect, modifier = Modifier.fillMaxSize())
+        }
         Box(
             Modifier
                 .fillMaxSize()
@@ -299,74 +321,100 @@ private fun CameraLayer(viewModel: CaptureViewModel, state: CaptureUiState, titl
             BottomChrome(
                 state = state,
                 onShutter = { takePicture() },
-                onAutoChange = viewModel::setAutoCapture,
+                onModeChange = viewModel::setMode,
+                onImport = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                 onDone = { viewModel.save(title) },
             )
         }
     }
+
+    state.code?.let { code -> CodeSheet(code, onDismiss = viewModel::dismissCode) }
+}
+
+/** What the status pill says, in words that fit the mode. */
+@Composable
+private fun statusText(state: CaptureUiState): String = when {
+    state.mode == CaptureMode.Code -> stringResource(R.string.capture_status_code)
+    state.status == CaptureStatus.Captured -> stringResource(R.string.capture_status_captured)
+    state.status == CaptureStatus.HoldSteady -> stringResource(R.string.capture_status_hold)
+    state.mode == CaptureMode.IdCard && state.captures.isEmpty() -> stringResource(R.string.capture_status_card_front)
+    state.mode == CaptureMode.IdCard -> stringResource(R.string.capture_status_card_back)
+    state.mode == CaptureMode.Book -> stringResource(R.string.capture_status_book)
+    state.mode == CaptureMode.Whiteboard -> stringResource(R.string.capture_status_board)
+    else -> stringResource(R.string.capture_status_searching)
 }
 
 @Composable
 private fun TopChrome(
-    status: CaptureStatus?,
+    status: String?,
     flash: Boolean,
-    showFlash: Boolean,
+    autoCapture: Boolean,
+    showCameraControls: Boolean,
+    showAuto: Boolean,
     onClose: () -> Unit,
     onToggleFlash: () -> Unit,
+    onToggleAuto: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Box(
+    Column(
         modifier
             .fillMaxWidth()
             .statusBarsPadding()
             .padding(horizontal = 8.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        IconButton(
-            onClick = onClose,
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .background(Scrim, CircleShape),
-        ) {
-            Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.capture_close), tint = ChromeInk)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(
+                onClick = onClose,
+                modifier = Modifier.background(Scrim, CircleShape),
+            ) {
+                Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.capture_close), tint = ChromeInk)
+            }
+            Spacer(Modifier.weight(1f))
+            if (showAuto) {
+                ChromePill(
+                    icon = if (autoCapture) Icons.Rounded.MotionPhotosAuto else Icons.Rounded.TouchApp,
+                    label = stringResource(if (autoCapture) R.string.capture_auto else R.string.capture_manual),
+                    onClick = onToggleAuto,
+                )
+                Spacer(Modifier.width(8.dp))
+            }
+            if (showCameraControls) {
+                ChromePill(
+                    icon = if (flash) Icons.Rounded.FlashOn else Icons.Rounded.FlashOff,
+                    label = stringResource(if (flash) R.string.capture_flash_on else R.string.capture_flash_off),
+                    onClick = onToggleFlash,
+                )
+            }
         }
         if (status != null) {
-            val text = stringResource(
-                when (status) {
-                    CaptureStatus.Searching -> R.string.capture_status_searching
-                    CaptureStatus.HoldSteady -> R.string.capture_status_hold
-                    CaptureStatus.Captured -> R.string.capture_status_captured
-                },
-            )
+            Spacer(Modifier.height(8.dp))
             Surface(
                 color = Scrim,
                 contentColor = ChromeInk,
                 shape = CircleShape,
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .semantics { liveRegion = LiveRegionMode.Polite },
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
             ) {
-                Text(text, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
+                Text(status, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
             }
         }
-        if (showFlash) {
-            Surface(
-                onClick = onToggleFlash,
-                color = Scrim,
-                contentColor = ChromeInk,
-                shape = CircleShape,
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .height(48.dp),
-            ) {
-                Row(Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(if (flash) Icons.Rounded.FlashOn else Icons.Rounded.FlashOff, contentDescription = null, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        stringResource(if (flash) R.string.capture_flash_on else R.string.capture_flash_off),
-                        style = MaterialTheme.typography.labelMedium,
-                    )
-                }
-            }
+    }
+}
+
+/** A neutral camera control on the scrim: icon and a word. */
+@Composable
+private fun ChromePill(icon: ImageVector, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        onClick = onClick,
+        color = Scrim,
+        contentColor = ChromeInk,
+        shape = CircleShape,
+        modifier = modifier.height(48.dp),
+    ) {
+        Row(Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(label, style = MaterialTheme.typography.labelMedium)
         }
     }
 }
@@ -375,7 +423,8 @@ private fun TopChrome(
 private fun BottomChrome(
     state: CaptureUiState,
     onShutter: () -> Unit,
-    onAutoChange: (Boolean) -> Unit,
+    onModeChange: (CaptureMode) -> Unit,
+    onImport: () -> Unit,
     onDone: () -> Unit,
 ) {
     Column(
@@ -386,18 +435,43 @@ private fun BottomChrome(
             .padding(top = 16.dp, bottom = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ModeChip(stringResource(R.string.capture_auto), selected = state.autoCapture) { onAutoChange(true) }
-            ModeChip(stringResource(R.string.capture_manual), selected = !state.autoCapture) { onAutoChange(false) }
+        // Modes can not change mid-batch: a batch becomes one kind of document.
+        if (!state.modeLocked && state.captures.isEmpty()) {
+            Row(
+                Modifier
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                CaptureMode.entries.forEach { mode ->
+                    ModeChip(stringResource(mode.label()), selected = mode == state.mode) { onModeChange(mode) }
+                }
+            }
+            Spacer(Modifier.height(16.dp))
         }
-        Spacer(Modifier.height(16.dp))
+        if (state.mode == CaptureMode.Code) {
+            Text(
+                stringResource(R.string.capture_code_hint),
+                style = MaterialTheme.typography.bodyMedium,
+                color = ChromeInk.copy(alpha = 0.8f),
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .padding(horizontal = 32.dp)
+                    .height(80.dp),
+            )
+            return@Column
+        }
         Box(
             Modifier
                 .fillMaxWidth()
                 .widthIn(max = 480.dp)
                 .padding(horizontal = 24.dp),
         ) {
-            BatchStack(captures = state.captures.map { it.file }, modifier = Modifier.align(Alignment.CenterStart))
+            if (state.captures.isEmpty()) {
+                ChromePill(Icons.Rounded.AddPhotoAlternate, stringResource(R.string.capture_import), onImport, Modifier.align(Alignment.CenterStart))
+            } else {
+                BatchStack(captures = state.captures.map { it.file }, modifier = Modifier.align(Alignment.CenterStart))
+            }
             Shutter(
                 progress = if (state.autoCapture) state.progress else 0f,
                 enabled = !state.busy && !state.saving,

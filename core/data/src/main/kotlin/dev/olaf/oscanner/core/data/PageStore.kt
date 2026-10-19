@@ -7,10 +7,14 @@ import androidx.room.withTransaction
 import dev.olaf.oscanner.core.data.db.DocumentEntity
 import dev.olaf.oscanner.core.data.db.OscannerDatabase
 import dev.olaf.oscanner.core.data.db.PageEntity
+import dev.olaf.oscanner.core.imaging.BookSplitter
 import dev.olaf.oscanner.core.imaging.DocumentDetector
 import dev.olaf.oscanner.core.imaging.PageRenderer
+import dev.olaf.oscanner.core.imaging.QuadGeometry
+import dev.olaf.oscanner.core.model.DocumentKind
 import dev.olaf.oscanner.core.model.Page
 import dev.olaf.oscanner.core.model.PageEdits
+import dev.olaf.oscanner.core.model.PageFilter
 import dev.olaf.oscanner.core.model.ProcessingState
 import dev.olaf.oscanner.core.model.Quad
 import dev.olaf.oscanner.core.pdf.JpegPdfWriter
@@ -58,12 +62,27 @@ class PageStore(
 
     suspend fun page(id: Long): Page? = db.pages().get(id)?.toModel()
 
+    suspend fun kindOf(documentId: Long): DocumentKind = db.documents().getRow(documentId)?.kind
+        ?.let { name -> DocumentKind.entries.firstOrNull { it.name == name } } ?: DocumentKind.Document
+
     /** Makes a new document from captures and starts rendering it. Returns its id. */
-    suspend fun createDocument(title: String, folderId: Long?, images: List<CapturedImage>): Long {
+    suspend fun createDocument(
+        title: String,
+        folderId: Long?,
+        images: List<CapturedImage>,
+        kind: DocumentKind = DocumentKind.Document,
+    ): Long {
         require(images.isNotEmpty())
         val now = System.currentTimeMillis()
         val docId = db.documents().insert(
-            DocumentEntity(title = title, folderId = folderId, createdAt = now, updatedAt = now, state = ProcessingState.Enhancing.name),
+            DocumentEntity(
+                title = title,
+                folderId = folderId,
+                createdAt = now,
+                updatedAt = now,
+                state = ProcessingState.Enhancing.name,
+                kind = kind.name,
+            ),
         )
         addPages(docId, images)
         return docId
@@ -71,7 +90,8 @@ class PageStore(
 
     /** Appends captures to the end of [documentId] and renders them. */
     suspend fun addPages(documentId: Long, images: List<CapturedImage>) {
-        val prepared = withContext(Dispatchers.IO) { images.map { prepare(documentId, it) } }
+        val kind = kindOf(documentId)
+        val prepared = withContext(Dispatchers.IO) { images.flatMap { prepare(documentId, it, kind) } }
         db.withTransaction {
             var position = db.pages().lastPosition(documentId)
             prepared.forEach { (original, edits) ->
@@ -97,7 +117,12 @@ class PageStore(
     suspend fun finishedEditing(documentId: Long) = text.scheduleIfWanted(documentId)
 
     /** Copies picked images into private storage, then adds them like camera captures. */
-    suspend fun importImages(uris: List<Uri>, title: String, documentId: Long? = null): Long {
+    suspend fun importImages(
+        uris: List<Uri>,
+        title: String,
+        documentId: Long? = null,
+        kind: DocumentKind = DocumentKind.Document,
+    ): Long {
         val staged = withContext(Dispatchers.IO) {
             val dir = File(context.cacheDir, "import").apply { mkdirs() }
             uris.mapNotNull { uri ->
@@ -110,7 +135,7 @@ class PageStore(
         }
         require(staged.isNotEmpty()) { "None of the picked images could be read" }
         return if (documentId == null) {
-            createDocument(title, folderId = null, staged)
+            createDocument(title, folderId = null, staged, kind)
         } else {
             addPages(documentId, staged)
             documentId
@@ -210,34 +235,58 @@ class PageStore(
         }
     }
 
-    /** Moves the capture into the document folder and works out where the page is in it. */
-    private fun prepare(documentId: Long, image: CapturedImage): Pair<File, PageEdits> {
-        val dir = File(docsDir, "$documentId/${UUID.randomUUID()}").apply { mkdirs() }
-        val original = File(dir, "original.jpg")
+    /**
+     * Moves the capture into the document folder and works out where the page is in it. A book
+     * spread becomes two pages, each pointing at its own copy of the photo.
+     */
+    private fun prepare(documentId: Long, image: CapturedImage, kind: DocumentKind): List<Pair<File, PageEdits>> {
+        val original = newOriginal(documentId)
         if (!image.file.renameTo(original)) {
             image.file.copyTo(original, overwrite = true)
             image.file.delete()
         }
-        val quad = runCatching {
-            PageRenderer.ensureLoaded()
-            val preview = PageRenderer.loadUpright(original.path, DETECT_SIDE)
-            val detector = DocumentDetector()
-            detector.detect(preview).also {
-                detector.release()
-                preview.recycle()
+        PageRenderer.ensureLoaded()
+        val preview = runCatching { PageRenderer.loadUpright(original.path, DETECT_SIDE) }.getOrNull()
+        val quad = preview?.let { bitmap ->
+            runCatching {
+                val detector = DocumentDetector(angleTolerance = if (kind == DocumentKind.Whiteboard) 50.0 else 35.0)
+                detector.detect(bitmap).also { detector.release() }
+            }.getOrNull()
+        } ?: image.liveQuad ?: Quad.Full
+
+        return when (kind) {
+            DocumentKind.Document -> listOf(original to PageEdits(quad = quad))
+            DocumentKind.Whiteboard -> listOf(original to PageEdits(quad = quad, filter = PageFilter.Board))
+            // Cards are photos and colored backgrounds, which Auto would bleach to "paper" white.
+            DocumentKind.IdCard -> listOf(original to PageEdits(quad = quad, filter = PageFilter.Original, aspect = ID1_ASPECT))
+            DocumentKind.Book -> {
+                val (left, right) = preview?.let { runCatching { BookSplitter.split(it, quad) }.getOrNull() }
+                    ?: QuadGeometry.splitInHalf(quad)
+                val copy = newOriginal(documentId)
+                original.copyTo(copy, overwrite = true)
+                listOf(original to PageEdits(quad = left), copy to PageEdits(quad = right))
             }
-        }.getOrNull() ?: image.liveQuad ?: Quad.Full
-        return original to PageEdits(quad = quad)
+        }.also { preview?.recycle() }
     }
+
+    private fun newOriginal(documentId: Long): File =
+        File(File(docsDir, "$documentId/${UUID.randomUUID()}").apply { mkdirs() }, "original.jpg")
 
     /** Writes the document as a PDF to [out]; renders any page that isn't ready yet first. */
     suspend fun writePdf(documentId: Long, out: OutputStream) {
         awaitRenders(documentId)
-        val title = db.documents().getRow(documentId)?.title
+        val row = db.documents().getRow(documentId)
         val pages = db.pages().forDocument(documentId).mapNotNull { page ->
             page.renderPath?.let { PdfPage(File(it), text.words(page)) }
         }
-        withContext(Dispatchers.IO) { JpegPdfWriter().writePages(pages, out, title) }
+        withContext(Dispatchers.IO) {
+            val writer = JpegPdfWriter()
+            if (row?.kind == DocumentKind.IdCard.name) {
+                writer.writeCards(pages, out, row.title)
+            } else {
+                writer.writePages(pages, out, row?.title)
+            }
+        }
     }
 
     /** A PDF in the share cache, named after the document. */
@@ -305,6 +354,8 @@ class PageStore(
 
     companion object {
         const val TRASH_DAYS = 30
+        /** ISO/IEC 7810 ID-1: 85.60 × 53.98 mm. */
+        const val ID1_ASPECT = 85.60f / 53.98f
         private const val TAG = "PageStore"
         /** Originals are read at this size before warping, so the crop still has detail. */
         private const val SOURCE_SIDE = 4000

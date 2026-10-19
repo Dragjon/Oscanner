@@ -13,7 +13,18 @@ data class Document(
     val state: ProcessingState,
     /** Set while the document sits in Trash. */
     val deletedAt: Long? = null,
+    val kind: DocumentKind = DocumentKind.Document,
 )
+
+/** What was scanned, which changes how pages are cut and how the PDF is laid out. */
+enum class DocumentKind {
+    Document,
+    /** Front and back of a card, printed together at true size. */
+    IdCard,
+    /** Two-page spreads, each split at the spine. */
+    Book,
+    Whiteboard,
+}
 
 /** Background work running on a document. Shown in place on its card, so the list never reflows. */
 enum class ProcessingState { Idle, Enhancing, ReadingText, Failed }
@@ -63,7 +74,7 @@ data class Quad(
 }
 
 /** Enhancement looks. Names say what they do, see PLAN.md §4.3. */
-enum class PageFilter { Original, Auto, Bright, Gray, Ink }
+enum class PageFilter { Original, Auto, Bright, Gray, Ink, Board }
 
 /** The recipe that turns an original photo into the page people see. Stored, never baked in. */
 data class PageEdits(
@@ -77,6 +88,11 @@ data class PageEdits(
     val contrast: Float = 0f,
     /** 0…1 extra sharpening on top of the look. */
     val detail: Float = 0f,
+    /**
+     * Long side ÷ short side the page is straightened to, e.g. an ID card's 1.586; null keeps
+     * the shape measured in the photo. Which side is long follows the photo.
+     */
+    val aspect: Float? = null,
 ) {
     val adjusted: Boolean get() = brightness != 0f || contrast != 0f || detail != 0f
 }

@@ -41,6 +41,23 @@ internal object Filters {
         PageFilter.Bright -> bright(rgb)
         PageFilter.Gray -> gray(rgb)
         PageFilter.Ink -> ink(rgb)
+        PageFilter.Board -> board(rgb)
+    }
+
+    /** Whiteboards: white board, marker colors made vivid, glare and shadows flattened. */
+    private fun board(rgb: Mat): Mat {
+        val flat = flatten(rgb)
+        applyLut(flat, levels(black = 70, white = 225, gamma = 1.3))
+        val hsv = Mat()
+        Imgproc.cvtColor(flat, hsv, Imgproc.COLOR_RGB2HSV)
+        val channels = mutableListOf<Mat>()
+        Core.split(hsv, channels)
+        channels[1].convertTo(channels[1], -1, 1.6, 0.0)
+        Core.merge(channels, hsv)
+        Imgproc.cvtColor(hsv, flat, Imgproc.COLOR_HSV2RGB)
+        hsv.release()
+        channels.forEach(Mat::release)
+        return sharpen(flat, amount = 0.5)
     }
 
     /** Flattened lighting, white paper, crisper text, colors kept. */
