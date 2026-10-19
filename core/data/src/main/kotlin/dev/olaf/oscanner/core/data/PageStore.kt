@@ -179,8 +179,7 @@ class PageStore(
     suspend fun rotatePages(pageIds: List<Long>) {
         pageIds.forEach { id ->
             val page = db.pages().get(id) ?: return@forEach
-            val edits = EditsJson.read(page.editsJson)
-            setEdits(id, edits.copy(rotation = (edits.rotation + 90) % 360))
+            setEdits(id, EditsJson.read(page.editsJson).rotatedClockwise())
         }
     }
 

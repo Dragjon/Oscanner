@@ -74,7 +74,7 @@ class ReviewViewModel(
         }
     }
 
-    fun rotate(page: Page) = update(page) { it.copy(rotation = (it.rotation + 90) % 360) }
+    fun rotate(page: Page) = update(page) { it.rotatedClockwise() }
 
     fun setAdjustments(page: Page, brightness: Float, contrast: Float, detail: Float) =
         update(page) { it.copy(brightness = brightness, contrast = contrast, detail = detail) }

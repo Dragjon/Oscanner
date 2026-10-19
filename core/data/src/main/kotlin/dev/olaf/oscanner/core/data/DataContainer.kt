@@ -15,5 +15,6 @@ class DataContainer(context: Context) {
     val languages by lazy { Languages(appContext) }
     val text by lazy { TextReader(appContext, database, settings, languages) }
     val pages by lazy { PageStore(appContext, database, text, settings) }
+    val signatures by lazy { SignatureStore(appContext) }
     val sampleData by lazy { SampleData(appContext, database) }
 }

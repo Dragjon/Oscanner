@@ -93,9 +93,30 @@ data class PageEdits(
      * the shape measured in the photo. Which side is long follows the photo.
      */
     val aspect: Float? = null,
+    /** Pen, highlighter and signature strokes, drawn over the finished page. */
+    val marks: List<InkMark> = emptyList(),
 ) {
     val adjusted: Boolean get() = brightness != 0f || contrast != 0f || detail != 0f
+
+    /** A quarter turn clockwise, with marks turned along so they stay where they were drawn. */
+    fun rotatedClockwise(): PageEdits = copy(
+        rotation = (rotation + 90) % 360,
+        marks = marks.map { mark -> mark.copy(points = mark.points.map { Corner(1f - it.y, it.x) }) },
+    )
 }
+
+/**
+ * One stroke on a finished page. Points are normalized to the page as shown (after crop and
+ * rotation); width is a share of the page's width so it scales with the render.
+ */
+data class InkMark(
+    val points: List<Corner>,
+    /** ARGB. */
+    val color: Int,
+    val width: Float,
+    /** Translucent and multiplied, so text under it stays readable. */
+    val highlighter: Boolean = false,
+)
 
 enum class SortOrder { Newest, Oldest, Name }
 

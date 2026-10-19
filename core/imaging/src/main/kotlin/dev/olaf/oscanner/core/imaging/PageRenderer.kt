@@ -2,7 +2,13 @@ package dev.olaf.oscanner.core.imaging
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import android.graphics.Matrix
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
+import dev.olaf.oscanner.core.model.InkMark
 import android.os.Build
 import androidx.exifinterface.media.ExifInterface
 import dev.olaf.oscanner.core.model.PageEdits
@@ -68,7 +74,37 @@ object PageRenderer {
         val filtered = Filters.apply(warped, edits.filter)
         warped.release()
         val adjusted = Filters.adjust(filtered, edits.filter, edits.brightness, edits.contrast, edits.detail)
-        return toBitmap(adjusted).also { adjusted.release() }
+        return toBitmap(adjusted).also {
+            adjusted.release()
+            drawMarks(it, edits.marks)
+        }
+    }
+
+    /** Strokes on top of the finished page; highlighter multiplies so the text shows through unchanged. */
+    fun drawMarks(page: Bitmap, marks: List<InkMark>) {
+        if (marks.isEmpty()) return
+        val canvas = Canvas(page)
+        val w = page.width.toFloat()
+        val h = page.height.toFloat()
+        for (mark in marks) {
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE
+                strokeCap = Paint.Cap.ROUND
+                strokeJoin = Paint.Join.ROUND
+                strokeWidth = (mark.width * w).coerceAtLeast(1f)
+                color = mark.color
+                // Opaque light color, multiplied: paper takes the color, ink stays black.
+                if (mark.highlighter) xfermode = PorterDuffXfermode(PorterDuff.Mode.MULTIPLY)
+            }
+            if (mark.points.size == 1) {
+                paint.style = Paint.Style.FILL
+                canvas.drawCircle(mark.points[0].x * w, mark.points[0].y * h, paint.strokeWidth / 2, paint)
+                continue
+            }
+            val path = Path()
+            mark.points.forEachIndexed { i, p -> if (i == 0) path.moveTo(p.x * w, p.y * h) else path.lineTo(p.x * w, p.y * h) }
+            canvas.drawPath(path, paint)
+        }
     }
 
     /**
@@ -76,7 +112,7 @@ object PageRenderer {
      * word boxes line up with the page people see, but always in clean black and white (Ink).
      */
     fun renderForOcr(source: Bitmap, edits: PageEdits): Bitmap =
-        render(source, edits.copy(filter = PageFilter.Ink), OCR_SIDE)
+        render(source, edits.copy(filter = PageFilter.Ink, marks = emptyList()), OCR_SIDE)
 
     /** Crop + straighten + rotate only; the input to [applyFilter] for filter previews. */
     fun straighten(source: Bitmap, edits: PageEdits, maxSide: Int): Bitmap {
