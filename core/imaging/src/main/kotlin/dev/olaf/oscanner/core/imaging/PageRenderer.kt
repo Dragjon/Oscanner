@@ -80,6 +80,32 @@ object PageRenderer {
         }
     }
 
+    /**
+     * Stamps [text] once, large and diagonal across the middle, in translucent gray, so it marks
+     * the copy without hiding what's under it. Android's text drawing handles every script.
+     */
+    fun drawWatermark(page: Bitmap, watermark: String) {
+        val text = watermark.trim()
+        if (text.isEmpty()) return
+        val canvas = Canvas(page)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0x38_6F_62_5A
+            typeface = android.graphics.Typeface.create(android.graphics.Typeface.SANS_SERIF, android.graphics.Typeface.BOLD)
+            textAlign = Paint.Align.CENTER
+        }
+        val w = page.width.toFloat()
+        val h = page.height.toFloat()
+        val diagonal = kotlin.math.hypot(w, h)
+        // Size the text to span about 70% of the diagonal.
+        paint.textSize = 100f
+        paint.textSize = (100f * diagonal * 0.7f / paint.measureText(text)).coerceAtMost(h / 6)
+        val angle = Math.toDegrees(kotlin.math.atan2(h.toDouble(), w.toDouble())).toFloat()
+        canvas.save()
+        canvas.rotate(-angle, w / 2, h / 2)
+        canvas.drawText(text, w / 2, h / 2 - (paint.ascent() + paint.descent()) / 2, paint)
+        canvas.restore()
+    }
+
     /** Strokes on top of the finished page; highlighter multiplies so the text shows through unchanged. */
     fun drawMarks(page: Bitmap, marks: List<InkMark>) {
         if (marks.isEmpty()) return

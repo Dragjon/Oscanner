@@ -138,4 +138,6 @@ data class AppSettings(
     val textLanguages: List<String> = listOf("eng"),
     val pdfPageFormat: PdfPageFormat = PdfPageFormat.Auto,
     val pdfQuality: PdfQuality = PdfQuality.Balanced,
+    /** The user's own text stamped across exported pages; empty for none. Oscanner adds none of its own. */
+    val watermark: String = "",
 )

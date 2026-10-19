@@ -27,7 +27,12 @@ class SettingsRepository(context: Context) {
             textLanguages = prefs[LANGUAGES]?.split(',')?.filter { it.isNotBlank() }?.ifEmpty { null } ?: listOf("eng"),
             pdfPageFormat = prefs[PDF_FORMAT].toEnum(PdfPageFormat.Auto),
             pdfQuality = prefs[PDF_QUALITY].toEnum(PdfQuality.Balanced),
+            watermark = prefs[WATERMARK].orEmpty(),
         )
+    }
+
+    suspend fun setWatermark(text: String) {
+        store.edit { it[WATERMARK] = text.take(60) }
     }
 
     suspend fun setPdfPageFormat(format: PdfPageFormat) {
@@ -66,6 +71,7 @@ class SettingsRepository(context: Context) {
         val LANGUAGES = stringPreferencesKey("text_languages")
         val PDF_FORMAT = stringPreferencesKey("pdf_page_format")
         val PDF_QUALITY = stringPreferencesKey("pdf_quality")
+        val WATERMARK = stringPreferencesKey("watermark")
     }
 }
 

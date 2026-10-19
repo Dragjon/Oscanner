@@ -34,6 +34,9 @@
     <string name="settings_pdf_quality_small_description">Smallest files, for email and forms with size limits. Fine print may blur.</string>
     <string name="settings_pdf_quality_balanced_description">Sharp enough to read and print, at about half the size of Best.</string>
     <string name="settings_pdf_quality_best_description">Full detail. Files are larger.</string>
+    <string name="settings_watermark">Watermark</string>
+    <string name="settings_watermark_description">Your own words across every shared page, like “Copy for the landlord”. Leave empty for none. Oscanner never adds its own.</string>
+    <string name="settings_watermark_hint">No watermark</string>
     <string name="settings_about">About</string>
     <string name="settings_app_name_version">Oscanner %1$s</string>
     <string name="settings_about_body">Scans stay on this phone. No account, no ads, no watermark.</string>

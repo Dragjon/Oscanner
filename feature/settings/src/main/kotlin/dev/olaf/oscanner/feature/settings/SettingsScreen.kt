@@ -39,7 +39,12 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -81,6 +86,7 @@ fun SettingsRoute(
         onOpenLanguages = onOpenLanguages,
         onPdfPageFormatChange = viewModel::onPdfPageFormatChange,
         onPdfQualityChange = viewModel::onPdfQualityChange,
+        onWatermarkChange = viewModel::onWatermarkChange,
         onFillSampleLibrary = {
             viewModel.fillSampleLibrary { scope.launch { snackbarHostState.showSnackbar(filled) } }
         },
@@ -103,6 +109,7 @@ fun SettingsScreen(
     onOpenLanguages: () -> Unit,
     onPdfPageFormatChange: (PdfPageFormat) -> Unit,
     onPdfQualityChange: (PdfQuality) -> Unit,
+    onWatermarkChange: (String) -> Unit,
     onFillSampleLibrary: () -> Unit,
     onClearLibrary: () -> Unit,
 ) {
@@ -226,6 +233,34 @@ fun SettingsScreen(
                         ),
                         style = MaterialTheme.typography.bodyMedium,
                         color = colors.onSurfaceVariant,
+                    )
+                }
+            }
+
+            item(key = "watermark") {
+                SettingsCard {
+                    Text(stringResource(R.string.settings_watermark), style = MaterialTheme.typography.titleMedium, color = colors.onSurface)
+                    Spacer(Modifier.height(4.dp))
+                    Text(stringResource(R.string.settings_watermark_description), style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
+                    Spacer(Modifier.height(12.dp))
+                    // Once typing starts, the field keeps its own text; storage catching up never overwrites it.
+                    var draft by rememberSaveable { mutableStateOf<String?>(null) }
+                    OutlinedTextField(
+                        value = draft ?: state.watermark,
+                        onValueChange = {
+                            val text = it.take(60)
+                            draft = text
+                            onWatermarkChange(text)
+                        },
+                        singleLine = true,
+                        placeholder = { Text(stringResource(R.string.settings_watermark_hint)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.medium,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = colors.onSurfaceVariant,
+                            unfocusedBorderColor = colors.outlineVariant,
+                            cursorColor = colors.primary,
+                        ),
                     )
                 }
             }

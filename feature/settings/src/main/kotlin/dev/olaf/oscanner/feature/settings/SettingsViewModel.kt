@@ -40,6 +40,10 @@ class SettingsViewModel(
         viewModelScope.launch { settings.setPdfQuality(quality) }
     }
 
+    fun onWatermarkChange(text: String) {
+        viewModelScope.launch { settings.setWatermark(text) }
+    }
+
     fun onAutoReadTextChange(enabled: Boolean) {
         viewModelScope.launch { settings.setAutoReadText(enabled) }
     }

@@ -363,7 +363,7 @@ class PageStore(
             try {
                 val pages = db.pages().forDocument(documentId).mapNotNull { page ->
                     val render = page.renderPath?.let(::File)?.takeIf(File::exists) ?: return@mapNotNull null
-                    PdfPage(compress(render, prefs.pdfQuality, temp), text.words(page))
+                    PdfPage(compress(render, prefs.pdfQuality, prefs.watermark, temp), text.words(page))
                 }
                 val format = when (prefs.pdfPageFormat) {
                     PdfPageFormat.Auto -> PdfPageSize.Auto
@@ -383,14 +383,21 @@ class PageStore(
         }
     }
 
-    /** Smaller copies of a render for the PDF; Best uses the render as it is. */
-    private fun compress(render: File, quality: PdfQuality, dir: File): File {
+    /**
+     * The render as it goes into an export: smaller for Small and Balanced, and with the user's
+     * watermark stamped on if they set one. Best without a watermark uses the render as it is.
+     */
+    private fun compress(render: File, quality: PdfQuality, watermark: String, dir: File): File {
         val (side, jpeg) = when (quality) {
             PdfQuality.Small -> 1600 to 60
             PdfQuality.Balanced -> 2200 to 75
-            PdfQuality.Best -> return render
+            PdfQuality.Best -> PageRenderer.RENDER_SIDE to 88
         }
-        val bitmap = PageRenderer.loadUpright(render.path, side)
+        if (quality == PdfQuality.Best && watermark.isBlank()) return render
+        val bitmap = PageRenderer.loadUpright(render.path, side).let {
+            if (it.isMutable) it else it.copy(android.graphics.Bitmap.Config.ARGB_8888, true).also { _ -> it.recycle() }
+        }
+        PageRenderer.drawWatermark(bitmap, watermark)
         return File(dir, "${UUID.randomUUID()}.jpg").also {
             PageRenderer.saveJpeg(bitmap, it, jpeg)
             bitmap.recycle()
@@ -425,6 +432,7 @@ class PageStore(
     /** One JPEG per page in the share cache: "Title 1.jpg", "Title 2.jpg"… */
     suspend fun exportJpegs(documentId: Long): List<File> {
         awaitRenders(documentId)
+        val watermark = settings.settings.first().watermark
         val title = safeName(db.documents().getRow(documentId)?.title ?: "Scan")
         val pages = db.pages().forDocument(documentId)
         return withContext(Dispatchers.IO) {
@@ -432,7 +440,12 @@ class PageStore(
             pages.mapIndexedNotNull { index, page ->
                 val render = page.renderPath?.let(::File)?.takeIf(File::exists) ?: return@mapIndexedNotNull null
                 val name = if (pages.size == 1) "$title.jpg" else "$title ${index + 1}.jpg"
-                render.copyTo(File(dir, name), overwrite = true)
+                if (watermark.isBlank()) {
+                    render.copyTo(File(dir, name), overwrite = true)
+                } else {
+                    compress(render, PdfQuality.Best, watermark, dir).renameTo(File(dir, name))
+                    File(dir, name)
+                }
             }
         }
     }
