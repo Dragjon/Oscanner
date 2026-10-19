@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Oscanner</string>
+    <string name="app_not_built_yet">Not built yet. Scanning comes in the next update.</string>
+</resources>

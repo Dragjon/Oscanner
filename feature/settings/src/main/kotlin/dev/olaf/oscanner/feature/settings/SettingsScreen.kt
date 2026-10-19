@@ -1,0 +1,305 @@
+package dev.olaf.oscanner.feature.settings
+
+import android.os.Build
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.DeleteSweep
+import androidx.compose.material.icons.rounded.LibraryAdd
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.olaf.oscanner.core.design.SheetAction
+import dev.olaf.oscanner.core.model.AppSettings
+import dev.olaf.oscanner.core.model.ThemeMode
+import kotlinx.coroutines.launch
+
+@Composable
+fun SettingsRoute(
+    viewModel: SettingsViewModel,
+    versionName: String,
+    onBack: () -> Unit,
+) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val filled = stringResource(R.string.settings_sample_filled)
+    val cleared = stringResource(R.string.settings_library_cleared)
+    SettingsScreen(
+        state = state,
+        versionName = versionName,
+        showDeveloperTools = viewModel.showDeveloperTools,
+        snackbarHostState = snackbarHostState,
+        onBack = onBack,
+        onThemeModeChange = viewModel::onThemeModeChange,
+        onDynamicColorChange = viewModel::onDynamicColorChange,
+        onFillSampleLibrary = {
+            viewModel.fillSampleLibrary { scope.launch { snackbarHostState.showSnackbar(filled) } }
+        },
+        onClearLibrary = {
+            viewModel.clearLibrary { scope.launch { snackbarHostState.showSnackbar(cleared) } }
+        },
+    )
+}
+
+@Composable
+fun SettingsScreen(
+    state: AppSettings,
+    versionName: String,
+    showDeveloperTools: Boolean,
+    snackbarHostState: SnackbarHostState,
+    onBack: () -> Unit,
+    onThemeModeChange: (ThemeMode) -> Unit,
+    onDynamicColorChange: (Boolean) -> Unit,
+    onFillSampleLibrary: () -> Unit,
+    onClearLibrary: () -> Unit,
+) {
+    val statusBar = WindowInsets.statusBars.asPaddingValues()
+    val navBar = WindowInsets.navigationBars.asPaddingValues()
+    val colors = MaterialTheme.colorScheme
+
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(colors.background),
+    ) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                end = 16.dp,
+                top = statusBar.calculateTopPadding() + 8.dp,
+                bottom = navBar.calculateBottomPadding() + 24.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item(key = "header") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            Icons.AutoMirrored.Rounded.ArrowBack,
+                            contentDescription = stringResource(R.string.settings_back),
+                            tint = colors.onBackground,
+                        )
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        stringResource(R.string.settings_title),
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = colors.onBackground,
+                    )
+                }
+            }
+
+            item(key = "appearance") { SectionLabel(stringResource(R.string.settings_appearance)) }
+            item(key = "theme") {
+                SettingsCard {
+                    Text(
+                        stringResource(R.string.settings_theme),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = colors.onSurface,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    ThemeChoice(state.themeMode, onThemeModeChange)
+                }
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                item(key = "dynamic") {
+                    SwitchCard(
+                        title = stringResource(R.string.settings_wallpaper_color),
+                        description = stringResource(R.string.settings_wallpaper_color_description),
+                        checked = state.dynamicColor,
+                        onCheckedChange = onDynamicColorChange,
+                    )
+                }
+            }
+
+            item(key = "about") { SectionLabel(stringResource(R.string.settings_about)) }
+            item(key = "about-card") {
+                SettingsCard {
+                    Text(
+                        stringResource(R.string.settings_app_name_version, versionName),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = colors.onSurface,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        stringResource(R.string.settings_about_body),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = colors.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        stringResource(R.string.settings_license),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = colors.onSurfaceVariant,
+                    )
+                }
+            }
+
+            if (showDeveloperTools) {
+                item(key = "developer") { SectionLabel(stringResource(R.string.settings_developer)) }
+                item(key = "fill") {
+                    SheetAction(
+                        icon = Icons.Rounded.LibraryAdd,
+                        title = stringResource(R.string.settings_fill_sample),
+                        description = stringResource(R.string.settings_fill_sample_description),
+                        onClick = onFillSampleLibrary,
+                    )
+                }
+                item(key = "clear") {
+                    SheetAction(
+                        icon = Icons.Rounded.DeleteSweep,
+                        title = stringResource(R.string.settings_clear_library),
+                        description = stringResource(R.string.settings_clear_library_description),
+                        onClick = onClearLibrary,
+                    )
+                }
+            }
+        }
+
+        SnackbarHost(
+            snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = navBar.calculateBottomPadding() + 16.dp)
+                .widthIn(max = 480.dp),
+        )
+    }
+}
+
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 4.dp, top = 12.dp),
+    )
+}
+
+@Composable
+private fun SettingsCard(content: @Composable () -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+        Column(Modifier.padding(16.dp)) { content() }
+    }
+}
+
+@Composable
+private fun ThemeChoice(selected: ThemeMode, onSelect: (ThemeMode) -> Unit) {
+    val options = listOf(
+        ThemeMode.Dark to R.string.settings_theme_dark,
+        ThemeMode.Light to R.string.settings_theme_light,
+        ThemeMode.System to R.string.settings_theme_system,
+    )
+    val colors = MaterialTheme.colorScheme
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+        options.forEachIndexed { index, (mode, label) ->
+            SegmentedButton(
+                selected = mode == selected,
+                onClick = { onSelect(mode) },
+                shape = SegmentedButtonDefaults.itemShape(index, options.size),
+                colors = SegmentedButtonDefaults.colors(
+                    activeContainerColor = colors.primaryContainer,
+                    activeContentColor = colors.onPrimaryContainer,
+                    inactiveContainerColor = colors.surfaceContainerHigh,
+                    inactiveContentColor = colors.onSurfaceVariant,
+                    activeBorderColor = colors.outlineVariant,
+                    inactiveBorderColor = colors.outlineVariant,
+                ),
+            ) {
+                Text(stringResource(label), style = MaterialTheme.typography.labelLarge, maxLines = 1)
+            }
+        }
+    }
+}
+
+/** A plain-sentence setting; the whole card toggles, not just the switch. */
+@Composable
+private fun SwitchCard(
+    title: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics { role = Role.Switch },
+        shape = MaterialTheme.shapes.large,
+        color = colors.surfaceContainer,
+    ) {
+        Row(
+            modifier = Modifier
+                .defaultMinSize(minHeight = 72.dp)
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleMedium, color = colors.onSurface)
+                Spacer(Modifier.height(2.dp))
+                Text(description, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
+            }
+            Spacer(Modifier.width(16.dp))
+            Switch(
+                checked = checked,
+                onCheckedChange = null,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = colors.onPrimary,
+                    checkedTrackColor = colors.primary,
+                    uncheckedThumbColor = colors.onSurfaceVariant,
+                    uncheckedTrackColor = colors.surfaceContainerHigh,
+                    uncheckedBorderColor = colors.outline,
+                ),
+                modifier = Modifier.size(width = 52.dp, height = 32.dp),
+            )
+        }
+    }
+}

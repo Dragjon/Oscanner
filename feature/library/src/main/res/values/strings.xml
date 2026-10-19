@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="library_title">Documents</string>
+    <string name="library_search_hint">Search titles</string>
+    <string name="library_all">All</string>
+    <string name="library_new_folder">New folder</string>
+    <string name="library_new_folder_description">Group documents, like Receipts or School</string>
+    <string name="library_folder_name_hint">Folder name</string>
+    <string name="library_create">Create</string>
+    <string name="library_cancel">Cancel</string>
+    <string name="library_settings">Settings</string>
+    <string name="library_settings_description">Theme, colors and about this app</string>
+    <string name="library_sort_by">Sort by</string>
+    <string name="library_sort_newest">Newest</string>
+    <string name="library_sort_oldest">Oldest</string>
+    <string name="library_sort_name">Name</string>
+    <string name="library_import">Import</string>
+    <string name="library_scan">Scan</string>
+    <string name="library_more">More</string>
+    <string name="library_empty">Scan your first page. It stays on this phone.</string>
+    <string name="library_no_results">Nothing matches “%1$s”.</string>
+    <string name="library_folder_empty">This folder is empty.</string>
+</resources>

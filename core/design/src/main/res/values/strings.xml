@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="design_clear_search">Clear search</string>
+    <string name="design_state_enhancing">Enhancing</string>
+    <string name="design_state_reading_text">Reading text</string>
+    <string name="design_state_failed">Couldn\'t finish</string>
+    <plurals name="design_pages">
+        <item quantity="one">%d page</item>
+        <item quantity="other">%d pages</item>
+    </plurals>
+</resources>
