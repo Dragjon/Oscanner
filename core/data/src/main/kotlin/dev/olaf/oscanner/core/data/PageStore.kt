@@ -19,6 +19,10 @@ import dev.olaf.oscanner.core.model.ProcessingState
 import dev.olaf.oscanner.core.model.Quad
 import dev.olaf.oscanner.core.pdf.JpegPdfWriter
 import dev.olaf.oscanner.core.pdf.PdfPage
+import dev.olaf.oscanner.core.pdf.PdfPageSize
+import dev.olaf.oscanner.core.model.PdfPageFormat
+import dev.olaf.oscanner.core.model.PdfQuality
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -46,6 +50,7 @@ class PageStore(
     private val context: Context,
     private val db: OscannerDatabase,
     private val text: TextReader,
+    private val settings: SettingsRepository,
 ) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -272,28 +277,58 @@ class PageStore(
     private fun newOriginal(documentId: Long): File =
         File(File(docsDir, "$documentId/${UUID.randomUUID()}").apply { mkdirs() }, "original.jpg")
 
-    /** Writes the document as a PDF to [out]; renders any page that isn't ready yet first. */
-    suspend fun writePdf(documentId: Long, out: OutputStream) {
+    /**
+     * Writes the document as a PDF to [out], with the page size and file size from Settings.
+     * Renders any page that isn't ready yet first. A [password] encrypts it with AES-256.
+     */
+    suspend fun writePdf(documentId: Long, out: OutputStream, password: String? = null) {
         awaitRenders(documentId)
+        val prefs = settings.settings.first()
         val row = db.documents().getRow(documentId)
-        val pages = db.pages().forDocument(documentId).mapNotNull { page ->
-            page.renderPath?.let { PdfPage(File(it), text.words(page)) }
-        }
         withContext(Dispatchers.IO) {
-            val writer = JpegPdfWriter()
-            if (row?.kind == DocumentKind.IdCard.name) {
-                writer.writeCards(pages, out, row.title)
-            } else {
-                writer.writePages(pages, out, row?.title)
+            val temp = File(context.cacheDir, "pdf-${UUID.randomUUID()}").apply { mkdirs() }
+            try {
+                val pages = db.pages().forDocument(documentId).mapNotNull { page ->
+                    val render = page.renderPath?.let(::File)?.takeIf(File::exists) ?: return@mapNotNull null
+                    PdfPage(compress(render, prefs.pdfQuality, temp), text.words(page))
+                }
+                val format = when (prefs.pdfPageFormat) {
+                    PdfPageFormat.Auto -> PdfPageSize.Auto
+                    PdfPageFormat.A4 -> PdfPageSize.A4
+                    PdfPageFormat.Letter -> PdfPageSize.Letter
+                }
+                // Cards always print on a real sheet, so Auto means A4 for them.
+                val writer = JpegPdfWriter(format, password)
+                if (row?.kind == DocumentKind.IdCard.name) {
+                    writer.writeCards(pages, out, row.title)
+                } else {
+                    writer.writePages(pages, out, row?.title)
+                }
+            } finally {
+                temp.deleteRecursively()
             }
         }
     }
 
+    /** Smaller copies of a render for the PDF; Best uses the render as it is. */
+    private fun compress(render: File, quality: PdfQuality, dir: File): File {
+        val (side, jpeg) = when (quality) {
+            PdfQuality.Small -> 1600 to 60
+            PdfQuality.Balanced -> 2200 to 75
+            PdfQuality.Best -> return render
+        }
+        val bitmap = PageRenderer.loadUpright(render.path, side)
+        return File(dir, "${UUID.randomUUID()}.jpg").also {
+            PageRenderer.saveJpeg(bitmap, it, jpeg)
+            bitmap.recycle()
+        }
+    }
+
     /** A PDF in the share cache, named after the document. */
-    suspend fun exportPdf(documentId: Long): File {
+    suspend fun exportPdf(documentId: Long, password: String? = null): File {
         val title = db.documents().getRow(documentId)?.title ?: "Scan"
         val file = File(exportsDir.apply { mkdirs() }, "${safeName(title)}.pdf")
-        withContext(Dispatchers.IO) { file.outputStream().buffered().use { writePdf(documentId, it) } }
+        withContext(Dispatchers.IO) { file.outputStream().buffered().use { writePdf(documentId, it, password) } }
         return file
     }
 

@@ -61,7 +61,7 @@ class DocumentViewModel(
         DocumentUiState(loading = false, document = document, pages = pages, folders = folderList, busy = working)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DocumentUiState())
 
-    fun sharePdf() = work(Busy.PreparingPdf) { DocumentEvent.SharePdf(store.exportPdf(documentId)) }
+    fun sharePdf(password: String? = null) = work(Busy.PreparingPdf) { DocumentEvent.SharePdf(store.exportPdf(documentId, password)) }
 
     fun shareImages() = work(Busy.PreparingImages) { DocumentEvent.ShareImages(store.exportJpegs(documentId)) }
 

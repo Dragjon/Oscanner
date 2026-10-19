@@ -99,6 +99,12 @@ data class PageEdits(
 
 enum class SortOrder { Newest, Oldest, Name }
 
+/** PDF page size: Auto takes each scan's own shape. */
+enum class PdfPageFormat { Auto, A4, Letter }
+
+/** How much PDFs are compressed. */
+enum class PdfQuality { Small, Balanced, Best }
+
 enum class ThemeMode { Dark, Light, System }
 
 data class AppSettings(
@@ -109,4 +115,6 @@ data class AppSettings(
     val autoReadText: Boolean = true,
     /** Tesseract language codes to read with, in order. */
     val textLanguages: List<String> = listOf("eng"),
+    val pdfPageFormat: PdfPageFormat = PdfPageFormat.Auto,
+    val pdfQuality: PdfQuality = PdfQuality.Balanced,
 )

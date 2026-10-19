@@ -78,6 +78,29 @@ class JpegPdfWriterTest {
     }
 
     @Test
+    fun passwordProtectedFileHidesEverything() {
+        val words = listOf(PdfWord("Secret", 0.1f, 0.1f, 0.4f, 0.15f))
+        val out = ByteArrayOutputStream()
+        JpegPdfWriter(password = "plain-pass 1").writePages(listOf(PdfPage(jpeg("p.jpg", 1000, 1400), words)), out, title = "Bank letter")
+        val bytes = out.toByteArray()
+        val text = String(bytes, Charsets.ISO_8859_1)
+
+        assertTrue(text.startsWith("%PDF-1.7"))
+        assertTrue(text.contains("/Filter /Standard /V 5 /R 6"))
+        assertTrue(text.contains("/Encrypt "))
+        // Neither the title, the producer, nor the word may appear in the clear.
+        assertTrue(!text.contains("Bank letter"))
+        assertTrue(!text.contains("(Oscanner)"))
+        assertTrue(!text.contains("0053006500630072"))
+        val xrefAt = text.substringAfterLast("startxref\n").trim().removeSuffix("%%EOF").trim().toInt()
+        text.substring(xrefAt).lines().drop(3).takeWhile { it.endsWith(" n ") }.forEachIndexed { index, line ->
+            assertTrue("object ${index + 1}", text.startsWith("${index + 1} 0 obj", line.take(10).toInt()))
+        }
+        // Checked by an independent reader (pypdf, poppler) from the build folder.
+        File("build/test-output").apply { mkdirs() }.resolve("protected.pdf").writeBytes(bytes)
+    }
+
+    @Test
     fun wordsOnALineShareItsBaseline() {
         val words = listOf(
             PdfWord("Lorem", 0.10f, 0.100f, 0.20f, 0.120f),

@@ -23,7 +23,11 @@ data class PdfPage(val jpeg: File, val words: List<PdfWord> = emptyList())
  * the same technique Tesseract's own PDF output uses: viewers can search, select and copy the
  * text, but nothing is drawn over the scan. Encryption comes with Phase 4.
  */
-class JpegPdfWriter(private val pageSize: PdfPageSize = PdfPageSize.Auto) {
+class JpegPdfWriter(
+    private val pageSize: PdfPageSize = PdfPageSize.Auto,
+    /** When set, the file is encrypted with AES-256 and opens only with this password. */
+    private val password: String? = null,
+) {
 
     fun write(jpegs: List<File>, out: OutputStream, title: String? = null) =
         writePages(jpegs.map { PdfPage(it) }, out, title)
@@ -81,7 +85,19 @@ class JpegPdfWriter(private val pageSize: PdfPageSize = PdfPageSize.Auto) {
             pdf.ascii("\nendobj\n")
         }
 
-        pdf.ascii("%PDF-1.4\n")
+        val crypt = password?.takeIf { it.isNotEmpty() }?.let { PdfCrypt(it) }
+        /** A string object: literal or hex in the clear, encrypted hex when protected. */
+        fun str(text: String): String = crypt?.string(textBytes(text)) ?: literal(text)
+        /** A stream object with [dict] entries; data is encrypted when protected. */
+        fun stream(dict: String, data: ByteArray) {
+            val body = crypt?.encrypt(data) ?: data
+            pdf.ascii("<< $dict /Length ${body.size} >>\nstream\n")
+            pdf.write(body)
+            pdf.ascii("\nendstream")
+        }
+
+        // AES-256 (revision 6) is PDF 2.0; for 1.7 readers it's Adobe extension level 8.
+        pdf.ascii(if (crypt != null) "%PDF-1.7\n" else "%PDF-1.4\n")
         pdf.write(byteArrayOf('%'.code.toByte(), 0xE2.toByte(), 0xE3.toByte(), 0xCF.toByte(), 0xD3.toByte(), '\n'.code.toByte()))
 
         // Object numbers: 1 catalog, 2 page tree, 3 info, 4–9 the text font (only if any page
@@ -89,13 +105,16 @@ class JpegPdfWriter(private val pageSize: PdfPageSize = PdfPageSize.Auto) {
         val searchable = sheets.any { sheet -> sheet.images.any { it.page.words.isNotEmpty() } }
         var next = if (searchable) 10 else 4
         val sheetIds = sheets.map { sheet -> next.also { next += 2 + sheet.images.size } }
-        obj { pdf.ascii("<< /Type /Catalog /Pages 2 0 R >>") }
+        obj {
+            val extensions = if (crypt != null) " /Extensions << /ADBE << /BaseVersion /1.7 /ExtensionLevel 8 >> >>" else ""
+            pdf.ascii("<< /Type /Catalog /Pages 2 0 R$extensions >>")
+        }
         obj { pdf.ascii("<< /Type /Pages /Kids [${sheetIds.joinToString(" ") { "$it 0 R" }}] /Count ${sheets.size} >>") }
         obj {
-            val titleEntry = title?.let { " /Title ${literal(it)}" }.orEmpty()
-            pdf.ascii("<< /Producer (Oscanner)$titleEntry >>")
+            val titleEntry = title?.let { " /Title ${str(it)}" }.orEmpty()
+            pdf.ascii("<< /Producer ${str("Oscanner")}$titleEntry >>")
         }
-        if (searchable) writeFont(::obj, pdf)
+        if (searchable) writeFont(::obj, pdf, ::str, ::stream)
 
         sheets.forEachIndexed { index, sheet ->
             val pageId = sheetIds[index]
@@ -117,9 +136,7 @@ class JpegPdfWriter(private val pageSize: PdfPageSize = PdfPageSize.Auto) {
                         if (placed.page.words.isNotEmpty()) append(textLayer(placed.page.words, box))
                     }
                 }.toByteArray(Charsets.ISO_8859_1)
-                pdf.ascii("<< /Length ${content.size} >>\nstream\n")
-                pdf.write(content)
-                pdf.ascii("\nendstream")
+                stream("", content)
             }
             sheet.images.forEach { placed ->
                 val bytes = placed.page.jpeg.readBytes()
@@ -130,20 +147,26 @@ class JpegPdfWriter(private val pageSize: PdfPageSize = PdfPageSize.Auto) {
                         4 -> "/DeviceCMYK"
                         else -> "/DeviceRGB"
                     }
-                    pdf.ascii(
-                        "<< /Type /XObject /Subtype /Image /Width ${info.width} /Height ${info.height} " +
-                            "/ColorSpace $colorSpace /BitsPerComponent 8 /Filter /DCTDecode /Length ${bytes.size} >>\nstream\n",
+                    stream(
+                        "/Type /XObject /Subtype /Image /Width ${info.width} /Height ${info.height} " +
+                            "/ColorSpace $colorSpace /BitsPerComponent 8 /Filter /DCTDecode",
+                        bytes,
                     )
-                    pdf.write(bytes)
-                    pdf.ascii("\nendstream")
                 }
             }
         }
 
+        // The encryption dictionary itself is never encrypted; it goes last.
+        val security = crypt?.let { c ->
+            obj { pdf.ascii(c.dictionary) }
+            val id = PdfCrypt.hex(ByteArray(16).also { java.security.SecureRandom().nextBytes(it) })
+            " /Encrypt ${offsets.size} 0 R /ID [$id $id]"
+        }.orEmpty()
+
         val xref = pdf.count
         pdf.ascii("xref\n0 ${offsets.size + 1}\n0000000000 65535 f \n")
         offsets.forEach { pdf.ascii(String.format(Locale.ROOT, "%010d 00000 n \n", it)) }
-        pdf.ascii("trailer\n<< /Size ${offsets.size + 1} /Root 1 0 R /Info 3 0 R >>\nstartxref\n$xref\n%%EOF\n")
+        pdf.ascii("trailer\n<< /Size ${offsets.size + 1} /Root 1 0 R /Info 3 0 R$security >>\nstartxref\n$xref\n%%EOF\n")
         pdf.flush()
     }
 
@@ -152,7 +175,12 @@ class JpegPdfWriter(private val pageSize: PdfPageSize = PdfPageSize.Auto) {
      * maps to that blank glyph, and the identity ToUnicode map turns CIDs back into UTF-16, so
      * any text can be encoded without shipping real glyphs.
      */
-    private fun writeFont(obj: (() -> Unit) -> Unit, pdf: CountingStream) {
+    private fun writeFont(
+        obj: (() -> Unit) -> Unit,
+        pdf: CountingStream,
+        str: (String) -> String,
+        stream: (String, ByteArray) -> Unit,
+    ) {
         obj {
             pdf.ascii(
                 "<< /Type /Font /Subtype /Type0 /BaseFont /GlyphLessFont /Encoding /Identity-H " +
@@ -162,7 +190,7 @@ class JpegPdfWriter(private val pageSize: PdfPageSize = PdfPageSize.Auto) {
         obj {
             pdf.ascii(
                 "<< /Type /Font /Subtype /CIDFontType2 /BaseFont /GlyphLessFont " +
-                    "/CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> " +
+                    "/CIDSystemInfo << /Registry ${str("Adobe")} /Ordering ${str("Identity")} /Supplement 0 >> " +
                     "/FontDescriptor 7 0 R /DW $GLYPH_WIDTH /CIDToGIDMap 8 0 R >>",
             )
         }
@@ -185,7 +213,7 @@ class JpegPdfWriter(private val pageSize: PdfPageSize = PdfPageSize.Auto) {
                 end
                 end
             """.trimIndent()
-            pdf.ascii("<< /Length ${cmap.length} >>\nstream\n$cmap\nendstream")
+            stream("", cmap.toByteArray(Charsets.ISO_8859_1))
         }
         obj {
             pdf.ascii(
@@ -197,16 +225,10 @@ class JpegPdfWriter(private val pageSize: PdfPageSize = PdfPageSize.Auto) {
         obj {
             // Every CID (2 bytes each, 65 536 of them) → glyph 1.
             val map = ByteArray(65_536 * 2) { if (it % 2 == 1) 1 else 0 }
-            val packed = deflate(map)
-            pdf.ascii("<< /Length ${packed.size} /Filter /FlateDecode >>\nstream\n")
-            pdf.write(packed)
-            pdf.ascii("\nendstream")
+            stream("/Filter /FlateDecode", deflate(map))
         }
         obj {
-            val font = glyphlessFont
-            pdf.ascii("<< /Length ${font.size} /Length1 ${font.size} >>\nstream\n")
-            pdf.write(font)
-            pdf.ascii("\nendstream")
+            stream("/Length1 ${glyphlessFont.size}", glyphlessFont)
         }
     }
 
@@ -282,6 +304,14 @@ class JpegPdfWriter(private val pageSize: PdfPageSize = PdfPageSize.Auto) {
     }
 
     private fun fmt(v: Double) = String.format(Locale.ROOT, "%.2f", v)
+
+    /** PDF text string bytes: plain ASCII, or UTF-16BE with a byte-order mark. */
+    private fun textBytes(text: String): ByteArray =
+        if (text.all { it.code in 32..126 }) {
+            text.toByteArray(Charsets.ISO_8859_1)
+        } else {
+            byteArrayOf(0xFE.toByte(), 0xFF.toByte()) + text.toByteArray(Charsets.UTF_16BE)
+        }
 
     private fun literal(text: String): String {
         val ascii = text.all { it.code in 32..126 }

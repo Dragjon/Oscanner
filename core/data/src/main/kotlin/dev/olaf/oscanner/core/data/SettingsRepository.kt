@@ -6,6 +6,8 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dev.olaf.oscanner.core.model.AppSettings
+import dev.olaf.oscanner.core.model.PdfPageFormat
+import dev.olaf.oscanner.core.model.PdfQuality
 import dev.olaf.oscanner.core.model.SortOrder
 import dev.olaf.oscanner.core.model.ThemeMode
 import kotlinx.coroutines.flow.Flow
@@ -23,7 +25,17 @@ class SettingsRepository(context: Context) {
             sortOrder = prefs[SORT].toEnum(SortOrder.Newest),
             autoReadText = prefs[AUTO_READ] ?: true,
             textLanguages = prefs[LANGUAGES]?.split(',')?.filter { it.isNotBlank() }?.ifEmpty { null } ?: listOf("eng"),
+            pdfPageFormat = prefs[PDF_FORMAT].toEnum(PdfPageFormat.Auto),
+            pdfQuality = prefs[PDF_QUALITY].toEnum(PdfQuality.Balanced),
         )
+    }
+
+    suspend fun setPdfPageFormat(format: PdfPageFormat) {
+        store.edit { it[PDF_FORMAT] = format.name }
+    }
+
+    suspend fun setPdfQuality(quality: PdfQuality) {
+        store.edit { it[PDF_QUALITY] = quality.name }
     }
 
     suspend fun setAutoReadText(enabled: Boolean) {
@@ -52,6 +64,8 @@ class SettingsRepository(context: Context) {
         val SORT = stringPreferencesKey("sort_order")
         val AUTO_READ = booleanPreferencesKey("auto_read_text")
         val LANGUAGES = stringPreferencesKey("text_languages")
+        val PDF_FORMAT = stringPreferencesKey("pdf_page_format")
+        val PDF_QUALITY = stringPreferencesKey("pdf_quality")
     }
 }
 

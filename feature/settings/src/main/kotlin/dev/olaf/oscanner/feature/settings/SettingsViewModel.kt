@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import dev.olaf.oscanner.core.data.SampleData
 import dev.olaf.oscanner.core.data.SettingsRepository
 import dev.olaf.oscanner.core.model.AppSettings
+import dev.olaf.oscanner.core.model.PdfPageFormat
+import dev.olaf.oscanner.core.model.PdfQuality
 import dev.olaf.oscanner.core.model.ThemeMode
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -28,6 +30,14 @@ class SettingsViewModel(
 
     fun onDynamicColorChange(enabled: Boolean) {
         viewModelScope.launch { settings.setDynamicColor(enabled) }
+    }
+
+    fun onPdfPageFormatChange(format: PdfPageFormat) {
+        viewModelScope.launch { settings.setPdfPageFormat(format) }
+    }
+
+    fun onPdfQualityChange(quality: PdfQuality) {
+        viewModelScope.launch { settings.setPdfQuality(quality) }
     }
 
     fun onAutoReadTextChange(enabled: Boolean) {

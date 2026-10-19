@@ -37,6 +37,7 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.FolderOff
 import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.PictureAsPdf
 import androidx.compose.material.icons.rounded.Print
@@ -105,6 +106,7 @@ fun DocumentRoute(
     var sheet by rememberSaveable { mutableStateOf<Sheet?>(null) }
     var renaming by rememberSaveable { mutableStateOf(false) }
     var moving by rememberSaveable { mutableStateOf(false) }
+    var protecting by rememberSaveable { mutableStateOf(false) }
 
     val savedText = stringResource(R.string.document_saved)
     val failedText = stringResource(R.string.document_failed)
@@ -241,7 +243,8 @@ fun DocumentRoute(
                 }
                 when (open) {
                     Sheet.Share -> {
-                        SheetAction(Icons.Rounded.PictureAsPdf, stringResource(R.string.document_share_pdf), stringResource(R.string.document_share_pdf_description), act(viewModel::sharePdf))
+                        SheetAction(Icons.Rounded.PictureAsPdf, stringResource(R.string.document_share_pdf), stringResource(R.string.document_share_pdf_description), act { viewModel.sharePdf() })
+                        SheetAction(Icons.Rounded.Lock, stringResource(R.string.document_share_protected), stringResource(R.string.document_share_protected_description), act { protecting = true })
                         SheetAction(Icons.Rounded.Image, stringResource(R.string.document_share_images), stringResource(R.string.document_share_images_description), act(viewModel::shareImages))
                     }
                     Sheet.More -> {
@@ -276,6 +279,15 @@ fun DocumentRoute(
                 viewModel.rename(it)
             },
             onDismiss = { renaming = false },
+        )
+    }
+    if (protecting) {
+        PasswordDialog(
+            onShare = {
+                protecting = false
+                viewModel.sharePdf(it)
+            },
+            onDismiss = { protecting = false },
         )
     }
     if (moving) {

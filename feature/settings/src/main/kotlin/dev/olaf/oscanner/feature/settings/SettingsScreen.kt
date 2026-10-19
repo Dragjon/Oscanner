@@ -52,6 +52,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.olaf.oscanner.core.design.SheetAction
 import dev.olaf.oscanner.core.model.AppSettings
+import dev.olaf.oscanner.core.model.PdfPageFormat
+import dev.olaf.oscanner.core.model.PdfQuality
 import dev.olaf.oscanner.core.model.ThemeMode
 import kotlinx.coroutines.launch
 
@@ -77,6 +79,8 @@ fun SettingsRoute(
         onDynamicColorChange = viewModel::onDynamicColorChange,
         onAutoReadTextChange = viewModel::onAutoReadTextChange,
         onOpenLanguages = onOpenLanguages,
+        onPdfPageFormatChange = viewModel::onPdfPageFormatChange,
+        onPdfQualityChange = viewModel::onPdfQualityChange,
         onFillSampleLibrary = {
             viewModel.fillSampleLibrary { scope.launch { snackbarHostState.showSnackbar(filled) } }
         },
@@ -97,6 +101,8 @@ fun SettingsScreen(
     onDynamicColorChange: (Boolean) -> Unit,
     onAutoReadTextChange: (Boolean) -> Unit,
     onOpenLanguages: () -> Unit,
+    onPdfPageFormatChange: (PdfPageFormat) -> Unit,
+    onPdfQualityChange: (PdfQuality) -> Unit,
     onFillSampleLibrary: () -> Unit,
     onClearLibrary: () -> Unit,
 ) {
@@ -178,6 +184,52 @@ fun SettingsScreen(
                 )
             }
 
+            item(key = "pdf") { SectionLabel(stringResource(R.string.settings_pdf)) }
+            item(key = "pdf-size") {
+                SettingsCard {
+                    Text(stringResource(R.string.settings_pdf_page), style = MaterialTheme.typography.titleMedium, color = colors.onSurface)
+                    Spacer(Modifier.height(12.dp))
+                    Choice(
+                        options = listOf(
+                            PdfPageFormat.Auto to R.string.settings_pdf_page_auto,
+                            PdfPageFormat.A4 to R.string.settings_pdf_page_a4,
+                            PdfPageFormat.Letter to R.string.settings_pdf_page_letter,
+                        ),
+                        selected = state.pdfPageFormat,
+                        onSelect = onPdfPageFormatChange,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(stringResource(R.string.settings_pdf_page_description), style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
+                }
+            }
+            item(key = "pdf-quality") {
+                SettingsCard {
+                    Text(stringResource(R.string.settings_pdf_quality), style = MaterialTheme.typography.titleMedium, color = colors.onSurface)
+                    Spacer(Modifier.height(12.dp))
+                    Choice(
+                        options = listOf(
+                            PdfQuality.Small to R.string.settings_pdf_quality_small,
+                            PdfQuality.Balanced to R.string.settings_pdf_quality_balanced,
+                            PdfQuality.Best to R.string.settings_pdf_quality_best,
+                        ),
+                        selected = state.pdfQuality,
+                        onSelect = onPdfQualityChange,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        stringResource(
+                            when (state.pdfQuality) {
+                                PdfQuality.Small -> R.string.settings_pdf_quality_small_description
+                                PdfQuality.Balanced -> R.string.settings_pdf_quality_balanced_description
+                                PdfQuality.Best -> R.string.settings_pdf_quality_best_description
+                            },
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = colors.onSurfaceVariant,
+                    )
+                }
+            }
+
             item(key = "about") { SectionLabel(stringResource(R.string.settings_about)) }
             item(key = "about-card") {
                 SettingsCard {
@@ -254,18 +306,25 @@ private fun SettingsCard(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun ThemeChoice(selected: ThemeMode, onSelect: (ThemeMode) -> Unit) {
-    val options = listOf(
+private fun ThemeChoice(selected: ThemeMode, onSelect: (ThemeMode) -> Unit) = Choice(
+    options = listOf(
         ThemeMode.Dark to R.string.settings_theme_dark,
         ThemeMode.Light to R.string.settings_theme_light,
         ThemeMode.System to R.string.settings_theme_system,
-    )
+    ),
+    selected = selected,
+    onSelect = onSelect,
+)
+
+/** A row of mutually exclusive choices, each a plain word. */
+@Composable
+private fun <T> Choice(options: List<Pair<T, Int>>, selected: T, onSelect: (T) -> Unit) {
     val colors = MaterialTheme.colorScheme
     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-        options.forEachIndexed { index, (mode, label) ->
+        options.forEachIndexed { index, (value, label) ->
             SegmentedButton(
-                selected = mode == selected,
-                onClick = { onSelect(mode) },
+                selected = value == selected,
+                onClick = { onSelect(value) },
                 shape = SegmentedButtonDefaults.itemShape(index, options.size),
                 colors = SegmentedButtonDefaults.colors(
                     activeContainerColor = colors.primaryContainer,
