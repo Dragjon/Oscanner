@@ -25,6 +25,8 @@ import androidx.navigation.navArgument
 import dev.olaf.oscanner.core.data.DataContainer
 import dev.olaf.oscanner.feature.capture.CaptureRoute
 import dev.olaf.oscanner.feature.capture.CaptureViewModel
+import dev.olaf.oscanner.feature.document.ArrangeRoute
+import dev.olaf.oscanner.feature.document.ArrangeViewModel
 import dev.olaf.oscanner.feature.document.DocumentRoute
 import dev.olaf.oscanner.feature.document.DocumentViewModel
 import dev.olaf.oscanner.feature.library.LibraryRoute
@@ -53,11 +55,13 @@ private object Routes {
     const val REVIEW = "review/{documentId}?page={page}"
     const val DOCUMENT = "document/{documentId}"
     const val TEXT = "text/{documentId}?page={page}"
+    const val ARRANGE = "arrange/{documentId}"
 
     fun capture(documentId: Long? = null) = "capture?documentId=${documentId ?: -1}"
     fun review(documentId: Long, page: Int = 0) = "review/$documentId?page=$page"
     fun document(documentId: Long) = "document/$documentId"
     fun text(documentId: Long, page: Int = 0) = "text/$documentId?page=$page"
+    fun arrange(documentId: Long) = "arrange/$documentId"
 }
 
 @Composable
@@ -196,6 +200,7 @@ fun OscannerNavHost(
                 onEdit = { id, page -> navController.navigate(Routes.review(id, page)) },
                 onText = { id, page -> navController.navigate(Routes.text(id, page)) },
                 onScanMore = { navController.navigate(Routes.capture(it)) },
+                onArrange = { navController.navigate(Routes.arrange(it)) },
                 onTrashed = { id ->
                     navController.popBackStack(Routes.LIBRARY, inclusive = false)
                     scope.launch {
@@ -203,6 +208,20 @@ fun OscannerNavHost(
                         if (result == SnackbarResult.ActionPerformed) container.documents.restore(id)
                     }
                 },
+            )
+        }
+        composable(
+            Routes.ARRANGE,
+            arguments = listOf(navArgument("documentId") { type = NavType.LongType }),
+        ) { entry ->
+            val documentId = entry.arguments!!.getLong("documentId")
+            val viewModel: ArrangeViewModel = viewModel(
+                factory = viewModelFactory { initializer { ArrangeViewModel(container.documents, container.pages, documentId) } },
+            )
+            ArrangeRoute(
+                viewModel = viewModel,
+                onBack = { navController.popBackStack() },
+                onOpenDocument = { navController.navigate(Routes.document(it)) },
             )
         }
         composable(

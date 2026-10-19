@@ -129,29 +129,62 @@ class PageStore(
         val target = db.documents().insert(
             DocumentEntity(title = title, folderId = first?.folderId, createdAt = now, updatedAt = now),
         )
-        val sources = documentIds.flatMap { db.pages().forDocument(it) }
-        val copies = withContext(Dispatchers.IO) {
-            sources.mapIndexed { index, page ->
-                val from = File(page.originalPath).parentFile!!
-                val to = File(docsDir, "$target/${UUID.randomUUID()}")
-                from.copyRecursively(to, overwrite = true)
-                fun moved(path: String?) = path?.let { File(to, File(it).name).path }
-                page.copy(
-                    id = 0,
-                    documentId = target,
-                    position = index,
-                    originalPath = moved(page.originalPath)!!,
-                    renderPath = moved(page.renderPath),
-                    thumbPath = moved(page.thumbPath),
-                )
-            }
-        }
+        val copies = copyPages(documentIds.flatMap { db.pages().forDocument(it) }, target)
         db.withTransaction {
             copies.forEach { db.pages().insert(it) }
             documentIds.forEach { db.documents().setDeletedAt(it, now) }
         }
         return target
     }
+
+    /** Copies of [pages] (files and all, text included) belonging to [target], in order. */
+    private suspend fun copyPages(pages: List<PageEntity>, target: Long): List<PageEntity> = withContext(Dispatchers.IO) {
+        pages.mapIndexed { index, page ->
+            val from = File(page.originalPath).parentFile!!
+            val to = File(docsDir, "$target/${UUID.randomUUID()}")
+            from.copyRecursively(to, overwrite = true)
+            fun moved(path: String?) = path?.let { File(to, File(it).name).path }
+            page.copy(
+                id = 0,
+                documentId = target,
+                position = index,
+                originalPath = moved(page.originalPath)!!,
+                renderPath = moved(page.renderPath),
+                thumbPath = moved(page.thumbPath),
+            )
+        }
+    }
+
+    /** A new document holding copies of [pageIds]; the source document is left as it is. */
+    suspend fun extractPages(documentId: Long, pageIds: List<Long>, title: String): Long {
+        val source = db.documents().getRow(documentId)
+        val chosen = db.pages().forDocument(documentId).filter { it.id in pageIds }
+        require(chosen.isNotEmpty())
+        val now = System.currentTimeMillis()
+        val target = db.documents().insert(
+            DocumentEntity(
+                title = title,
+                folderId = source?.folderId,
+                createdAt = now,
+                updatedAt = now,
+                kind = source?.kind ?: DocumentKind.Document.name,
+            ),
+        )
+        val copies = copyPages(chosen, target)
+        db.withTransaction { copies.forEach { db.pages().insert(it) } }
+        return target
+    }
+
+    /** Turns pages a quarter clockwise each. */
+    suspend fun rotatePages(pageIds: List<Long>) {
+        pageIds.forEach { id ->
+            val page = db.pages().get(id) ?: return@forEach
+            val edits = EditsJson.read(page.editsJson)
+            setEdits(id, edits.copy(rotation = (edits.rotation + 90) % 360))
+        }
+    }
+
+    suspend fun deletePages(pageIds: List<Long>) = pageIds.forEach { deletePage(it) }
 
     /** Undoes [merge]: the merged copy goes, the originals come back. */
     suspend fun unmerge(mergedId: Long, originalIds: List<Long>) {

@@ -36,6 +36,7 @@ import androidx.compose.material.icons.rounded.DriveFileRenameOutline
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.FolderOff
+import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.MoreHoriz
@@ -98,6 +99,7 @@ fun DocumentRoute(
     onEdit: (documentId: Long, page: Int) -> Unit,
     onText: (documentId: Long, page: Int) -> Unit,
     onScanMore: (documentId: Long) -> Unit,
+    onArrange: (documentId: Long) -> Unit,
     onTrashed: (documentId: Long) -> Unit,
 ) {
     val context = LocalContext.current
@@ -248,6 +250,7 @@ fun DocumentRoute(
                         SheetAction(Icons.Rounded.Image, stringResource(R.string.document_share_images), stringResource(R.string.document_share_images_description), act(viewModel::shareImages))
                     }
                     Sheet.More -> {
+                        SheetAction(Icons.Rounded.GridView, stringResource(R.string.document_arrange), stringResource(R.string.document_arrange_description), act { onArrange(document.id) })
                         SheetAction(Icons.Rounded.DocumentScanner, stringResource(R.string.document_scan_more), stringResource(R.string.document_scan_more_description), act { onScanMore(document.id) })
                         SheetAction(
                             Icons.Rounded.AddPhotoAlternate,
