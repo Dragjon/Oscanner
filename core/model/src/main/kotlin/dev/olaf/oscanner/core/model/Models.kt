@@ -69,7 +69,15 @@ data class PageEdits(
     val filter: PageFilter = PageFilter.Auto,
     /** Clockwise quarter turns applied after cropping: 0, 90, 180 or 270. */
     val rotation: Int = 0,
-)
+    /** −1…1, applied after the look; 0 leaves it alone. */
+    val brightness: Float = 0f,
+    /** −1…1, applied after the look; 0 leaves it alone. */
+    val contrast: Float = 0f,
+    /** 0…1 extra sharpening on top of the look. */
+    val detail: Float = 0f,
+) {
+    val adjusted: Boolean get() = brightness != 0f || contrast != 0f || detail != 0f
+}
 
 enum class SortOrder { Newest, Oldest, Name }
 

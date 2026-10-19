@@ -31,6 +31,7 @@ import androidx.compose.material.icons.rounded.Crop
 import androidx.compose.material.icons.rounded.CropFree
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.RotateRight
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -107,6 +108,10 @@ fun ReviewRoute(
 
     val pagerState = rememberPagerState(initialPage = startPage.coerceIn(0, pages.lastIndex)) { pages.size }
     val current = pages[pagerState.currentPage.coerceIn(0, pages.lastIndex)]
+    var adjusting by rememberSaveable { mutableStateOf(false) }
+    if (adjusting) {
+        AdjustSheet(page = current, onChange = viewModel::setAdjustments, onDismiss = { adjusting = false })
+    }
 
     Box(
         Modifier
@@ -168,13 +173,20 @@ fun ReviewRoute(
             PageTicks(count = pages.size, current = pagerState.currentPage)
             Spacer(Modifier.height(12.dp))
             FilterStrip(viewModel, current)
-            if (pages.size > 1) {
-                TextButton(
-                    onClick = { viewModel.applyFilterToAll(current.edits.filter) },
-                    modifier = Modifier.align(Alignment.CenterHorizontally),
-                ) { Text(stringResource(R.string.review_use_for_all)) }
-            } else {
-                Spacer(Modifier.height(12.dp))
+            Row(
+                Modifier.align(Alignment.CenterHorizontally),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                TextButton(onClick = { adjusting = true }) {
+                    Icon(Icons.Rounded.Tune, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.review_adjust))
+                }
+                if (pages.size > 1) {
+                    TextButton(onClick = { viewModel.applyFilterToAll(current.edits.filter) }) {
+                        Text(stringResource(R.string.review_use_for_all))
+                    }
+                }
             }
             Dock(
                 modifier = Modifier

@@ -20,6 +20,21 @@ internal object Filters {
     /** Side length the paper background is estimated at; text strokes vanish at this size. */
     private const val BACKGROUND_SIDE = 400.0
 
+    /**
+     * Slider adjustments after the look. Ink is pure black and white, so only its threshold
+     * would move; it ignores them.
+     */
+    fun adjust(src: Mat, filter: PageFilter, brightness: Float, contrast: Float, detail: Float): Mat {
+        if (filter == PageFilter.Ink || (brightness == 0f && contrast == 0f && detail == 0f)) return src
+        // contrast −1…1 maps to a gain of 0.5…2, pivoting on mid-gray; brightness shifts up to ±64.
+        val gain = if (contrast >= 0f) 1.0 + contrast else 1.0 + contrast * 0.5
+        val offset = 128.0 * (1.0 - gain) + brightness * 64.0
+        val out = Mat()
+        src.convertTo(out, -1, gain, offset)
+        src.release()
+        return if (detail > 0f) sharpen(out, amount = detail * 1.5) else out
+    }
+
     fun apply(rgb: Mat, filter: PageFilter): Mat = when (filter) {
         PageFilter.Original -> rgb.clone()
         PageFilter.Auto -> auto(rgb)

@@ -65,7 +65,8 @@ object PageRenderer {
         val warped = warp(source, edits, maxSide)
         val filtered = Filters.apply(warped, edits.filter)
         warped.release()
-        return toBitmap(filtered).also { filtered.release() }
+        val adjusted = Filters.adjust(filtered, edits.filter, edits.brightness, edits.contrast, edits.detail)
+        return toBitmap(adjusted).also { adjusted.release() }
     }
 
     /** Crop + straighten + rotate only; the input to [applyFilter] for filter previews. */

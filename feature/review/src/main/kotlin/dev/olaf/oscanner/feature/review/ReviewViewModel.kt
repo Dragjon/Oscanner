@@ -76,6 +76,9 @@ class ReviewViewModel(
 
     fun rotate(page: Page) = update(page) { it.copy(rotation = (it.rotation + 90) % 360) }
 
+    fun setAdjustments(page: Page, brightness: Float, contrast: Float, detail: Float) =
+        update(page) { it.copy(brightness = brightness, contrast = contrast, detail = detail) }
+
     fun startCrop(page: Page) {
         _crop.value = CropDraft(page.id, page.edits.quad)
     }

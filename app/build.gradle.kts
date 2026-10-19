@@ -30,6 +30,22 @@ android {
         includeInApk = false
         includeInBundle = false
     }
+    // OpenCV's prebuilt native library is ~15–55 MB per CPU type. One APK per ABI, with the
+    // library compressed, keeps each download near the 25 MB budget (PLAN.md §5.11) until we
+    // build OpenCV from source with only core + imgproc.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
+            isUniversalApk = true
+        }
+    }
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
 }
 
 dependencies {

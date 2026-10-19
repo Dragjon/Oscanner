@@ -8,7 +8,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * `{"v":1,"quad":[x0,y0,…,x3,y3],"filter":"Auto","rotation":0}`. Unknown or broken JSON reads
+ * `{"v":1,"quad":[x0,y0,…,x3,y3],"filter":"Auto","rotation":0,"brightness":0,"contrast":0,"detail":0}`.
+ * Missing fields read as their defaults. Unknown or broken JSON reads
  * as default edits, so a bad recipe never makes a page unopenable.
  */
 internal object EditsJson {
@@ -18,6 +19,9 @@ internal object EditsJson {
         .put("quad", JSONArray().apply { edits.quad.corners.forEach { put(it.x.toDouble()); put(it.y.toDouble()) } })
         .put("filter", edits.filter.name)
         .put("rotation", edits.rotation)
+        .put("brightness", edits.brightness.toDouble())
+        .put("contrast", edits.contrast.toDouble())
+        .put("detail", edits.detail.toDouble())
         .toString()
 
     fun read(json: String): PageEdits {
@@ -29,6 +33,7 @@ internal object EditsJson {
             ?: Quad.Full
         val filter = PageFilter.entries.firstOrNull { it.name == obj.optString("filter") } ?: PageFilter.Auto
         val rotation = obj.optInt("rotation", 0).let { ((it % 360) + 360) % 360 / 90 * 90 }
-        return PageEdits(quad, filter, rotation)
+        fun unit(name: String, min: Float) = obj.optDouble(name, 0.0).toFloat().takeUnless { it.isNaN() }?.coerceIn(min, 1f) ?: 0f
+        return PageEdits(quad, filter, rotation, unit("brightness", -1f), unit("contrast", -1f), unit("detail", 0f))
     }
 }
