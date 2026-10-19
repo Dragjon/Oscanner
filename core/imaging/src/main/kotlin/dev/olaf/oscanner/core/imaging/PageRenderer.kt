@@ -25,6 +25,8 @@ object PageRenderer {
     /** Long side of a full render. Sharp enough to print a page at ~300 dpi on A5, ~240 on A4. */
     const val RENDER_SIDE = 2800
     const val THUMB_SIDE = 360
+    /** Roughly 300 dpi on an A4 page: what Tesseract reads best. */
+    const val OCR_SIDE = 3400
 
     @Volatile private var loaded = false
 
@@ -68,6 +70,13 @@ object PageRenderer {
         val adjusted = Filters.adjust(filtered, edits.filter, edits.brightness, edits.contrast, edits.detail)
         return toBitmap(adjusted).also { adjusted.release() }
     }
+
+    /**
+     * The page as Tesseract should see it: same crop, straightening and rotation as [render], so
+     * word boxes line up with the page people see, but always in clean black and white (Ink).
+     */
+    fun renderForOcr(source: Bitmap, edits: PageEdits): Bitmap =
+        render(source, edits.copy(filter = PageFilter.Ink), OCR_SIDE)
 
     /** Crop + straighten + rotate only; the input to [applyFilter] for filter previews. */
     fun straighten(source: Bitmap, edits: PageEdits, maxSide: Int): Bitmap {

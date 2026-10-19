@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Only for downloading recognition models the user picks in Settings. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+</manifest>

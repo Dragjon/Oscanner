@@ -33,6 +33,23 @@ interface DocumentDao {
     )
     fun observeRows(folderId: Long?, query: String, sort: Int): Flow<List<DocumentRow>>
 
+    /** Like [observeRows], but also matches words inside scans; [match] is an FTS4 query. */
+    @Query(
+        """
+        SELECT $ROW_COLUMNS
+        FROM documents d
+        WHERE d.deletedAt IS NULL
+            AND (:folderId IS NULL OR d.folderId = :folderId)
+            AND (d.title LIKE '%' || :query || '%'
+                OR d.id IN (SELECT p.documentId FROM pages p JOIN pages_fts f ON f.rowid = p.id WHERE pages_fts MATCH :match))
+        ORDER BY
+            CASE WHEN :sort = 0 THEN d.updatedAt END DESC,
+            CASE WHEN :sort = 1 THEN d.updatedAt END ASC,
+            CASE WHEN :sort = 2 THEN d.title END COLLATE NOCASE ASC
+        """,
+    )
+    fun searchRows(folderId: Long?, query: String, match: String, sort: Int): Flow<List<DocumentRow>>
+
     @Query("SELECT $ROW_COLUMNS FROM documents d WHERE d.deletedAt IS NOT NULL ORDER BY d.deletedAt DESC")
     fun observeTrash(): Flow<List<DocumentRow>>
 
@@ -101,6 +118,12 @@ interface PageDao {
 
     @Query("UPDATE pages SET renderPath = :renderPath, thumbPath = :thumbPath, sizeBytes = :sizeBytes WHERE id = :id")
     suspend fun setRender(id: Long, renderPath: String, thumbPath: String, sizeBytes: Long)
+
+    @Query("UPDATE pages SET ocrText = :text WHERE id = :id")
+    suspend fun setText(id: Long, text: String?)
+
+    @Query("SELECT * FROM pages WHERE documentId = :documentId AND ocrText IS NULL ORDER BY position")
+    suspend fun unread(documentId: Long): List<PageEntity>
 
     @Query("UPDATE pages SET position = :position WHERE id = :id")
     suspend fun setPosition(id: Long, position: Int)

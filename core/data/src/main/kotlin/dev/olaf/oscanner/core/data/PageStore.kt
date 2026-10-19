@@ -14,6 +14,7 @@ import dev.olaf.oscanner.core.model.PageEdits
 import dev.olaf.oscanner.core.model.ProcessingState
 import dev.olaf.oscanner.core.model.Quad
 import dev.olaf.oscanner.core.pdf.JpegPdfWriter
+import dev.olaf.oscanner.core.pdf.PdfPage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -26,6 +27,7 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.OutputStream
+import java.time.Duration
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -36,7 +38,11 @@ data class CapturedImage(val file: File, val liveQuad: Quad?)
  * Pages on disk and in the database. Layout: `files/docs/<docId>/<uuid>/original.jpg`, plus
  * `render-<time>.jpg` and `thumb-<time>.webp` caches that are rebuilt whenever the edits change.
  */
-class PageStore(private val context: Context, private val db: OscannerDatabase) {
+class PageStore(
+    private val context: Context,
+    private val db: OscannerDatabase,
+    private val text: TextReader,
+) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     /** Full renders hold several large buffers; two at once keeps memory sane on small phones. */
@@ -84,7 +90,11 @@ class PageStore(private val context: Context, private val db: OscannerDatabase) 
             db.documents().touch(documentId, System.currentTimeMillis())
         }
         renderDocument(documentId)
+        text.scheduleIfWanted(documentId, delay = Duration.ofSeconds(30))
     }
+
+    /** Review is done with [documentId]: read its text now rather than after the delay. */
+    suspend fun finishedEditing(documentId: Long) = text.scheduleIfWanted(documentId)
 
     /** Copies picked images into private storage, then adds them like camera captures. */
     suspend fun importImages(uris: List<Uri>, title: String, documentId: Long? = null): Long {
@@ -108,7 +118,13 @@ class PageStore(private val context: Context, private val db: OscannerDatabase) 
     }
 
     suspend fun setEdits(pageId: Long, edits: PageEdits) {
+        val before = db.pages().get(pageId)?.let { EditsJson.read(it.editsJson) }
         db.pages().setEdits(pageId, EditsJson.write(edits))
+        // Word boxes follow the crop and rotation; the look and sliders don't change what's read.
+        if (before != null && (before.quad != edits.quad || before.rotation != edits.rotation)) {
+            text.forget(pageId)
+            db.pages().get(pageId)?.let { text.scheduleIfWanted(it.documentId) }
+        }
         val page = db.pages().get(pageId) ?: return
         db.documents().touch(page.documentId, System.currentTimeMillis())
         renderPage(page.copy(editsJson = EditsJson.write(edits)))
@@ -184,7 +200,7 @@ class PageStore(private val context: Context, private val db: OscannerDatabase) 
             db.pages().setRender(page.id, render.path, thumb.path, size)
             withContext(Dispatchers.IO) {
                 render.parentFile?.listFiles()
-                    ?.filter { it.path != page.originalPath && it != render && it != thumb && it.lastModified() <= render.lastModified() }
+                    ?.filter { (it.name.startsWith("render-") || it.name.startsWith("thumb-")) && it != render && it != thumb }
                     ?.forEach(File::delete)
             }
         }
@@ -218,8 +234,10 @@ class PageStore(private val context: Context, private val db: OscannerDatabase) 
     suspend fun writePdf(documentId: Long, out: OutputStream) {
         awaitRenders(documentId)
         val title = db.documents().getRow(documentId)?.title
-        val files = db.pages().forDocument(documentId).mapNotNull { it.renderPath?.let(::File) }
-        withContext(Dispatchers.IO) { JpegPdfWriter().write(files, out, title) }
+        val pages = db.pages().forDocument(documentId).mapNotNull { page ->
+            page.renderPath?.let { PdfPage(File(it), text.words(page)) }
+        }
+        withContext(Dispatchers.IO) { JpegPdfWriter().writePages(pages, out, title) }
     }
 
     /** A PDF in the share cache, named after the document. */
@@ -229,6 +247,23 @@ class PageStore(private val context: Context, private val db: OscannerDatabase) 
         withContext(Dispatchers.IO) { file.outputStream().buffered().use { writePdf(documentId, it) } }
         return file
     }
+
+    /** All recognized text as a .txt in the share cache; pages separated by a blank line. */
+    suspend fun exportText(documentId: Long): File {
+        val title = safeName(db.documents().getRow(documentId)?.title ?: "Scan")
+        val body = db.pages().forDocument(documentId)
+            .mapNotNull { it.ocrText?.takeIf(String::isNotBlank) }
+            .joinToString("\n\n")
+        return withContext(Dispatchers.IO) {
+            File(exportsDir.apply { mkdirs() }, "$title.txt").apply { writeText(body) }
+        }
+    }
+
+    /** Replaces a page's text with the user's corrections. Boxes for the PDF stay as read. */
+    suspend fun setText(pageId: Long, value: String) = db.pages().setText(pageId, value)
+
+    /** Reads the text now, even if automatic reading is off. */
+    fun readNow(documentId: Long) = text.schedule(documentId)
 
     /** One JPEG per page in the share cache: "Title 1.jpg", "Title 2.jpg"… */
     suspend fun exportJpegs(documentId: Long): List<File> {
@@ -285,4 +320,5 @@ private fun PageEntity.toModel() = Page(
     renderPath = renderPath,
     thumbPath = thumbPath,
     edits = EditsJson.read(editsJson),
+    text = ocrText,
 )

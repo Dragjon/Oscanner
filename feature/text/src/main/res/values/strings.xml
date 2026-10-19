@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="text_title">Text</string>
+    <string name="text_back">Back</string>
+    <string name="text_page_of">Page %1$d of %2$d</string>
+    <string name="text_copy">Copy</string>
+    <string name="text_copy_all">Copy all</string>
+    <string name="text_export">Export</string>
+    <string name="text_edit">Fix text</string>
+    <string name="text_done">Done</string>
+    <string name="text_copied">Text copied</string>
+    <string name="text_reading">Reading the text on this page…</string>
+    <string name="text_not_read">This page hasn\'t been read yet.</string>
+    <string name="text_read_now">Read text now</string>
+    <string name="text_none">No text found on this page.</string>
+    <string name="text_no_app">No app on this phone can receive it.</string>
+</resources>

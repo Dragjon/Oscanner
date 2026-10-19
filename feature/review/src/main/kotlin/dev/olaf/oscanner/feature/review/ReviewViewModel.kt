@@ -108,6 +108,10 @@ class ReviewViewModel(
         update(page) { it.copy(quad = draft.quad) }
     }
 
+    fun finishEditing() {
+        viewModelScope.launch { store.finishedEditing(documentId) }
+    }
+
     fun deletePage(page: Page) {
         viewModelScope.launch { store.deletePage(page.id) }
     }

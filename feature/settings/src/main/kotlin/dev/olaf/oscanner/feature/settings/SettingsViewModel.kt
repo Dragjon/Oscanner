@@ -30,6 +30,10 @@ class SettingsViewModel(
         viewModelScope.launch { settings.setDynamicColor(enabled) }
     }
 
+    fun onAutoReadTextChange(enabled: Boolean) {
+        viewModelScope.launch { settings.setAutoReadText(enabled) }
+    }
+
     fun fillSampleLibrary(onDone: () -> Unit) {
         val data = sampleData ?: return
         viewModelScope.launch {

@@ -35,6 +35,8 @@ data class Page(
     val renderPath: String?,
     val thumbPath: String?,
     val edits: PageEdits,
+    /** Recognized text, or null until the page has been read. */
+    val text: String? = null,
 )
 
 /** A point in normalized image coordinates: (0,0) is the top-left of the upright image, (1,1) the bottom-right. */
@@ -87,4 +89,8 @@ data class AppSettings(
     val themeMode: ThemeMode = ThemeMode.Dark,
     val dynamicColor: Boolean = false,
     val sortOrder: SortOrder = SortOrder.Newest,
+    /** Read the text in new scans in the background, for search and copy. */
+    val autoReadText: Boolean = true,
+    /** Tesseract language codes to read with, in order. */
+    val textLanguages: List<String> = listOf("eng"),
 )

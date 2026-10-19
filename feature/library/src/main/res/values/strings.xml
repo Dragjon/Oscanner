@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="library_title">Documents</string>
-    <string name="library_search_hint">Search titles</string>
+    <string name="library_search_hint">Search titles and text</string>
     <string name="library_all">All</string>
     <string name="library_new_folder">New folder</string>
     <string name="library_new_folder_description">Group documents, like Receipts or School</string>

@@ -12,6 +12,8 @@ dependencies {
     api(project(":core:model"))
     implementation(project(":core:imaging"))
     implementation(project(":core:pdf"))
+    api(project(":core:ocr"))
+    implementation(libs.androidx.work.runtime)
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)

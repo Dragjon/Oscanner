@@ -33,8 +33,12 @@ import dev.olaf.oscanner.feature.library.TrashRoute
 import dev.olaf.oscanner.feature.library.TrashViewModel
 import dev.olaf.oscanner.feature.review.ReviewRoute
 import dev.olaf.oscanner.feature.review.ReviewViewModel
+import dev.olaf.oscanner.feature.settings.LanguagesRoute
+import dev.olaf.oscanner.feature.settings.LanguagesViewModel
 import dev.olaf.oscanner.feature.settings.SettingsRoute
 import dev.olaf.oscanner.feature.settings.SettingsViewModel
+import dev.olaf.oscanner.feature.text.TextRoute
+import dev.olaf.oscanner.feature.text.TextViewModel
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -44,13 +48,16 @@ private object Routes {
     const val LIBRARY = "library"
     const val SETTINGS = "settings"
     const val TRASH = "trash"
+    const val LANGUAGES = "languages"
     const val CAPTURE = "capture?documentId={documentId}"
     const val REVIEW = "review/{documentId}?page={page}"
     const val DOCUMENT = "document/{documentId}"
+    const val TEXT = "text/{documentId}?page={page}"
 
     fun capture(documentId: Long? = null) = "capture?documentId=${documentId ?: -1}"
     fun review(documentId: Long, page: Int = 0) = "review/$documentId?page=$page"
     fun document(documentId: Long) = "document/$documentId"
+    fun text(documentId: Long, page: Int = 0) = "text/$documentId?page=$page"
 }
 
 @Composable
@@ -119,7 +126,14 @@ fun OscannerNavHost(
                 viewModel = viewModel,
                 versionName = BuildConfig.VERSION_NAME,
                 onBack = { navController.popBackStack() },
+                onOpenLanguages = { navController.navigate(Routes.LANGUAGES) { launchSingleTop = true } },
             )
+        }
+        composable(Routes.LANGUAGES) {
+            val viewModel: LanguagesViewModel = viewModel(
+                factory = viewModelFactory { initializer { LanguagesViewModel(container.languages, container.settings) } },
+            )
+            LanguagesRoute(viewModel = viewModel, onBack = { navController.popBackStack() })
         }
         composable(Routes.TRASH) {
             val viewModel: TrashViewModel = viewModel(
@@ -180,6 +194,7 @@ fun OscannerNavHost(
                 viewModel = viewModel,
                 onBack = { navController.popBackStack() },
                 onEdit = { id, page -> navController.navigate(Routes.review(id, page)) },
+                onText = { id, page -> navController.navigate(Routes.text(id, page)) },
                 onScanMore = { navController.navigate(Routes.capture(it)) },
                 onTrashed = { id ->
                     navController.popBackStack(Routes.LIBRARY, inclusive = false)
@@ -189,6 +204,19 @@ fun OscannerNavHost(
                     }
                 },
             )
+        }
+        composable(
+            Routes.TEXT,
+            arguments = listOf(
+                navArgument("documentId") { type = NavType.LongType },
+                navArgument("page") { type = NavType.IntType; defaultValue = 0 },
+            ),
+        ) { entry ->
+            val documentId = entry.arguments!!.getLong("documentId")
+            val viewModel: TextViewModel = viewModel(
+                factory = viewModelFactory { initializer { TextViewModel(container.documents, container.pages, documentId) } },
+            )
+            TextRoute(viewModel = viewModel, startPage = entry.arguments!!.getInt("page"), onBack = { navController.popBackStack() })
         }
     }
 }

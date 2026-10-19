@@ -52,6 +52,46 @@ class JpegPdfWriterTest {
     }
 
     @Test
+    fun searchablePageCarriesInvisibleUnicodeText() {
+        val words = listOf(
+            PdfWord("Électricité", 0.1f, 0.1f, 0.5f, 0.15f),
+            PdfWord("84.20", 0.6f, 0.8f, 0.8f, 0.85f),
+        )
+        val out = ByteArrayOutputStream()
+        JpegPdfWriter().writePages(listOf(PdfPage(jpeg("t.jpg", 1000, 1400), words), PdfPage(jpeg("u.jpg", 1000, 1400))), out)
+        val bytes = out.toByteArray()
+        val text = String(bytes, Charsets.ISO_8859_1)
+
+        assertTrue(text.contains("/Subtype /Type0"))
+        assertTrue(text.contains("3 Tr"))
+        // "É" is U+00C9; a trailing space separates words.
+        assertTrue(text.contains("<00C9006C00650063007400720069006300690074" + "00E90020> Tj"))
+        // The font program is embedded once.
+        assertEquals(1, Regex("/FontFile2").findAll(text).count())
+        // Every xref offset must still point at its object.
+        val xrefAt = text.substringAfterLast("startxref\n").trim().removeSuffix("%%EOF").trim().toInt()
+        text.substring(xrefAt).lines().drop(3).takeWhile { it.endsWith(" n ") }.forEachIndexed { index, line ->
+            assertTrue("object ${index + 1}", text.startsWith("${index + 1} 0 obj", line.take(10).toInt()))
+        }
+        // Kept for a manual check with another PDF reader (pypdf) in the build folder.
+        File("build/test-output").apply { mkdirs() }.resolve("searchable.pdf").writeBytes(bytes)
+    }
+
+    @Test
+    fun wordsOnALineShareItsBaseline() {
+        val words = listOf(
+            PdfWord("Lorem", 0.10f, 0.100f, 0.20f, 0.120f),
+            PdfWord("ipsum", 0.22f, 0.102f, 0.32f, 0.126f),
+            PdfWord("next", 0.10f, 0.150f, 0.18f, 0.170f),
+        )
+        val aligned = JpegPdfWriter().alignLines(words)
+        assertEquals(0.100f, aligned[0].top)
+        assertEquals(0.126f, aligned[0].bottom)
+        assertEquals(aligned[0].bottom, aligned[1].bottom)
+        assertEquals(0.170f, aligned[2].bottom)
+    }
+
+    @Test
     fun autoPageTakesImageShape() {
         val out = ByteArrayOutputStream()
         JpegPdfWriter(PdfPageSize.Auto).write(listOf(jpeg("w.jpg", 400, 200)), out)

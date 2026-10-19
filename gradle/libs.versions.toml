@@ -14,6 +14,8 @@ junit = "4.13.2"
 camerax = "1.4.2"
 opencv = "4.12.0"
 exifinterface = "1.3.7"
+tesseract4android = "4.9.0"
+work = "2.10.0"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -40,6 +42,8 @@ camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = 
 camera-view = { module = "androidx.camera:camera-view", version.ref = "camerax" }
 opencv = { module = "org.opencv:opencv", version.ref = "opencv" }
 androidx-exifinterface = { module = "androidx.exifinterface:exifinterface", version.ref = "exifinterface" }
+tesseract4android = { module = "com.github.adaptech-cz.Tesseract4Android:tesseract4android", version.ref = "tesseract4android" }
+androidx-work-runtime = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

@@ -13,8 +13,16 @@ import kotlinx.coroutines.flow.map
 
 class DocumentRepository(private val db: OscannerDatabase) {
 
-    fun observeDocuments(folderId: Long?, query: String, sort: SortOrder): Flow<List<Document>> =
-        db.documents().observeRows(folderId, query.trim(), sort.ordinal).map { rows -> rows.map(DocumentRow::toModel) }
+    fun observeDocuments(folderId: Long?, query: String, sort: SortOrder): Flow<List<Document>> {
+        val text = query.trim()
+        val match = ftsQuery(text)
+        val rows = if (match == null) {
+            db.documents().observeRows(folderId, text, sort.ordinal)
+        } else {
+            db.documents().searchRows(folderId, text, match, sort.ordinal)
+        }
+        return rows.map { list -> list.map(DocumentRow::toModel) }
+    }
 
     /** True once the library holds any document, regardless of filters. */
     fun observeHasDocuments(): Flow<Boolean> =
@@ -46,6 +54,16 @@ class FolderRepository(private val db: OscannerDatabase) {
 
     suspend fun createFolder(name: String): Long =
         db.folders().insert(FolderEntity(name = name.trim(), createdAt = System.currentTimeMillis()))
+}
+
+/**
+ * Turns what someone typed into an FTS4 query: every word must appear, each as a prefix, so
+ * "elec bill" finds "Electricity bill". Quotes and operators are dropped. Null for no words.
+ */
+internal fun ftsQuery(text: String): String? {
+    val words = text.split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }
+    if (words.isEmpty()) return null
+    return words.joinToString(" ") { "$it*" }
 }
 
 internal fun DocumentRow.toModel() = Document(

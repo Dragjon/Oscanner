@@ -10,6 +10,10 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // Only Tesseract4Android comes from JitPack.
+        maven("https://jitpack.io") {
+            content { includeGroup("com.github.adaptech-cz.Tesseract4Android") }
+        }
     }
 }
 
@@ -21,8 +25,10 @@ include(":core:model")
 include(":core:data")
 include(":core:imaging")
 include(":core:pdf")
+include(":core:ocr")
 include(":feature:library")
 include(":feature:settings")
 include(":feature:capture")
 include(":feature:review")
 include(":feature:document")
+include(":feature:text")

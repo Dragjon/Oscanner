@@ -1,4 +1,4 @@
-package dev.olaf.oscanner.feature.document
+package dev.olaf.oscanner.core.design
 
 import android.content.ActivityNotFoundException
 import android.content.ClipData
@@ -21,7 +21,7 @@ import java.io.FileOutputStream
 private fun Context.fileUri(file: File): Uri = FileProvider.getUriForFile(this, "$packageName.files", file)
 
 /** Opens the share sheet. Returns false when no app can take it. */
-internal fun Context.share(files: List<File>, mimeType: String): Boolean {
+fun Context.share(files: List<File>, mimeType: String): Boolean {
     if (files.isEmpty()) return false
     val uris = files.map(::fileUri)
     val send = if (uris.size == 1) {
@@ -41,7 +41,7 @@ internal fun Context.share(files: List<File>, mimeType: String): Boolean {
 }
 
 /** Hands a finished PDF to the system print dialog. */
-internal fun Context.printPdf(file: File, jobName: String) {
+fun Context.printPdf(file: File, jobName: String) {
     val manager = getSystemService(Context.PRINT_SERVICE) as PrintManager
     manager.print(jobName, PdfFileAdapter(file, jobName), PrintAttributes.Builder().build())
 }

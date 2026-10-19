@@ -42,6 +42,7 @@ import androidx.compose.material.icons.rounded.PictureAsPdf
 import androidx.compose.material.icons.rounded.Print
 import androidx.compose.material.icons.rounded.SaveAlt
 import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.TextSnippet
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -79,7 +80,9 @@ import dev.olaf.oscanner.core.design.DockAction
 import dev.olaf.oscanner.core.design.PrimaryPill
 import dev.olaf.oscanner.core.design.SheetAction
 import dev.olaf.oscanner.core.design.StatusChip
+import dev.olaf.oscanner.core.design.printPdf
 import dev.olaf.oscanner.core.design.rememberPageImage
+import dev.olaf.oscanner.core.design.share
 import dev.olaf.oscanner.core.model.Folder
 import dev.olaf.oscanner.core.model.Page
 import dev.olaf.oscanner.core.model.ProcessingState
@@ -92,6 +95,7 @@ fun DocumentRoute(
     viewModel: DocumentViewModel,
     onBack: () -> Unit,
     onEdit: (documentId: Long, page: Int) -> Unit,
+    onText: (documentId: Long, page: Int) -> Unit,
     onScanMore: (documentId: Long) -> Unit,
     onTrashed: (documentId: Long) -> Unit,
 ) {
@@ -203,6 +207,7 @@ fun DocumentRoute(
                 Dock(Modifier.widthIn(max = 480.dp).fillMaxWidth()) {
                     DockAction(Icons.Rounded.Edit, stringResource(R.string.document_edit), { onEdit(document.id, pagerState.currentPage) })
                     PrimaryPill(Icons.Rounded.Share, stringResource(R.string.document_share), { sheet = Sheet.Share })
+                    DockAction(Icons.Rounded.TextSnippet, stringResource(R.string.document_text), { onText(document.id, pagerState.currentPage) })
                     DockAction(Icons.Rounded.MoreHoriz, stringResource(R.string.document_more), { sheet = Sheet.More })
                 }
             }

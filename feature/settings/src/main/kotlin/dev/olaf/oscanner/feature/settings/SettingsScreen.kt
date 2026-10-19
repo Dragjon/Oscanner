@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.LibraryAdd
+import androidx.compose.material.icons.rounded.Translate
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -59,6 +60,7 @@ fun SettingsRoute(
     viewModel: SettingsViewModel,
     versionName: String,
     onBack: () -> Unit,
+    onOpenLanguages: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -73,6 +75,8 @@ fun SettingsRoute(
         onBack = onBack,
         onThemeModeChange = viewModel::onThemeModeChange,
         onDynamicColorChange = viewModel::onDynamicColorChange,
+        onAutoReadTextChange = viewModel::onAutoReadTextChange,
+        onOpenLanguages = onOpenLanguages,
         onFillSampleLibrary = {
             viewModel.fillSampleLibrary { scope.launch { snackbarHostState.showSnackbar(filled) } }
         },
@@ -91,6 +95,8 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
     onDynamicColorChange: (Boolean) -> Unit,
+    onAutoReadTextChange: (Boolean) -> Unit,
+    onOpenLanguages: () -> Unit,
     onFillSampleLibrary: () -> Unit,
     onClearLibrary: () -> Unit,
 ) {
@@ -152,6 +158,24 @@ fun SettingsScreen(
                         onCheckedChange = onDynamicColorChange,
                     )
                 }
+            }
+
+            item(key = "text") { SectionLabel(stringResource(R.string.settings_text)) }
+            item(key = "auto-read") {
+                SwitchCard(
+                    title = stringResource(R.string.settings_auto_read),
+                    description = stringResource(R.string.settings_auto_read_description),
+                    checked = state.autoReadText,
+                    onCheckedChange = onAutoReadTextChange,
+                )
+            }
+            item(key = "languages") {
+                SheetAction(
+                    icon = Icons.Rounded.Translate,
+                    title = stringResource(R.string.settings_languages),
+                    description = stringResource(R.string.settings_languages_description),
+                    onClick = onOpenLanguages,
+                )
             }
 
             item(key = "about") { SectionLabel(stringResource(R.string.settings_about)) }

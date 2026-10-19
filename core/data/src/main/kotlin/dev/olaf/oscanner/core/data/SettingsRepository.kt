@@ -21,7 +21,17 @@ class SettingsRepository(context: Context) {
             themeMode = prefs[THEME].toEnum(ThemeMode.Dark),
             dynamicColor = prefs[DYNAMIC] ?: false,
             sortOrder = prefs[SORT].toEnum(SortOrder.Newest),
+            autoReadText = prefs[AUTO_READ] ?: true,
+            textLanguages = prefs[LANGUAGES]?.split(',')?.filter { it.isNotBlank() }?.ifEmpty { null } ?: listOf("eng"),
         )
+    }
+
+    suspend fun setAutoReadText(enabled: Boolean) {
+        store.edit { it[AUTO_READ] = enabled }
+    }
+
+    suspend fun setTextLanguages(codes: List<String>) {
+        store.edit { it[LANGUAGES] = codes.distinct().joinToString(",") }
     }
 
     suspend fun setThemeMode(mode: ThemeMode) {
@@ -40,6 +50,8 @@ class SettingsRepository(context: Context) {
         val THEME = stringPreferencesKey("theme_mode")
         val DYNAMIC = booleanPreferencesKey("dynamic_color")
         val SORT = stringPreferencesKey("sort_order")
+        val AUTO_READ = booleanPreferencesKey("auto_read_text")
+        val LANGUAGES = stringPreferencesKey("text_languages")
     }
 }
 

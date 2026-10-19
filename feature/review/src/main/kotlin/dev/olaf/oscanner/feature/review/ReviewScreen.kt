@@ -200,6 +200,7 @@ fun ReviewRoute(
                 DockAction(Icons.Rounded.RotateRight, stringResource(R.string.review_rotate), { viewModel.rotate(current) })
                 PrimaryPill(Icons.Rounded.Check, stringResource(R.string.review_save), {
                     pendingDelete?.let { id -> loaded.firstOrNull { it.id == id }?.let(viewModel::deletePage) }
+                    viewModel.finishEditing()
                     onSaved(viewModel.documentId)
                 })
             }

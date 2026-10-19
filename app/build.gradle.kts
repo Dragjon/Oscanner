@@ -57,6 +57,7 @@ dependencies {
     implementation(project(":feature:capture"))
     implementation(project(":feature:review"))
     implementation(project(":feature:document"))
+    implementation(project(":feature:text"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
