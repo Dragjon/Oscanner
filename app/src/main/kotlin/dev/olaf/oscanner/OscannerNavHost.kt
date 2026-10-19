@@ -74,6 +74,8 @@ fun OscannerNavHost(
     /** Images another app shared to us; consumed once they're imported. */
     sharedImages: List<Uri>?,
     onSharedImagesHandled: () -> Unit,
+    appLockAvailable: Boolean,
+    confirmLock: (onResult: (Boolean) -> Unit) -> Unit,
 ) {
     val navController = rememberNavController()
     val context = LocalContext.current
@@ -135,6 +137,8 @@ fun OscannerNavHost(
                 versionName = BuildConfig.VERSION_NAME,
                 onBack = { navController.popBackStack() },
                 onOpenLanguages = { navController.navigate(Routes.LANGUAGES) { launchSingleTop = true } },
+                appLockAvailable = appLockAvailable,
+                confirmLock = confirmLock,
             )
         }
         composable(Routes.LANGUAGES) {

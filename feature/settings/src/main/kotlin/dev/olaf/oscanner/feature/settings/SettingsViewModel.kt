@@ -40,6 +40,10 @@ class SettingsViewModel(
         viewModelScope.launch { settings.setPdfQuality(quality) }
     }
 
+    fun onAppLockChange(enabled: Boolean) {
+        viewModelScope.launch { settings.setAppLock(enabled) }
+    }
+
     fun onWatermarkChange(text: String) {
         viewModelScope.launch { settings.setWatermark(text) }
     }

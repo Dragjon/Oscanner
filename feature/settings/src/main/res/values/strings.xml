@@ -9,6 +9,10 @@
     <string name="settings_theme_system">Match phone</string>
     <string name="settings_wallpaper_color">Use wallpaper color for buttons</string>
     <string name="settings_wallpaper_color_description">Buttons take a color from your wallpaper instead of orange.</string>
+    <string name="settings_privacy">Privacy</string>
+    <string name="settings_app_lock">Lock Oscanner</string>
+    <string name="settings_app_lock_description">Ask for your fingerprint, face or screen lock when opening the app, and hide it from the recent apps view.</string>
+    <string name="settings_app_lock_unavailable">Set up a screen lock in your phone\'s settings first.</string>
     <string name="settings_text">Text in scans</string>
     <string name="settings_auto_read">Read text in new scans</string>
     <string name="settings_auto_read_description">Lets you search for words inside pages and copy them. Done on this phone.</string>

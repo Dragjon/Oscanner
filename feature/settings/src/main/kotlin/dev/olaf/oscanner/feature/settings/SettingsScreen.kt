@@ -68,6 +68,10 @@ fun SettingsRoute(
     versionName: String,
     onBack: () -> Unit,
     onOpenLanguages: () -> Unit,
+    /** False when this phone has no fingerprint, face or screen lock to use. */
+    appLockAvailable: Boolean,
+    /** Confirms with the system prompt, then calls back with whether it succeeded. */
+    confirmLock: (onResult: (Boolean) -> Unit) -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -87,6 +91,11 @@ fun SettingsRoute(
         onPdfPageFormatChange = viewModel::onPdfPageFormatChange,
         onPdfQualityChange = viewModel::onPdfQualityChange,
         onWatermarkChange = viewModel::onWatermarkChange,
+        appLockAvailable = appLockAvailable,
+        onAppLockChange = { enable ->
+            // Turning the lock on proves it works first; turning it off also asks, so a passer-by can't.
+            confirmLock { ok -> if (ok) viewModel.onAppLockChange(enable) }
+        },
         onFillSampleLibrary = {
             viewModel.fillSampleLibrary { scope.launch { snackbarHostState.showSnackbar(filled) } }
         },
@@ -110,6 +119,8 @@ fun SettingsScreen(
     onPdfPageFormatChange: (PdfPageFormat) -> Unit,
     onPdfQualityChange: (PdfQuality) -> Unit,
     onWatermarkChange: (String) -> Unit,
+    appLockAvailable: Boolean,
+    onAppLockChange: (Boolean) -> Unit,
     onFillSampleLibrary: () -> Unit,
     onClearLibrary: () -> Unit,
 ) {
@@ -171,6 +182,18 @@ fun SettingsScreen(
                         onCheckedChange = onDynamicColorChange,
                     )
                 }
+            }
+
+            item(key = "privacy") { SectionLabel(stringResource(R.string.settings_privacy)) }
+            item(key = "app-lock") {
+                SwitchCard(
+                    title = stringResource(R.string.settings_app_lock),
+                    description = stringResource(
+                        if (appLockAvailable) R.string.settings_app_lock_description else R.string.settings_app_lock_unavailable,
+                    ),
+                    checked = state.appLock,
+                    onCheckedChange = { if (appLockAvailable || state.appLock) onAppLockChange(it) },
+                )
             }
 
             item(key = "text") { SectionLabel(stringResource(R.string.settings_text)) }

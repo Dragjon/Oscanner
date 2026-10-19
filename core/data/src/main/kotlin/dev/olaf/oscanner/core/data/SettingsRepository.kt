@@ -28,7 +28,12 @@ class SettingsRepository(context: Context) {
             pdfPageFormat = prefs[PDF_FORMAT].toEnum(PdfPageFormat.Auto),
             pdfQuality = prefs[PDF_QUALITY].toEnum(PdfQuality.Balanced),
             watermark = prefs[WATERMARK].orEmpty(),
+            appLock = prefs[APP_LOCK] ?: false,
         )
+    }
+
+    suspend fun setAppLock(enabled: Boolean) {
+        store.edit { it[APP_LOCK] = enabled }
     }
 
     suspend fun setWatermark(text: String) {
@@ -72,6 +77,7 @@ class SettingsRepository(context: Context) {
         val PDF_FORMAT = stringPreferencesKey("pdf_page_format")
         val PDF_QUALITY = stringPreferencesKey("pdf_quality")
         val WATERMARK = stringPreferencesKey("watermark")
+        val APP_LOCK = booleanPreferencesKey("app_lock")
     }
 }
 

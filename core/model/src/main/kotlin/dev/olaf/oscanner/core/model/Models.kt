@@ -140,4 +140,6 @@ data class AppSettings(
     val pdfQuality: PdfQuality = PdfQuality.Balanced,
     /** The user's own text stamped across exported pages; empty for none. Oscanner adds none of its own. */
     val watermark: String = "",
+    /** Ask for fingerprint, face or screen lock when opening the app. */
+    val appLock: Boolean = false,
 )

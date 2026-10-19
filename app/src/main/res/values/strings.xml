@@ -6,4 +6,7 @@
     <string name="app_import_failed">Couldn\'t read those pictures.</string>
     <string name="app_moved_to_trash">Moved to Trash</string>
     <string name="app_undo">Undo</string>
+    <string name="app_lock_prompt_title">Unlock Oscanner</string>
+    <string name="app_lock_locked">Oscanner is locked</string>
+    <string name="app_lock_unlock">Unlock</string>
 </resources>
