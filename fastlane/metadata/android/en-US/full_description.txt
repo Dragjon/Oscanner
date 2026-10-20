@@ -1,0 +1,29 @@
+<p>Oscanner turns paper into clean, shareable PDFs and pictures, entirely on your phone.</p>
+
+<p><b>Scan</b></p>
+<ul>
+<li>The camera finds the page and takes the picture when you hold steady</li>
+<li>Crop with a magnifier, straighten and rotate</li>
+<li>Looks: Auto, Bright, Gray, Ink (pure black and white) and Board for whiteboards; shadows are removed</li>
+<li>Modes for ID cards (printed at true size), open books (split into two pages) and whiteboards</li>
+<li>Read QR codes and barcodes; nothing opens unless you tap it</li>
+</ul>
+
+<p><b>Text</b></p>
+<ul>
+<li>Reads the text in your scans, so you can search inside them and copy words out</li>
+<li>Searchable PDFs, plain text and Word (.docx) export</li>
+<li>English is built in; other languages download on request</li>
+</ul>
+
+<p><b>Documents</b></p>
+<ul>
+<li>Folders, search, sort and a Trash that keeps things for 30 days</li>
+<li>Merge, reorder, rotate, copy out and delete pages</li>
+<li>Sign, write and highlight on pages; erase things, remove pen marks or fingers</li>
+<li>Share as PDF or pictures, save to any app that keeps files, or print</li>
+<li>Password-protected PDFs (AES-256), page size and file size choices, your own watermark</li>
+<li>Lock the app with your fingerprint, face or screen lock</li>
+</ul>
+
+<p><b>Private by design</b>: no account, no ads, no tracking and no watermark of its own. Scans never leave your phone unless you share them. The only network use is downloading a text language you ask for.</p>

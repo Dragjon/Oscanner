@@ -1,0 +1,1 @@
+First release: scanning with page detection and auto-capture, five looks plus Board, ID card, book and whiteboard modes, QR codes, text reading and search, searchable and password-protected PDFs, Word export, merge and arrange pages, sign and draw, clean-up tools, and App lock.
