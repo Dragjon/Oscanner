@@ -1,0 +1,1 @@
+Handwriting removal tells print from handwriting by how it looks: printed labels stay while what's written beside them goes, black pen and writing in shadow included, with no gray patches left behind. Pinch to zoom in Clean up and Sign and draw. Straighten curved pages on by default. Quicker mode wheel; bottom buttons no longer cut off.
