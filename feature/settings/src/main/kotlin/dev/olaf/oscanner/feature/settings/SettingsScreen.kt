@@ -53,6 +53,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.olaf.oscanner.core.design.SheetAction
@@ -393,7 +394,8 @@ private fun <T> Choice(options: List<Pair<T, Int>>, selected: T, onSelect: (T) -
                     inactiveBorderColor = colors.outlineVariant,
                 ),
             ) {
-                Text(stringResource(label), style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                // Two lines rather than cut off, for long words and large text.
+                Text(stringResource(label), style = MaterialTheme.typography.labelLarge, maxLines = 2, textAlign = TextAlign.Center)
             }
         }
     }
