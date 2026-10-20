@@ -107,6 +107,8 @@ data class PageEdits(
     val aspect: Float? = null,
     /** Pen, highlighter and signature strokes, drawn over the finished page. */
     val marks: List<InkMark> = emptyList(),
+    /** Typed text and stamps, drawn over the finished page after the strokes. */
+    val texts: List<TextMark> = emptyList(),
     /** Clean-up: brush strokes painted over things to remove; filled from the paper around them. */
     val erase: List<InkMark> = emptyList(),
     /** Clean-up: brush strokes protecting areas from the automatic removals below. */
@@ -136,7 +138,8 @@ data class PageEdits(
     /** A quarter turn clockwise, with everything drawn on the page turned along. */
     fun rotatedClockwise(): PageEdits {
         fun List<InkMark>.turned() = map { mark -> mark.copy(points = mark.points.map { Corner(1f - it.y, it.x) }) }
-        return copy(rotation = (rotation + 90) % 360, marks = marks.turned(), erase = erase.turned(), keep = keep.turned())
+        val turnedTexts = texts.map { it.copy(x = 1f - it.y, y = it.x, angle = (it.angle + 90) % 360) }
+        return copy(rotation = (rotation + 90) % 360, marks = marks.turned(), texts = turnedTexts, erase = erase.turned(), keep = keep.turned())
     }
 }
 
@@ -148,6 +151,23 @@ data class PageEdits(
 data class PageCurve(val lines: List<CurveLine>)
 
 data class CurveLine(val coefficients: List<Float>, val from: Float, val to: Float)
+
+/**
+ * Text placed on a finished page. [x], [y] is its center, normalized to the page as shown;
+ * [size] is its letter height as a share of the page's width, so it scales with the render.
+ */
+data class TextMark(
+    val text: String,
+    val x: Float,
+    val y: Float,
+    val size: Float,
+    /** ARGB. */
+    val color: Int,
+    /** Clockwise degrees, in quarter turns, so it stays upright with the page when turned. */
+    val angle: Int = 0,
+    /** A frame around it, like a rubber stamp. */
+    val stamp: Boolean = false,
+)
 
 /**
  * One stroke on a finished page. Points are normalized to the page as shown (after crop and

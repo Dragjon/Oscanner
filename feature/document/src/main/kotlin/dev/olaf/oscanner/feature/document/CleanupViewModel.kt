@@ -120,7 +120,7 @@ class CleanupViewModel(
             _state.update { it.copy(working = true) }
             val (mask, after) = work.withLock {
                 withContext(Dispatchers.Default) {
-                    PageRenderer.cleanupMask(bitmap, edits, PREVIEW_SIDE) to PageRenderer.render(bitmap, edits.copy(marks = emptyList()), PREVIEW_SIDE)
+                    PageRenderer.cleanupMask(bitmap, edits, PREVIEW_SIDE) to PageRenderer.render(bitmap, edits.copy(marks = emptyList(), texts = emptyList()), PREVIEW_SIDE)
                 }
             }
             _state.update { if (it.edits == edits) it.copy(mask = mask, after = after, working = false) else it }
@@ -135,4 +135,4 @@ class CleanupViewModel(
 
 /** The same page with no clean-up and no drawn marks: the "before" for comparing. */
 internal fun PageEdits.withoutCleanup() =
-    copy(erase = emptyList(), keep = emptyList(), removePenInk = false, removeFingers = false, marks = emptyList())
+    copy(erase = emptyList(), keep = emptyList(), removePenInk = false, removeFingers = false, marks = emptyList(), texts = emptyList())

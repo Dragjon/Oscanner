@@ -34,6 +34,15 @@ import androidx.compose.material.icons.rounded.Draw
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Highlight
 import androidx.compose.material.icons.rounded.FormatClear
+import androidx.compose.material.icons.rounded.TextFields
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
+import dev.olaf.oscanner.core.imaging.PageRenderer
+import dev.olaf.oscanner.core.model.TextMark
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
@@ -96,6 +105,9 @@ fun MarkupRoute(viewModel: MarkupViewModel, onDone: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val signatures by viewModel.signatures.signatures.collectAsStateWithLifecycle()
     var signing by rememberSaveable { mutableStateOf(false) }
+    /** The text dialog: a new text at a point, or an existing one by index. */
+    var newTextAt by remember { mutableStateOf<Corner?>(null) }
+    var editingText by rememberSaveable { mutableStateOf(-1) }
     var confirmDiscard by rememberSaveable { mutableStateOf(false) }
     val colors = MaterialTheme.colorScheme
 
@@ -120,7 +132,7 @@ fun MarkupRoute(viewModel: MarkupViewModel, onDone: () -> Unit) {
                 Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = stringResource(R.string.document_back))
             }
             Text(stringResource(R.string.document_markup), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-            TextButton(onClick = viewModel::undo, enabled = state.marks.isNotEmpty() && state.placement == null) {
+            TextButton(onClick = viewModel::undo, enabled = viewModel.canUndo && state.placement == null) {
                 Icon(Icons.AutoMirrored.Rounded.Undo, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
                 Text(stringResource(R.string.document_undo))
@@ -144,6 +156,14 @@ fun MarkupRoute(viewModel: MarkupViewModel, onDone: () -> Unit) {
                     onStroke = viewModel::addStroke,
                     onErase = viewModel::eraseAt,
                     onMoveSignature = viewModel::moveSignature,
+                    onTextTap = { at ->
+                        val hit = viewModel.textAt(at, base.width.toFloat(), base.height.toFloat())
+                        if (hit >= 0) editingText = hit else newTextAt = at
+                    },
+                    onTextDragStart = { at ->
+                        viewModel.textAt(at, base.width.toFloat(), base.height.toFloat()).also { if (it >= 0) viewModel.startMovingText() }
+                    },
+                    onTextDrag = viewModel::moveText,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -192,6 +212,31 @@ fun MarkupRoute(viewModel: MarkupViewModel, onDone: () -> Unit) {
             onDismiss = { signing = false },
         )
     }
+    newTextAt?.let { at ->
+        TextDialog(
+            initial = null,
+            onDone = { text, size, stamp ->
+                newTextAt = null
+                viewModel.addText(text, at, size, stamp)
+            },
+            onDelete = null,
+            onDismiss = { newTextAt = null },
+        )
+    }
+    state.texts.getOrNull(editingText)?.let { mark ->
+        TextDialog(
+            initial = mark,
+            onDone = { text, size, stamp ->
+                viewModel.updateText(editingText, text, size, stamp)
+                editingText = -1
+            },
+            onDelete = {
+                viewModel.removeText(editingText)
+                editingText = -1
+            },
+            onDismiss = { editingText = -1 },
+        )
+    }
     if (confirmDiscard) {
         AlertDialog(
             onDismissRequest = { confirmDiscard = false },
@@ -220,11 +265,12 @@ private fun ToolRow(state: MarkupUiState, onTool: (MarkupTool) -> Unit, onColor:
     ) {
         ToolChip(Icons.Rounded.Edit, stringResource(R.string.document_tool_pen), state.tool == MarkupTool.Pen) { onTool(MarkupTool.Pen) }
         ToolChip(Icons.Rounded.Highlight, stringResource(R.string.document_tool_highlighter), state.tool == MarkupTool.Highlighter) { onTool(MarkupTool.Highlighter) }
+        ToolChip(Icons.Rounded.TextFields, stringResource(R.string.document_tool_text), state.tool == MarkupTool.Text) { onTool(MarkupTool.Text) }
         ToolChip(Icons.Rounded.FormatClear, stringResource(R.string.document_tool_eraser), state.tool == MarkupTool.Eraser) { onTool(MarkupTool.Eraser) }
         Spacer(Modifier.width(4.dp))
         val names = listOf(R.string.document_color_black, R.string.document_color_blue, R.string.document_color_red)
         INK_COLORS.forEachIndexed { i, color ->
-            val chosen = state.tool == MarkupTool.Pen && state.color == color
+            val chosen = (state.tool == MarkupTool.Pen || state.tool == MarkupTool.Text) && state.color == color
             val name = stringResource(names[i])
             Box(
                 Modifier
@@ -244,7 +290,7 @@ private fun ToolRow(state: MarkupUiState, onTool: (MarkupTool) -> Unit, onColor:
 }
 
 @Composable
-private fun ToolChip(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
+private fun ToolChip(icon: androidx.compose.ui.graphics.vector.ImageVector?, label: String, selected: Boolean, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     Surface(
         onClick = onClick,
@@ -259,8 +305,10 @@ private fun ToolChip(icon: androidx.compose.ui.graphics.vector.ImageVector, labe
             },
     ) {
         Row(Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(6.dp))
+            if (icon != null) {
+                Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+            }
             Text(label, style = MaterialTheme.typography.labelLarge)
         }
     }
@@ -274,9 +322,14 @@ private fun MarkupCanvas(
     onStroke: (List<Corner>) -> Unit,
     onErase: (Corner, Float, Float) -> Unit,
     onMoveSignature: (Float, Float) -> Unit,
+    onTextTap: (Corner) -> Unit,
+    /** Returns the index of the text under the finger, or -1. */
+    onTextDragStart: (Corner) -> Int,
+    onTextDrag: (index: Int, dx: Float, dy: Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val current = remember { mutableStateListOf<Corner>() }
+    var movingText by remember { mutableStateOf(-1) }
     val tool by rememberUpdatedState(state.tool)
     val placing by rememberUpdatedState(state.placement != null)
     val pageAspect = base.width.toFloat() / base.height
@@ -295,7 +348,9 @@ private fun MarkupCanvas(
                     detectDragGestures(
                         onDragStart = { start ->
                             current.clear()
-                            if (!placing) {
+                            if (!placing && tool == MarkupTool.Text) {
+                                movingText = onTextDragStart(toPage(start))
+                            } else if (!placing) {
                                 if (tool == MarkupTool.Eraser) onErase(toPage(start), 0.02f, pageAspect) else current.add(toPage(start))
                             }
                         },
@@ -303,27 +358,53 @@ private fun MarkupCanvas(
                             change.consume()
                             when {
                                 placing -> onMoveSignature(drag.x / shown.width, drag.y / shown.height)
+                                tool == MarkupTool.Text -> if (movingText >= 0) onTextDrag(movingText, drag.x / shown.width, drag.y / shown.height)
                                 tool == MarkupTool.Eraser -> onErase(toPage(change.position), 0.02f, pageAspect)
                                 else -> current.add(toPage(change.position))
                             }
                         },
                         onDragEnd = {
-                            if (!placing && tool != MarkupTool.Eraser) onStroke(current.toList())
+                            if (!placing && tool != MarkupTool.Eraser && tool != MarkupTool.Text) onStroke(current.toList())
                             current.clear()
+                            movingText = -1
                         },
-                        onDragCancel = { current.clear() },
+                        onDragCancel = {
+                            current.clear()
+                            movingText = -1
+                        },
                     )
                 }
                 .pointerInput(shown) {
                     // A tap makes a dot with the pen, or erases what's under it.
                     detectTapGestures { at ->
                         if (placing) return@detectTapGestures
+                        if (tool == MarkupTool.Text) return@detectTapGestures onTextTap(toPage(at))
                         if (tool == MarkupTool.Eraser) onErase(toPage(at), 0.02f, pageAspect) else onStroke(listOf(toPage(at)))
                     }
                 },
         ) {
             drawImage(base, dstOffset = IntOffset(shown.left.toInt(), shown.top.toInt()), dstSize = IntSize(shown.width.toInt(), shown.height.toInt()))
             state.marks.forEach { drawInk(it, shown) }
+            drawIntoCanvas { canvas ->
+                val native = canvas.nativeCanvas
+                native.save()
+                native.translate(shown.left, shown.top)
+                PageRenderer.drawTexts(native, state.texts, shown.width, shown.height)
+                native.restore()
+            }
+            if (state.tool == MarkupTool.Text) {
+                // Dashed frames say "tap to change, drag to move".
+                state.texts.forEach { t ->
+                    val (hw, hh) = PageRenderer.textHalfSize(t, shown.width).let { if (t.angle % 180 != 0) it.second to it.first else it }
+                    val pad = 4.dp.toPx()
+                    drawRect(
+                        color = Color(0xFF7D7369),
+                        topLeft = Offset(shown.left + t.x * shown.width - hw - pad, shown.top + t.y * shown.height - hh - pad),
+                        size = Size((hw + pad) * 2, (hh + pad) * 2),
+                        style = Stroke(1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 6f))),
+                    )
+                }
+            }
             if (current.isNotEmpty()) {
                 val highlighter = state.tool == MarkupTool.Highlighter
                 drawInk(
@@ -368,6 +449,111 @@ private fun DrawScope.drawInk(mark: InkMark, shown: Rect) {
         }
     }
     drawPath(path, color, style = Stroke(width, cap = StrokeCap.Round, join = StrokeJoin.Round), blendMode = blend)
+}
+
+/**
+ * Type text, or pick today's date or a stamp word. [initial] is the text being changed, or
+ * null for new text.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TextDialog(
+    initial: TextMark?,
+    onDone: (text: String, size: TextSize, stamp: Boolean) -> Unit,
+    onDelete: (() -> Unit)?,
+    onDismiss: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    var text by rememberSaveable { mutableStateOf(initial?.text.orEmpty()) }
+    var size by rememberSaveable { mutableStateOf(TextSize.entries.minBy { kotlin.math.abs(it.size - (initial?.size ?: TextSize.Medium.size)) }) }
+    var stamp by rememberSaveable { mutableStateOf(initial?.stamp ?: false) }
+    val today = remember { java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(java.util.Date()) }
+    val words = listOf(
+        stringResource(R.string.document_stamp_paid),
+        stringResource(R.string.document_stamp_received),
+        stringResource(R.string.document_stamp_approved),
+        stringResource(R.string.document_stamp_copy),
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = colors.surfaceContainer,
+        title = { Text(stringResource(if (initial == null) R.string.document_text_add else R.string.document_text_change)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it.take(200) },
+                    placeholder = { Text(stringResource(R.string.document_text_hint)) },
+                    maxLines = 4,
+                    shape = MaterialTheme.shapes.medium,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = colors.onSurfaceVariant,
+                        unfocusedBorderColor = colors.outlineVariant,
+                        cursorColor = colors.primary,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    QuickChip(stringResource(R.string.document_text_today)) {
+                        text = today
+                        stamp = false
+                    }
+                    words.forEach { word ->
+                        QuickChip(word) {
+                            text = word
+                            stamp = true
+                        }
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    TextSize.entries.forEach { option ->
+                        val label = stringResource(
+                            when (option) {
+                                TextSize.Small -> R.string.document_text_small
+                                TextSize.Medium -> R.string.document_text_medium
+                                TextSize.Large -> R.string.document_text_large
+                            },
+                        )
+                        ToolChip(null, label, size == option) { size = option }
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = stamp, onCheckedChange = { stamp = it }, colors = CheckboxDefaults.colors(checkedColor = colors.primary, checkmarkColor = colors.onPrimary))
+                    Text(stringResource(R.string.document_text_stamp), style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onDone(text, size, stamp) }, enabled = text.isNotBlank()) {
+                Text(stringResource(if (initial == null) R.string.document_text_place else R.string.document_ok))
+            }
+        },
+        dismissButton = {
+            Row {
+                if (onDelete != null) {
+                    TextButton(onClick = onDelete) { Text(stringResource(R.string.document_text_delete), color = colors.error) }
+                }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.document_cancel), color = colors.onSurfaceVariant) }
+            }
+        },
+    )
+}
+
+@Composable
+private fun QuickChip(label: String, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        onClick = onClick,
+        shape = MaterialTheme.shapes.medium,
+        color = colors.surfaceContainerHigh,
+        contentColor = colors.onSurface,
+        modifier = Modifier.height(36.dp),
+    ) {
+        Box(Modifier.padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
+            Text(label, style = MaterialTheme.typography.labelLarge)
+        }
+    }
 }
 
 /** Draw a signature on a white pad, or pick one kept from before. */

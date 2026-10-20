@@ -7,6 +7,7 @@ import dev.olaf.oscanner.core.model.InkMark
 import dev.olaf.oscanner.core.model.PageEdits
 import dev.olaf.oscanner.core.model.PageFilter
 import dev.olaf.oscanner.core.model.Quad
+import dev.olaf.oscanner.core.model.TextMark
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -27,6 +28,7 @@ internal object EditsJson {
         .put("detail", edits.detail.toDouble())
         .apply { edits.aspect?.let { put("aspect", it.toDouble()) } }
         .apply { if (edits.marks.isNotEmpty()) put("marks", JSONArray().apply { edits.marks.forEach { put(writeMark(it)) } }) }
+        .apply { if (edits.texts.isNotEmpty()) put("texts", JSONArray().apply { edits.texts.forEach { put(writeText(it)) } }) }
         .apply { if (edits.erase.isNotEmpty()) put("erase", JSONArray().apply { edits.erase.forEach { put(writeMark(it)) } }) }
         .apply { if (edits.keep.isNotEmpty()) put("keep", JSONArray().apply { edits.keep.forEach { put(writeMark(it)) } }) }
         .apply { if (edits.removePenInk) put("removePenInk", true) }
@@ -43,6 +45,25 @@ internal object EditsJson {
             }
         }
         .toString()
+
+    private fun writeText(mark: TextMark) = JSONObject()
+        .put("text", mark.text)
+        .put("x", mark.x.toDouble())
+        .put("y", mark.y.toDouble())
+        .put("size", mark.size.toDouble())
+        .put("color", mark.color)
+        .put("angle", mark.angle)
+        .put("stamp", mark.stamp)
+
+    private fun readText(obj: JSONObject): TextMark? {
+        val text = obj.optString("text").takeIf { it.isNotBlank() } ?: return null
+        val x = obj.optDouble("x", Double.NaN).toFloat()
+        val y = obj.optDouble("y", Double.NaN).toFloat()
+        val size = obj.optDouble("size", Double.NaN).toFloat()
+        if (!x.isFinite() || !y.isFinite() || !size.isFinite() || size <= 0f) return null
+        val angle = obj.optInt("angle", 0).let { ((it % 360) + 360) % 360 / 90 * 90 }
+        return TextMark(text, x, y, size, obj.optInt("color", 0xFF000000.toInt()), angle, obj.optBoolean("stamp"))
+    }
 
     private fun writeLine(line: CurveLine) = JSONArray().apply {
         line.coefficients.forEach { put(it.toDouble()) }
@@ -99,6 +120,7 @@ internal object EditsJson {
             detail = unit("detail", 0f),
             aspect = aspect,
             marks = strokes("marks"),
+            texts = obj.optJSONArray("texts")?.let { a -> (0 until a.length()).mapNotNull { i -> a.optJSONObject(i)?.let(::readText) } }.orEmpty(),
             erase = strokes("erase"),
             keep = strokes("keep"),
             removePenInk = obj.optBoolean("removePenInk"),

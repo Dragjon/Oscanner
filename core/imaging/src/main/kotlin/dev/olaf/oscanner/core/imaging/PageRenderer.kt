@@ -14,6 +14,7 @@ import androidx.exifinterface.media.ExifInterface
 import dev.olaf.oscanner.core.model.PageCurve
 import dev.olaf.oscanner.core.model.PageEdits
 import dev.olaf.oscanner.core.model.PageFilter
+import dev.olaf.oscanner.core.model.TextMark
 import org.opencv.android.OpenCVLoader
 import org.opencv.android.Utils
 import org.opencv.core.Core
@@ -84,6 +85,7 @@ object PageRenderer {
         return toBitmap(adjusted).also {
             adjusted.release()
             drawMarks(it, edits.marks)
+            drawTexts(Canvas(it), edits.texts, it.width.toFloat(), it.height.toFloat())
             drawRedactions(it, edits, redactionColor)
         }
     }
@@ -138,6 +140,60 @@ object PageRenderer {
         canvas.restore()
     }
 
+    /**
+     * Typed text and stamps on a [width]×[height] page drawn on [canvas]. The editor draws with
+     * this too, so what's placed is exactly what's saved.
+     */
+    fun drawTexts(canvas: Canvas, texts: List<TextMark>, width: Float, height: Float) {
+        for (mark in texts) {
+            val paint = textPaint(mark, width)
+            val cx = mark.x * width
+            val cy = mark.y * height
+            canvas.save()
+            canvas.rotate(mark.angle.toFloat(), cx, cy)
+            val lines = mark.text.lines()
+            val lineHeight = paint.fontSpacing
+            val firstBaseline = cy - lineHeight * (lines.size - 1) / 2 - (paint.ascent() + paint.descent()) / 2
+            lines.forEachIndexed { i, line -> canvas.drawText(line, cx, firstBaseline + i * lineHeight, paint) }
+            if (mark.stamp) {
+                val half = textHalfSize(mark, width)
+                val frame = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    style = Paint.Style.STROKE
+                    color = mark.color
+                    strokeWidth = paint.textSize * 0.09f
+                }
+                val r = paint.textSize * 0.25f
+                canvas.drawRoundRect(cx - half.first, cy - half.second, cx + half.first, cy + half.second, r, r, frame)
+            }
+            canvas.restore()
+        }
+    }
+
+    /**
+     * Half the width and height a text mark covers, in pixels of a page [width] wide, before
+     * it's turned; a stamp's frame included. For hit-testing in the editor.
+     */
+    fun textHalfSize(mark: TextMark, width: Float): Pair<Float, Float> {
+        val paint = textPaint(mark, width)
+        val lines = mark.text.lines()
+        val textWidth = lines.maxOf { paint.measureText(it) }
+        val textHeight = paint.fontSpacing * (lines.size - 1) + (paint.descent() - paint.ascent())
+        val pad = if (mark.stamp) paint.textSize * 0.4f else paint.textSize * 0.1f
+        return (textWidth / 2 + pad) to (textHeight / 2 + pad)
+    }
+
+    private fun textPaint(mark: TextMark, width: Float) = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = mark.color
+        textAlign = Paint.Align.CENTER
+        textSize = (mark.size * width).coerceAtLeast(4f)
+        typeface = android.graphics.Typeface.create(
+            android.graphics.Typeface.SANS_SERIF,
+            if (mark.stamp) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL,
+        )
+        // Stamps are spaced out a little, like the rubber kind.
+        if (mark.stamp) letterSpacing = 0.06f
+    }
+
     /** Strokes on top of the finished page; highlighter multiplies so the text shows through unchanged. */
     fun drawMarks(page: Bitmap, marks: List<InkMark>) {
         if (marks.isEmpty()) return
@@ -172,7 +228,7 @@ object PageRenderer {
     fun renderForOcr(source: Bitmap, edits: PageEdits): Bitmap =
         // Blacked-out areas read as blank paper: big black blocks make Tesseract misjudge the
         // words beside them. What was under them is gone either way.
-        render(source, edits.copy(filter = PageFilter.Ink, marks = emptyList()), OCR_SIDE, android.graphics.Color.WHITE)
+        render(source, edits.copy(filter = PageFilter.Ink, marks = emptyList(), texts = emptyList()), OCR_SIDE, android.graphics.Color.WHITE)
 
     /**
      * What clean-up will remove, as an 8-bit alpha image the size of the straightened page
