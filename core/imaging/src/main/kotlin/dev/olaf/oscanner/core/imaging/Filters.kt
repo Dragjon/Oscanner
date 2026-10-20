@@ -19,6 +19,9 @@ internal object Filters {
 
     /** Side length the paper background is estimated at; text strokes vanish at this size. */
     private const val BACKGROUND_SIDE = 400.0
+    /** Grain below this many 8-bit levels is left alone: a clean photo stays untouched. */
+    private const val NOISY = 2.0
+    private const val NOISE_PATCH = 1024
 
     /**
      * Slider adjustments after the look. Ink is pure black and white, so only its threshold
@@ -46,7 +49,7 @@ internal object Filters {
 
     /** Whiteboards: white board, marker colors made vivid, glare and shadows flattened. */
     private fun board(rgb: Mat): Mat {
-        val flat = flatten(rgb)
+        val flat = cleanFlatColor(rgb)
         applyLut(flat, levels(black = 70, white = 225, gamma = 1.3))
         val hsv = Mat()
         Imgproc.cvtColor(flat, hsv, Imgproc.COLOR_RGB2HSV)
@@ -62,14 +65,14 @@ internal object Filters {
 
     /** Flattened lighting, white paper, crisper text, colors kept. */
     private fun auto(rgb: Mat): Mat {
-        val flat = flatten(rgb)
+        val flat = cleanFlatColor(rgb)
         applyLut(flat, levels(black = 40, white = 245, gamma = 1.15))
         return sharpen(flat, amount = 0.6)
     }
 
     /** Like Auto, but lighter midtones and softer color: good for faint pencil or photos. */
     private fun bright(rgb: Mat): Mat {
-        val flat = flatten(rgb)
+        val flat = cleanFlatColor(rgb)
         applyLut(flat, levels(black = 25, white = 235, gamma = 0.85))
         val hsv = Mat()
         Imgproc.cvtColor(flat, hsv, Imgproc.COLOR_RGB2HSV)
@@ -85,14 +88,14 @@ internal object Filters {
 
     /** Luminance only, flattened and stretched. Smallest files. */
     private fun gray(rgb: Mat): Mat {
-        val flat = flatten(toGray(rgb))
+        val flat = flatten(cleanNoise(toGray(rgb)))
         applyLut(flat, levels(black = 35, white = 240, gamma = 1.05))
         return sharpen(flat, amount = 0.5)
     }
 
     /** Pure black on white: flattened luminance, Sauvola threshold, then despeckle. */
     private fun ink(rgb: Mat): Mat {
-        val flat = flatten(toGray(rgb))
+        val flat = flatten(cleanNoise(toGray(rgb)))
         val longSide = max(flat.cols(), flat.rows())
         val window = (longSide / 60).coerceAtLeast(15) or 1
         val binary = sauvola(flat, window, k = 0.2, range = 128.0)
@@ -103,7 +106,10 @@ internal object Filters {
 
     private fun toGray(rgb: Mat): Mat = Mat().also { Imgproc.cvtColor(rgb, it, Imgproc.COLOR_RGB2GRAY) }
 
-    /** Divides the image by its blank-paper estimate so paper becomes white and shadows drop out. */
+    /**
+     * Divides the image by its blank-paper estimate so paper becomes white and shadows drop out.
+     * A gray [src] is a temporary and is released; a color one belongs to the caller.
+     */
     private fun flatten(src: Mat): Mat {
         val background = background(src)
         val out = Mat()
@@ -111,6 +117,119 @@ internal object Filters {
         background.release()
         if (src.channels() == 1) src.release()
         return out
+    }
+
+    /** The color looks' start: grain out, lighting flattened, paper neutral. Leaves [rgb] alone. */
+    private fun cleanFlatColor(rgb: Mat): Mat {
+        val clean = cleanNoise(rgb)
+        val flat = flatten(clean)
+        if (clean !== rgb) clean.release()
+        return balancePaper(flat)
+    }
+
+    /**
+     * Smooths sensor grain from dim photos before the page is flattened: flattening brightens
+     * shadows, and the grain with them, and grain also fools the paper estimate. Clean photos are
+     * returned as they are. Brightness is smoothed only between similar tones (a bilateral
+     * filter), so letter edges stay sharp; color noise, which the eye forgives in detail but not
+     * in blotches, is blurred more. A gray [src] is a temporary and is released when replaced;
+     * a color one belongs to the caller.
+     */
+    private fun cleanNoise(src: Mat): Mat {
+        val sigma = noiseLevel(src)
+        if (sigma < NOISY) return src
+        val out = Mat()
+        if (src.channels() == 1) {
+            Imgproc.bilateralFilter(src, out, 7, sigma * 3, 3.0)
+            src.release()
+            return out
+        }
+        val ycc = Mat()
+        Imgproc.cvtColor(src, ycc, Imgproc.COLOR_RGB2YCrCb)
+        val channels = mutableListOf<Mat>()
+        Core.split(ycc, channels)
+        val luma = Mat()
+        Imgproc.bilateralFilter(channels[0], luma, 7, sigma * 3, 3.0)
+        channels[0].release()
+        channels[0] = luma
+        val chromaSigma = max(1.5, max(src.cols(), src.rows()) / 1200.0)
+        Imgproc.GaussianBlur(channels[1], channels[1], Size(0.0, 0.0), chromaSigma)
+        Imgproc.GaussianBlur(channels[2], channels[2], Size(0.0, 0.0), chromaSigma)
+        Core.merge(channels, ycc)
+        channels.forEach(Mat::release)
+        Imgproc.cvtColor(ycc, out, Imgproc.COLOR_YCrCb2RGB)
+        ycc.release()
+        return out
+    }
+
+    /**
+     * Standard deviation of the grain, in 8-bit levels: Immerkær's fast estimate ("Fast Noise
+     * Variance Estimation", 1996), taken on the flatter 60% of a central patch so that text
+     * edges don't count as noise.
+     */
+    private fun noiseLevel(src: Mat): Double {
+        val side = min(NOISE_PATCH, min(src.cols(), src.rows()))
+        val patch = src.submat(
+            (src.rows() - side) / 2, (src.rows() + side) / 2,
+            (src.cols() - side) / 2, (src.cols() + side) / 2,
+        )
+        val gray = Mat()
+        if (patch.channels() == 1) patch.copyTo(gray) else Imgproc.cvtColor(patch, gray, Imgproc.COLOR_RGB2GRAY)
+        patch.release()
+        val kernel = Mat(3, 3, CvType.CV_32F).apply { put(0, 0, floatArrayOf(1f, -2f, 1f, -2f, 4f, -2f, 1f, -2f, 1f)) }
+        val response = Mat()
+        Imgproc.filter2D(gray, response, CvType.CV_32F, kernel)
+        Core.absdiff(response, org.opencv.core.Scalar.all(0.0), response)
+        kernel.release()
+        val edges = Mat()
+        Imgproc.Sobel(gray, edges, CvType.CV_8U, 1, 1, 3, 1.0, 0.0)
+        gray.release()
+        val flat = Mat()
+        Core.compare(edges, org.opencv.core.Scalar.all(percentile(edges, 0.6).toDouble()), flat, Core.CMP_LE)
+        edges.release()
+        val mean = Core.mean(response, flat).`val`[0]
+        response.release()
+        flat.release()
+        return kotlin.math.sqrt(Math.PI / 2) * mean / 6
+    }
+
+    /** The value below which [fraction] of an 8-bit image's pixels fall. */
+    private fun percentile(gray: Mat, fraction: Double): Int {
+        val bytes = ByteArray((gray.total() * gray.channels()).toInt())
+        gray.get(0, 0, bytes)
+        val counts = IntArray(256)
+        bytes.forEach { counts[it.toInt() and 0xFF]++ }
+        val target = bytes.size * fraction
+        var seen = 0
+        counts.forEachIndexed { value, n ->
+            seen += n
+            if (seen >= target) return value
+        }
+        return 255
+    }
+
+    /**
+     * After flattening, scales each channel so the paper (the brighter half of the page) is
+     * neutral. Flattening already undoes most of a lamp's tint; this takes out what's left.
+     */
+    private fun balancePaper(rgb: Mat): Mat {
+        if (rgb.channels() != 3) return rgb
+        val small = Mat()
+        val scale = min(1.0, 400.0 / max(rgb.cols(), rgb.rows()))
+        Imgproc.resize(rgb, small, Size(), scale, scale, Imgproc.INTER_AREA)
+        val gray = Mat()
+        Imgproc.cvtColor(small, gray, Imgproc.COLOR_RGB2GRAY)
+        val paper = Mat()
+        Core.compare(gray, org.opencv.core.Scalar.all(percentile(gray, 0.5).toDouble()), paper, Core.CMP_GE)
+        gray.release()
+        val mean = Core.mean(small, paper).`val`
+        small.release()
+        paper.release()
+        val top = maxOf(mean[0], mean[1], mean[2])
+        if (top <= 0.0) return rgb
+        val gains = org.opencv.core.Scalar(top / max(mean[0], 1.0), top / max(mean[1], 1.0), top / max(mean[2], 1.0))
+        Core.multiply(rgb, gains, rgb)
+        return rgb
     }
 
     /** The page's blank-paper estimate, also what clean-up fills removed areas with. */
