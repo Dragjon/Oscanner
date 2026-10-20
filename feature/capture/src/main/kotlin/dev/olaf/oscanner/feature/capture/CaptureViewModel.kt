@@ -4,6 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.olaf.oscanner.core.data.CapturedImage
 import dev.olaf.oscanner.core.data.PageStore
+import dev.olaf.oscanner.core.data.SettingsRepository
+import dev.olaf.oscanner.core.model.ScanFixes
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import dev.olaf.oscanner.core.model.DocumentKind
 import dev.olaf.oscanner.core.model.Quad
 import kotlinx.coroutines.Dispatchers
@@ -57,6 +61,10 @@ data class CaptureUiState(
     val glare: Boolean = false,
     /** The pages taken so far are open for a look; the camera holds off meanwhile. */
     val reviewing: Boolean = false,
+    /** A word about the shot: a finger in view, too dark, a slant, and so on. */
+    val hint: CaptureHint? = null,
+    /** Fixes applied to every page as it's saved. */
+    val fixes: ScanFixes = ScanFixes(),
 )
 
 /** Where to go once captures are saved: the document and the index of its first new page. */
@@ -64,6 +72,7 @@ data class SavedScan(val documentId: Long, val firstNewPage: Int)
 
 class CaptureViewModel(
     private val pages: PageStore,
+    private val settings: SettingsRepository,
     cacheDir: File,
     /** Set when adding pages to an existing document. */
     private val documentId: Long?,
@@ -71,6 +80,7 @@ class CaptureViewModel(
 
     private val sessionDir = File(cacheDir, "capture/${UUID.randomUUID()}")
     private val tracker = AutoCaptureTracker()
+    private val hints = CaptureHints()
     private val _state = MutableStateFlow(CaptureUiState())
     val state: StateFlow<CaptureUiState> = _state.asStateFlow()
 
@@ -88,6 +98,9 @@ class CaptureViewModel(
     private val glareFrames = ArrayDeque<Boolean>()
 
     init {
+        viewModelScope.launch {
+            settings.settings.map { it.scanFixes }.distinctUntilChanged().collect { fixes -> _state.update { it.copy(fixes = fixes) } }
+        }
         if (documentId != null) {
             _state.update { it.copy(modeLocked = true) }
             viewModelScope.launch {
@@ -110,7 +123,14 @@ class CaptureViewModel(
     fun dismissCode() = _state.update { it.copy(code = null) }
 
     /** Called on the analysis thread for every frame. */
-    fun onFrame(quad: Quad?, sharpness: Double, frameAspect: Float, glare: Boolean = false, now: Long = System.currentTimeMillis()) {
+    fun onFrame(
+        quad: Quad?,
+        sharpness: Double,
+        frameAspect: Float,
+        glare: Boolean = false,
+        signals: FrameSignals? = null,
+        now: Long = System.currentTimeMillis(),
+    ) {
         val steadyGlare = synchronized(glareFrames) {
             glareFrames.addLast(glare)
             if (glareFrames.size > GLARE_WINDOW) glareFrames.removeFirst()
@@ -123,7 +143,20 @@ class CaptureViewModel(
             result.quad == null -> CaptureStatus.Searching
             else -> CaptureStatus.HoldSteady
         }
-        _state.update { it.copy(quad = result.quad, progress = result.progress, frameAspect = frameAspect, status = status, glare = steadyGlare && result.quad != null) }
+        val hint = synchronized(hints) {
+            val s = _state.value
+            if (s.mode == CaptureMode.Code) null else hints.onFrame(quad, frameAspect, signals, s.flash, now)
+        }
+        _state.update {
+            it.copy(
+                quad = result.quad,
+                progress = result.progress,
+                frameAspect = frameAspect,
+                status = status,
+                glare = steadyGlare && result.quad != null,
+                hint = hint,
+            )
+        }
     }
 
     /** A new file for the camera to write into. */
@@ -183,6 +216,12 @@ class CaptureViewModel(
     fun setAutoCapture(enabled: Boolean) = _state.update { it.copy(autoCapture = enabled) }
 
     fun toggleFlash() = _state.update { it.copy(flash = !it.flash) }
+
+    /** Saves the fixes for every scan from now on, this one included. */
+    fun setFixes(fixes: ScanFixes) {
+        _state.update { it.copy(fixes = fixes) }
+        viewModelScope.launch { settings.setScanFixes(fixes) }
+    }
 
     fun save(title: String) {
         val captures = _state.value.captures

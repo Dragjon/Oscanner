@@ -178,7 +178,7 @@ fun OscannerNavHost(
             val documentId = entry.arguments?.getLong("documentId")?.takeIf { it >= 0 }
             val viewModel: CaptureViewModel = viewModel(
                 factory = viewModelFactory {
-                    initializer { CaptureViewModel(container.pages, context.cacheDir, documentId) }
+                    initializer { CaptureViewModel(container.pages, container.settings, context.cacheDir, documentId) }
                 },
             )
             CaptureRoute(

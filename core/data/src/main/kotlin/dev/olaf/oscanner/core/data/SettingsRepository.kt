@@ -6,6 +6,8 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dev.olaf.oscanner.core.model.AppSettings
+import dev.olaf.oscanner.core.model.PageFilter
+import dev.olaf.oscanner.core.model.ScanFixes
 import dev.olaf.oscanner.core.model.PdfPageFormat
 import dev.olaf.oscanner.core.model.PdfQuality
 import dev.olaf.oscanner.core.model.SortOrder
@@ -29,7 +31,25 @@ class SettingsRepository(context: Context) {
             pdfQuality = prefs[PDF_QUALITY].toEnum(PdfQuality.Balanced),
             watermark = prefs[WATERMARK].orEmpty(),
             appLock = prefs[APP_LOCK] ?: false,
+            scanFixes = ScanFixes(
+                removeHandwriting = prefs[FIX_HANDWRITING] ?: false,
+                removeFingers = prefs[FIX_FINGERS] ?: false,
+                flatten = prefs[FIX_FLATTEN] ?: false,
+                descreen = prefs[FIX_DESCREEN] ?: false,
+                look = prefs[FIX_LOOK]?.let { name -> PageFilter.entries.firstOrNull { it.name == name } },
+            ),
         )
+    }
+
+    suspend fun setScanFixes(fixes: ScanFixes) {
+        store.edit {
+            it[FIX_HANDWRITING] = fixes.removeHandwriting
+            it[FIX_FINGERS] = fixes.removeFingers
+            it[FIX_FLATTEN] = fixes.flatten
+            it[FIX_DESCREEN] = fixes.descreen
+            val look = fixes.look
+            if (look == null) it.remove(FIX_LOOK) else it[FIX_LOOK] = look.name
+        }
     }
 
     suspend fun setAppLock(enabled: Boolean) {
@@ -78,6 +98,11 @@ class SettingsRepository(context: Context) {
         val PDF_QUALITY = stringPreferencesKey("pdf_quality")
         val WATERMARK = stringPreferencesKey("watermark")
         val APP_LOCK = booleanPreferencesKey("app_lock")
+        val FIX_HANDWRITING = booleanPreferencesKey("fix_handwriting")
+        val FIX_FINGERS = booleanPreferencesKey("fix_fingers")
+        val FIX_FLATTEN = booleanPreferencesKey("fix_flatten")
+        val FIX_DESCREEN = booleanPreferencesKey("fix_descreen")
+        val FIX_LOOK = stringPreferencesKey("fix_look")
     }
 }
 

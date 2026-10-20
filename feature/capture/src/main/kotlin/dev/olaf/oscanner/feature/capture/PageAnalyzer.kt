@@ -6,6 +6,7 @@ import dev.olaf.oscanner.core.imaging.DocumentDetector
 import dev.olaf.oscanner.core.imaging.PageRenderer
 import dev.olaf.oscanner.core.imaging.QuadGeometry
 import dev.olaf.oscanner.core.model.Quad
+import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
 import org.opencv.core.Size
@@ -25,7 +26,7 @@ internal class PageAnalyzer(
      */
     private val toScreen: Int,
     private val onCode: (ScannedCode) -> Unit,
-    private val onResult: (quad: Quad?, sharpness: Double, frameAspect: Float, glare: Boolean) -> Unit,
+    private val onResult: (quad: Quad?, sharpness: Double, frameAspect: Float, glare: Boolean, signals: FrameSignals) -> Unit,
 ) : ImageAnalysis.Analyzer {
 
     // Created on the analysis thread, after OpenCV's native code is loaded.
@@ -64,6 +65,7 @@ internal class PageAnalyzer(
             }
             val detection = detector.detect(frame)
             val glare = detection.quad?.let { Glare.onPage(frame, it) } ?: false
+            val signals = FrameSampler.measure(image, detection.quad, Core.mean(frame).`val`[0])
             luminance.release()
             val rotation = toScreen
             val upright = detection.quad?.let { QuadGeometry.rotate(it, rotation) }
@@ -72,7 +74,7 @@ internal class PageAnalyzer(
             } else {
                 image.height.toFloat() / image.width
             }
-            onResult(upright, detection.sharpness, aspect, glare)
+            onResult(upright, detection.sharpness, aspect, glare, signals)
         }
     }
 

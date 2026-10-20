@@ -228,4 +228,24 @@ data class AppSettings(
     val watermark: String = "",
     /** Ask for fingerprint, face or screen lock when opening the app. */
     val appLock: Boolean = false,
+    /** Fixes the camera applies to every new scan. */
+    val scanFixes: ScanFixes = ScanFixes(),
 )
+
+/**
+ * Fixes applied to each new page as it's saved, set up in the camera so a scan comes out ready.
+ * They're ordinary page edits, so any of them can be turned off on a page afterwards.
+ */
+data class ScanFixes(
+    val removeHandwriting: Boolean = false,
+    val removeFingers: Boolean = false,
+    /** Straighten text lines that bend toward a book's spine. */
+    val flatten: Boolean = false,
+    /** Take out the bands and grids of a photographed screen or dot-printed picture. */
+    val descreen: Boolean = false,
+    /** The look every new page gets; null keeps each mode's own (Auto, Board, Original for cards). */
+    val look: PageFilter? = null,
+) {
+    /** How many fixes are on, for the camera's button. */
+    val count: Int get() = listOf(removeHandwriting, removeFingers, flatten, descreen, look != null).count { it }
+}

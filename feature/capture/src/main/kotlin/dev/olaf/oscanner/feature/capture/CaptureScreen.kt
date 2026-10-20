@@ -95,11 +95,22 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.material.icons.rounded.WarningAmber
+import androidx.compose.material.icons.rounded.Lightbulb
+import androidx.compose.material.icons.rounded.AutoFixHigh
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.snapping.SnapPosition
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -130,6 +141,8 @@ import dev.olaf.oscanner.core.design.rememberPageImage
 import dev.olaf.oscanner.core.design.rememberReducedMotion
 import dev.olaf.oscanner.core.model.Quad
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
 import java.io.File
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -172,6 +185,7 @@ fun CaptureRoute(
     val upright = rememberUprightRotation(turn)
     LaunchedEffect(turn) { viewModel.setDeviceTurn(turn) }
 
+    var showFixes by rememberSaveable { mutableStateOf(false) }
     var confirmLeave by rememberSaveable { mutableStateOf(false) }
     val leave = { if (state.captures.isNotEmpty()) confirmLeave = true else onClose() }
     BackHandler(enabled = state.captures.isNotEmpty() && !state.saving) { confirmLeave = true }
@@ -208,19 +222,41 @@ fun CaptureRoute(
             onClose = leave,
             onToggleFlash = viewModel::toggleFlash,
             onToggleAuto = { viewModel.setAutoCapture(!state.autoCapture) },
+            fixesOn = state.fixes.count,
+            showFixes = granted && state.mode != CaptureMode.Code,
+            onOpenFixes = { showFixes = true },
             modifier = Modifier.align(Alignment.TopCenter),
         )
         if (granted) {
-            // Held sideways, the status reads across the middle of the view, turned upright;
-            // a long pill turned on its side at the top would run down over the page.
-            StatusPill(
-                text = statusText(state),
+            // Held sideways, the status and any hint read across the middle of the view, turned
+            // upright; long pills turned on their side at the top would run down over the page.
+            Column(
                 modifier = if (turn % 180 == 0) {
                     Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 72.dp)
                 } else {
                     Modifier.align(Alignment.Center)
                 }.graphicsLayer { rotationZ = upright },
-            )
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                StatusPill(text = statusText(state))
+                AnimatedVisibility(visible = state.hint != null, enter = fadeIn(), exit = fadeOut()) {
+                    // Keeps showing the last hint while it fades out.
+                    var last by remember { mutableStateOf(state.hint) }
+                    state.hint?.let { last = it }
+                    last?.let { hint ->
+                        HintPill(
+                            hint = hint,
+                            fixed = when (hint) {
+                                CaptureHint.Finger -> state.fixes.removeFingers
+                                CaptureHint.Handwriting -> state.fixes.removeHandwriting
+                                else -> false
+                            },
+                            onOpenFixes = { showFixes = true },
+                            modifier = Modifier.padding(top = 8.dp),
+                        )
+                    }
+                }
+            }
         }
 
         if (state.reviewing) {
@@ -231,6 +267,10 @@ fun CaptureRoute(
                 onClose = viewModel::closePages,
             )
         }
+    }
+
+    if (showFixes) {
+        AutoFixSheet(fixes = state.fixes, onChange = viewModel::setFixes, onDismiss = { showFixes = false })
     }
 
     if (confirmLeave) {
@@ -288,7 +328,7 @@ private fun CameraLayer(viewModel: CaptureViewModel, state: CaptureUiState, titl
             mode = { viewModel.state.value.mode },
             toScreen = context.backCameraToPortrait(),
             onCode = viewModel::onCode,
-            onResult = { quad, sharpness, aspect, glare -> viewModel.onFrame(quad, sharpness, aspect, glare) },
+            onResult = { quad, sharpness, aspect, glare, signals -> viewModel.onFrame(quad, sharpness, aspect, glare, signals) },
         )
         controller.setImageAnalysisAnalyzer(executor, analyzer)
         controller.bindToLifecycle(lifecycleOwner)
@@ -406,6 +446,10 @@ private fun TopChrome(
     onClose: () -> Unit,
     onToggleFlash: () -> Unit,
     onToggleAuto: () -> Unit,
+    /** How many Auto-fix fixes are on, shown on its button. */
+    fixesOn: Int,
+    showFixes: Boolean,
+    onOpenFixes: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -428,6 +472,17 @@ private fun TopChrome(
                 )
             }
             Spacer(Modifier.weight(1f))
+            if (showFixes) {
+                val word = stringResource(R.string.capture_fixes)
+                ChromePill(
+                    icon = Icons.Rounded.AutoFixHigh,
+                    label = if (fixesOn > 0) "$word · $fixesOn" else word,
+                    onClick = onOpenFixes,
+                    rotation = rotation,
+                    showLabel = !sideways,
+                )
+                Spacer(Modifier.width(8.dp))
+            }
             if (showAuto) {
                 ChromePill(
                     icon = if (autoCapture) Icons.Rounded.MotionPhotosAuto else Icons.Rounded.TouchApp,
@@ -450,6 +505,49 @@ private fun TopChrome(
         }
     }
 }
+
+/**
+ * A word about the shot, under the status: a warning (amber) or a tip (a light bulb), each with
+ * what to do. Hints Auto-fix can deal with open it on a tap; once it's on, they say so instead.
+ */
+@Composable
+private fun HintPill(hint: CaptureHint, fixed: Boolean, onOpenFixes: () -> Unit, modifier: Modifier = Modifier) {
+    val (title, tip) = when (hint) {
+        CaptureHint.Finger -> R.string.capture_hint_finger to if (fixed) R.string.capture_hint_finger_fixed else R.string.capture_hint_finger_tip
+        CaptureHint.Dark -> R.string.capture_hint_dark to R.string.capture_hint_dark_tip
+        CaptureHint.Steep -> R.string.capture_hint_steep to R.string.capture_hint_steep_tip
+        CaptureHint.Far -> R.string.capture_hint_far to R.string.capture_hint_far_tip
+        CaptureHint.Handwriting -> R.string.capture_hint_handwriting to if (fixed) R.string.capture_hint_handwriting_fixed else R.string.capture_hint_handwriting_tip
+    }
+    val opensFixes = !fixed && (hint == CaptureHint.Finger || hint == CaptureHint.Handwriting)
+    val openLabel = stringResource(R.string.capture_hint_open_fixes)
+    Surface(
+        color = Scrim,
+        contentColor = ChromeInk,
+        shape = MaterialTheme.shapes.large,
+        modifier = modifier
+            .widthIn(max = 320.dp)
+            .then(if (opensFixes) Modifier.clickable(onClickLabel = openLabel, onClick = onOpenFixes) else Modifier)
+            .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
+    ) {
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                if (hint.warning) Icons.Rounded.WarningAmber else Icons.Rounded.Lightbulb,
+                contentDescription = null,
+                tint = if (hint.warning) Amber else ChromeInk,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(10.dp))
+            Column {
+                Text(stringResource(title), style = MaterialTheme.typography.labelLarge)
+                Text(stringResource(tip), style = MaterialTheme.typography.bodySmall, color = ChromeInk.copy(alpha = 0.8f))
+            }
+        }
+    }
+}
+
+/** Warnings only: status stays paper-white and actions orange. */
+private val Amber = Color(0xFFFFC56B)
 
 /** What the camera is doing, in a few words; TalkBack reads changes as they happen. */
 @Composable
@@ -561,32 +659,49 @@ private fun BottomChrome(
 @Composable
 private fun ModeWheel(selected: CaptureMode, onSelect: (CaptureMode) -> Unit) {
     val modes = WHEEL_ORDER
-    val list = rememberLazyListState(initialFirstVisibleItemIndex = modes.indexOf(selected))
+    val list = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val colors = MaterialTheme.colorScheme
     val currentSelected by rememberUpdatedState(selected)
     val currentOnSelect by rememberUpdatedState(onSelect)
 
-    // The item nearest the middle once the wheel settles becomes the mode.
+    // Each name gets a slot as wide as it is, with the same gap between every two names, so a
+    // short word like Book sits as close to its neighbors as a long one like Whiteboard.
+    val style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium)
+    val labels = modes.map { stringResource(it.label()) }
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val widths = remember(labels, style, density) {
+        labels.map { with(density) { measurer.measure(it, style).size.width.toDp() } + SLOT_PADDING * 2 }
+    }
+
+    var placed by remember { mutableStateOf(false) }
+    // Start on the chosen mode, once the wheel has been laid out; then the item nearest the
+    // middle when the wheel settles becomes the mode. (Listening before then would take the
+    // first item, sitting in the middle for a moment, as a choice.)
     LaunchedEffect(list) {
-        snapshotFlow { list.isScrollInProgress }.collect { moving ->
+        snapshotFlow { list.layoutInfo.visibleItemsInfo.isNotEmpty() }.first { it }
+        list.centerOn(modes.indexOf(currentSelected), animate = false)
+        placed = true
+        snapshotFlow { list.isScrollInProgress }.drop(1).collect { moving ->
             if (moving) return@collect
             val middle = centered(list) ?: return@collect
             if (modes[middle] != currentSelected) currentOnSelect(modes[middle])
         }
     }
-    // A mode set from elsewhere (say, after a scan) brings the wheel round to it.
-    LaunchedEffect(selected) {
+    // A mode set from elsewhere brings the wheel round to it.
+    LaunchedEffect(selected, placed) {
         val index = modes.indexOf(selected)
-        if (centered(list) != index) list.animateScrollToItem(index)
+        if (placed && centered(list) != index) list.centerOn(index, animate = true)
     }
 
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val side = (maxWidth - ITEM_WIDTH) / 2
         LazyRow(
             state = list,
-            flingBehavior = rememberSnapFlingBehavior(list),
-            contentPadding = PaddingValues(horizontal = side),
+            flingBehavior = rememberSnapFlingBehavior(list, SnapPosition.Center),
+            horizontalArrangement = Arrangement.spacedBy(WHEEL_GAP),
+            // Room for the first and last names to come to the middle.
+            contentPadding = PaddingValues(start = (maxWidth - widths.first()) / 2, end = (maxWidth - widths.last()) / 2),
             modifier = Modifier
                 .fillMaxWidth()
                 .height(48.dp)
@@ -608,35 +723,35 @@ private fun ModeWheel(selected: CaptureMode, onSelect: (CaptureMode) -> Unit) {
         ) {
             items(modes.size) { index ->
                 val mode = modes[index]
-                // 1 at the middle, falling to 0 a couple of items away.
+                // 1 at the middle, falling to 0 a name or two away.
                 val nearness by remember {
                     derivedStateOf {
                         val info = list.layoutInfo
                         val item = info.visibleItemsInfo.firstOrNull { it.index == index } ?: return@derivedStateOf 0f
                         val viewportMiddle = (info.viewportStartOffset + info.viewportEndOffset) / 2f
                         val itemMiddle = item.offset + item.size / 2f
-                        (1f - abs(itemMiddle - viewportMiddle) / (item.size * 2f)).coerceIn(0f, 1f)
+                        (1f - abs(itemMiddle - viewportMiddle) / (item.size + WHEEL_GAP.toPx(density))).coerceIn(0f, 1f)
                     }
                 }
                 val active = mode == selected
                 Box(
                     Modifier
-                        .width(ITEM_WIDTH)
+                        .width(widths[index])
                         .fillMaxHeight()
-                        .clickable(onClickLabel = stringResource(mode.label())) {
-                            scope.launch { list.animateScrollToItem(index) }
-                        }
+                        .clickable(onClickLabel = labels[index]) { scope.launch { list.centerOn(index, animate = true) } }
                         .semantics { this.selected = active },
                     contentAlignment = Alignment.Center,
                 ) {
+                    // All names share one size and weight, so slots fit them exactly; the one in
+                    // the middle grows about its own center, the same on both sides.
                     Text(
-                        stringResource(mode.label()),
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+                        labels[index],
+                        style = style,
                         color = if (active) colors.primary else ChromeInk,
                         maxLines = 1,
+                        softWrap = false,
                         modifier = Modifier.graphicsLayer {
-                            val scale = 0.8f + 0.35f * nearness
+                            val scale = 1f + ACTIVE_GROWTH * nearness
                             scaleX = scale
                             scaleY = scale
                             alpha = 0.6f + 0.4f * nearness
@@ -655,7 +770,22 @@ private fun centered(list: LazyListState): Int? {
     return info.visibleItemsInfo.minByOrNull { abs(it.offset + it.size / 2f - middle) }?.index
 }
 
-private val ITEM_WIDTH = 96.dp
+/** Scrolls so item [index]'s middle is at the wheel's middle. */
+private suspend fun LazyListState.centerOn(index: Int, animate: Boolean) {
+    if (layoutInfo.visibleItemsInfo.none { it.index == index }) scrollToItem(index)
+    val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == index } ?: return
+    val middle = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2f
+    val delta = item.offset + item.size / 2f - middle
+    if (animate) animateScrollBy(delta) else scrollBy(delta)
+}
+
+private fun androidx.compose.ui.unit.Dp.toPx(density: androidx.compose.ui.unit.Density) = with(density) { toPx() }
+
+/** Space either side of a name inside its slot (a bigger touch target), and between slots. */
+private val SLOT_PADDING = 12.dp
+private val WHEEL_GAP = 12.dp
+/** How much bigger the name in the middle is drawn. */
+private const val ACTIVE_GROWTH = 0.22f
 
 /** Document, the usual choice, in the middle; the others either side, one swipe away. */
 private val WHEEL_ORDER = listOf(CaptureMode.IdCard, CaptureMode.Book, CaptureMode.Document, CaptureMode.Whiteboard, CaptureMode.Code)

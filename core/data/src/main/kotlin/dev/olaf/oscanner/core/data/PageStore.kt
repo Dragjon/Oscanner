@@ -19,6 +19,7 @@ import dev.olaf.oscanner.core.model.PageCurve
 import dev.olaf.oscanner.core.model.PageEdits
 import dev.olaf.oscanner.core.model.PageFilter
 import dev.olaf.oscanner.core.model.ProcessingState
+import dev.olaf.oscanner.core.model.ScanFixes
 import dev.olaf.oscanner.core.model.Quad
 import dev.olaf.oscanner.core.model.WordBox
 import dev.olaf.oscanner.core.pdf.DocxWriter
@@ -129,11 +130,15 @@ class PageStore(
     /** Appends captures to the end of [documentId] and renders them. */
     suspend fun addPages(documentId: Long, images: List<CapturedImage>) {
         val kind = kindOf(documentId)
-        val prepared = withContext(Dispatchers.IO) { images.flatMap { prepare(documentId, it, kind) } }
+        val fixes = settings.settings.first().scanFixes
+        val prepared = withContext(Dispatchers.IO) {
+            images.flatMap { prepare(documentId, it, kind) }.map { (original, edits) -> original to withFixes(original, edits, fixes) }
+        }
+        val added = mutableListOf<Long>()
         db.withTransaction {
             var position = db.pages().lastPosition(documentId)
             prepared.forEach { (original, edits) ->
-                db.pages().insert(
+                added += db.pages().insert(
                     PageEntity(
                         documentId = documentId,
                         position = ++position,
@@ -149,6 +154,39 @@ class PageStore(
         }
         renderDocument(documentId)
         text.scheduleIfWanted(documentId, delay = Duration.ofSeconds(30))
+        if (fixes.removeHandwriting) removeHandwritingLater(added)
+    }
+
+    /** The camera's fixes on a new page's edits. Handwriting comes after: it needs the page read. */
+    private fun withFixes(original: File, edits: PageEdits, fixes: ScanFixes): PageEdits {
+        var fixed = edits.copy(
+            removeFingers = edits.removeFingers || fixes.removeFingers,
+            descreen = edits.descreen || fixes.descreen,
+            filter = fixes.look ?: edits.filter,
+        )
+        if (fixes.flatten && !fixed.flatten) {
+            fixed = fixed.copy(flatten = true).let { it.copy(curve = measureCurve(original.path, it)) }
+        }
+        return fixed
+    }
+
+    /**
+     * Turns on handwriting removal for new pages once their print is found (a few seconds a page,
+     * in the background). A page edited meanwhile is left as the person has it.
+     */
+    private fun removeHandwritingLater(pageIds: List<Long>) {
+        scope.launch {
+            for (id in pageIds) {
+                val entity = db.pages().get(id) ?: continue
+                val edits = EditsJson.read(entity.editsJson)
+                if (edits.removePenInk) continue
+                val printed = runCatching { text.printedAreas(entity.originalPath, edits) }
+                    .onFailure { Log.w(TAG, "Finding print on page $id failed", it) }
+                    .getOrNull() ?: continue
+                if (db.pages().get(id)?.editsJson != entity.editsJson) continue
+                setEdits(id, edits.copy(removePenInk = true, printed = printed))
+            }
+        }
     }
 
     /**
