@@ -473,6 +473,24 @@ class PageStore(
         return file
     }
 
+    /**
+     * One PDF per document, together in a fresh folder of the share cache. Documents with the
+     * same title get "Title (2).pdf" and so on, rather than overwriting each other.
+     */
+    suspend fun exportPdfs(documentIds: List<Long>): List<File> {
+        val dir = File(exportsDir, UUID.randomUUID().toString()).apply { mkdirs() }
+        val taken = mutableSetOf<String>()
+        return documentIds.map { id ->
+            val title = safeName(db.documents().getRow(id)?.title ?: "Scan")
+            val name = generateSequence(1) { it + 1 }
+                .map { if (it == 1) "$title.pdf" else "$title ($it).pdf" }
+                .first { taken.add(it.lowercase()) }
+            val file = File(dir, name)
+            withContext(Dispatchers.IO) { file.outputStream().buffered().use { writePdf(id, it) } }
+            file
+        }
+    }
+
     /** All recognized text as a .txt in the share cache; pages separated by a blank line. */
     suspend fun exportText(documentId: Long): File {
         val title = safeName(db.documents().getRow(documentId)?.title ?: "Scan")

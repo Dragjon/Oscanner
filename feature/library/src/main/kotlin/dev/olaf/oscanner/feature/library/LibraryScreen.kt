@@ -39,6 +39,9 @@ import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.DocumentScanner
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material3.CircularProgressIndicator
+import dev.olaf.oscanner.core.design.share
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.width
@@ -106,6 +109,14 @@ fun LibraryRoute(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val selection by viewModel.selection.collectAsStateWithLifecycle()
+    val preparing by viewModel.preparing.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val noApp = stringResource(R.string.library_no_share_app)
+    LaunchedEffect(viewModel) {
+        viewModel.shareFlow.collect { files ->
+            if (!context.share(files, "application/pdf")) snackbarHostState.showSnackbar(noApp)
+        }
+    }
     val trashed = stringResource(R.string.library_moved_to_trash)
     val merged = stringResource(R.string.library_merged)
     val undo = stringResource(R.string.library_undo)
@@ -134,8 +145,10 @@ fun LibraryRoute(
             stop = viewModel::stopSelecting,
             move = viewModel::moveSelected,
             merge = viewModel::mergeSelected,
+            share = viewModel::shareSelected,
             trash = viewModel::trashSelected,
         ),
+        preparing = preparing,
         snackbarHostState = snackbarHostState,
         onQueryChange = viewModel::onQueryChange,
         onFolderSelected = viewModel::onFolderSelected,
@@ -158,6 +171,7 @@ class Selection(
     val stop: () -> Unit,
     val move: (Long?) -> Unit,
     val merge: () -> Unit,
+    val share: () -> Unit,
     val trash: () -> Unit,
 )
 
@@ -166,6 +180,8 @@ class Selection(
 fun LibraryScreen(
     state: LibraryUiState,
     selection: Selection,
+    /** True while chosen documents are being made into PDFs to share. */
+    preparing: Boolean,
     snackbarHostState: SnackbarHostState,
     onQueryChange: (String) -> Unit,
     onFolderSelected: (Long?) -> Unit,
@@ -294,6 +310,7 @@ fun LibraryScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             SnackbarHost(snackbarHostState)
+            if (preparing) PreparingLine()
             Dock(modifier = Modifier.widthIn(max = 480.dp).fillMaxWidth()) {
                 if (chosen == null) {
                     DockAction(Icons.Rounded.AddPhotoAlternate, stringResource(R.string.library_import), onImport)
@@ -302,11 +319,9 @@ fun LibraryScreen(
                 } else {
                     val any = chosen.isNotEmpty()
                     DockAction(Icons.Rounded.DriveFileMove, stringResource(R.string.library_move), { showMoveSelected = true }, enabled = any)
-                    if (chosen.size >= 2) {
-                        PrimaryPill(Icons.Rounded.CallMerge, stringResource(R.string.library_merge), selection.merge)
-                    } else {
-                        DockAction(Icons.Rounded.CallMerge, stringResource(R.string.library_merge), {}, enabled = false)
-                    }
+                    // Share is what a long press is most often for, so it's the one orange action.
+                    PrimaryPill(Icons.Rounded.Share, stringResource(R.string.library_share), { if (any) selection.share() })
+                    DockAction(Icons.Rounded.CallMerge, stringResource(R.string.library_merge), selection.merge, enabled = chosen.size >= 2)
                     DockAction(Icons.Rounded.DeleteOutline, stringResource(R.string.library_delete), selection.trash, enabled = any)
                 }
             }
@@ -360,6 +375,19 @@ fun LibraryScreen(
                 onCreateFolder(name)
             },
             onDismiss = { showNewFolder = false },
+        )
+    }
+}
+
+@Composable
+private fun PreparingLine() {
+    Row(Modifier.padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.width(8.dp))
+        Text(
+            stringResource(R.string.library_preparing_pdf),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

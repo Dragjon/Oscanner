@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The app icon for use inside the app: the launcher mark on its dark tile. Shows the 72-unit middle
+  of the 108-unit launcher canvas, as launchers do. Same art as app/res/drawable/ic_launcher_foreground.xml.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="72"
+    android:viewportHeight="72">
+    <group
+        android:translateX="-18"
+        android:translateY="-18">
+        <path
+            android:fillColor="#161412"
+            android:pathData="M36,18 h36 a18,18 0 0 1 18,18 v36 a18,18 0 0 1 -18,18 h-36 a18,18 0 0 1 -18,-18 v-36 a18,18 0 0 1 18,-18 z" />
+        <group
+            android:scaleX="1.05"
+            android:scaleY="1.05"
+            android:translateX="-4.8"
+            android:translateY="1.5">
+            <path
+                android:strokeColor="#9A6A45"
+                android:strokeWidth="2"
+                android:strokeLineCap="round"
+                android:fillColor="#00000000"
+                android:pathData="M49.5,34.5 L46,26 M55.5,34.5 L57,24 M61,34.5 L65,27 M63.4,29.8 L67.2,29.6" />
+            <path
+                android:fillColor="#F4EEE6"
+                android:pathData="M41,34 h21 l9,9 v28 a4,4 0 0 1 -4,4 h-26 a4,4 0 0 1 -4,-4 v-33 a4,4 0 0 1 4,-4 z" />
+            <path
+                android:fillColor="#D9CFC3"
+                android:pathData="M62,34 v6 a3,3 0 0 0 3,3 h6 z" />
+            <path
+                android:fillColor="#2A2420"
+                android:pathData="M44.9,47 a2.6,2.6 0 1 0 5.2,0 a2.6,2.6 0 1 0 -5.2,0 z M55.9,47 a2.6,2.6 0 1 0 5.2,0 a2.6,2.6 0 1 0 -5.2,0 z" />
+            <path
+                android:fillColor="#FF6A3D"
+                android:pathData="M52,51.2 L75,55.8 L52,56.4 a2.6,2.6 0 0 1 0,-5.2 z" />
+            <path
+                android:strokeColor="#C94E28"
+                android:strokeWidth="0.9"
+                android:strokeLineCap="round"
+                android:fillColor="#00000000"
+                android:pathData="M58,52.6 l-0.6,2.4 M64,53.6 l-0.5,1.8" />
+            <path
+                android:fillColor="#B3A99D"
+                android:pathData="M42,62 h20 v2.4 h-20 z M42,67 h14 v2.4 h-14 z" />
+        </group>
+    </group>
+</vector>

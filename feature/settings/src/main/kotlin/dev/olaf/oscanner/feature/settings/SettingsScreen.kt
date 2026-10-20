@@ -2,6 +2,7 @@ package dev.olaf.oscanner.feature.settings
 
 import android.os.Build
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,7 +11,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -50,9 +53,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.painterResource
+import dev.olaf.oscanner.core.design.R as DesignR
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -292,17 +298,24 @@ fun SettingsScreen(
             item(key = "about") { SectionLabel(stringResource(R.string.settings_about)) }
             item(key = "about-card") {
                 SettingsCard {
-                    Text(
-                        stringResource(R.string.settings_app_name_version, versionName),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = colors.onSurface,
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        stringResource(R.string.settings_about_body),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = colors.onSurfaceVariant,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Decorative: the name right beside it says the same.
+                        Image(painterResource(DesignR.drawable.oscanner_logo), contentDescription = null, modifier = Modifier.size(48.dp))
+                        Spacer(Modifier.width(16.dp))
+                        Column {
+                            Text(
+                                stringResource(R.string.settings_app_name_version, versionName),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = colors.onSurface,
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                stringResource(R.string.settings_about_body),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = colors.onSurfaceVariant,
+                            )
+                        }
+                    }
                     Spacer(Modifier.height(12.dp))
                     Text(
                         stringResource(R.string.settings_license),
@@ -375,16 +388,22 @@ private fun ThemeChoice(selected: ThemeMode, onSelect: (ThemeMode) -> Unit) = Ch
     onSelect = onSelect,
 )
 
-/** A row of mutually exclusive choices, each a plain word. */
+/**
+ * A row of mutually exclusive choices, each a plain word. No checkmark: it took a third of a
+ * narrow segment and pushed "Match phone" onto two lines. The chosen one is filled and bold.
+ * Every segment takes the height of the tallest, so a label that does wrap doesn't stand out.
+ */
 @Composable
 private fun <T> Choice(options: List<Pair<T, Int>>, selected: T, onSelect: (T) -> Unit) {
     val colors = MaterialTheme.colorScheme
-    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
         options.forEachIndexed { index, (value, label) ->
             SegmentedButton(
                 selected = value == selected,
                 onClick = { onSelect(value) },
                 shape = SegmentedButtonDefaults.itemShape(index, options.size),
+                icon = {},
+                modifier = Modifier.fillMaxHeight(),
                 colors = SegmentedButtonDefaults.colors(
                     activeContainerColor = colors.primaryContainer,
                     activeContentColor = colors.onPrimaryContainer,
@@ -395,7 +414,13 @@ private fun <T> Choice(options: List<Pair<T, Int>>, selected: T, onSelect: (T) -
                 ),
             ) {
                 // Two lines rather than cut off, for long words and large text.
-                Text(stringResource(label), style = MaterialTheme.typography.labelLarge, maxLines = 2, textAlign = TextAlign.Center)
+                Text(
+                    stringResource(label),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = if (value == selected) FontWeight.Bold else null,
+                    maxLines = 2,
+                    textAlign = TextAlign.Center,
+                )
             }
         }
     }

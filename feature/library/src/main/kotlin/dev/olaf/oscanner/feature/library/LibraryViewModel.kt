@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.io.File
 
 data class LibraryUiState(
     val loading: Boolean = true,
@@ -87,6 +88,25 @@ class LibraryViewModel(
         viewModelScope.launch {
             ids.forEach { documents.moveToTrash(it) }
             events.send(LibraryEvent.Trashed(ids))
+        }
+    }
+
+    private val _preparing = MutableStateFlow(false)
+    /** True while the chosen documents are being made into PDFs to share. */
+    val preparing: StateFlow<Boolean> = _preparing.asStateFlow()
+
+    private val shares = Channel<List<File>>(Channel.BUFFERED)
+    /** Finished PDFs, ready for the share sheet. */
+    val shareFlow: Flow<List<File>> = shares.receiveAsFlow()
+
+    fun shareSelected() {
+        val ids = _selection.value.orEmpty()
+        if (ids.isEmpty() || _preparing.value) return
+        _selection.value = null
+        _preparing.value = true
+        viewModelScope.launch {
+            runCatching { pages.exportPdfs(ids) }.onSuccess { shares.send(it) }
+            _preparing.value = false
         }
     }
 

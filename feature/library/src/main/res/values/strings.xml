@@ -25,7 +25,7 @@
     <string name="library_tag_empty">Nothing in this folder has that tag.</string>
     <string name="library_back">Back</string>
     <string name="library_select">Select</string>
-    <string name="library_select_description">Choose documents to merge, move or delete together</string>
+    <string name="library_select_description">Choose documents to share, merge, move or delete together</string>
     <string name="library_stop_selecting">Stop selecting</string>
     <plurals name="library_selected">
         <item quantity="one">%d selected</item>
@@ -35,6 +35,9 @@
     <string name="library_move_to">Move to folder</string>
     <string name="library_no_folder">No folder</string>
     <string name="library_merge">Merge</string>
+    <string name="library_share">Share</string>
+    <string name="library_preparing_pdf">Making PDF…</string>
+    <string name="library_no_share_app">No app on this phone can receive it.</string>
     <string name="library_delete">Delete</string>
     <string name="library_moved_to_trash">Moved to Trash</string>
     <string name="library_merged">Merged into one document. The originals are in Trash.</string>
