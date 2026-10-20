@@ -121,12 +121,12 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   shading lines. Classical first, measured on staged photos.
 
 ### 3.2 Work with files people already have
-- **Import PDFs** (and images inside them) into the library as documents, keeping vector text
-  where there is some. Pages from a PDF can then be signed, annotated, blacked out, cleaned,
-  merged and exported like any scan.
+- ✅ **Import PDFs** into the library as documents (2026-10-21): from Import → Files, a
+  document's "Add from files", or by sharing or opening a PDF with Oscanner. Pages are rendered
+  at 200 dpi and read for text; keeping a PDF's own vector text is still to do.
 - **Merge across sources**: scans and imported PDFs in one document.
-- **Compress a PDF** (re-encode its images to a target size).
-- **Long image** export: pages stacked into one tall picture.
+- ✅ **Smaller PDF** to share, whatever the quality setting (2026-10-21).
+- ✅ **Long image** export: pages stacked into one tall picture (2026-10-21).
 
 ### 3.3 Office and language
 - **Tables to Excel**: find table lines and cells (rules plus aligned text), fill an XLSX.
@@ -146,7 +146,9 @@ benchmark it belongs to, committed and pushed, released only when everything is 
 - **Large objects** (blueprints, posters): stitch overlapping shots. Only after a patent check.
 
 ### 3.5 Editing extras
-- **Pixelate / blur** as a second style for black-out, and "cover all text in a box".
+- ~~Pixelate / blur as a second style for black-out~~: not doing it. Pixelated or blurred text
+  can often be read back (tools such as Depix do it), and black-out is for privacy; solid
+  boxes stay the only style. "Cover all text in a box" is still worth adding.
 - **Retype a word** in the image: erase it and draw the new word in a close matching font.
 - **Restore old photo**: dust and scratch removal, colour fading correction (classical first).
 

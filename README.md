@@ -19,11 +19,16 @@ follows, in [`PLAN.md`](PLAN.md).
   statistics; Tesseract for other languages), full-text search, searchable PDFs, copy, and export to
   plain text or Word.
 - **Documents**: folders, tags and notes, Trash, merge, reorder/rotate/copy out pages, sign,
-  draw, type text and stamps, erase, remove pen marks or fingers, black out private details
-  (found automatically or by hand, and removed from the text layer too), password-protected PDFs
-  (AES-256), page and file size options, watermark, App lock.
-- **Everywhere**: share sheet in and out, save to any file provider, print, a Scan shortcut,
-  Quick Settings tile and widget.
+  draw, type text and stamps, erase, remove handwriting (told from print by a small on-device
+  network) or fingers, black out private details (found automatically or by hand, and removed
+  from the text layer too), password-protected PDFs (AES-256), page and file size options,
+  watermark, App lock. Edits can be applied to other pages at once.
+- **PDFs you already have**: import a PDF (or open or share one to Oscanner) and its pages
+  become a document to sign, mark up, black out, clean and merge like a scan.
+- **Everywhere**: share sheet in and out as PDF, a smaller PDF, separate pictures or one long
+  picture; save to any file provider, print, a Scan shortcut, Quick Settings tile and widget.
+
+What's next, measured against CamScanner, is in [`ROADMAP.md`](ROADMAP.md).
 
 ## Building
 
