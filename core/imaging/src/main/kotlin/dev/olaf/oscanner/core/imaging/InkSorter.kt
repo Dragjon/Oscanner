@@ -92,19 +92,23 @@ internal object InkSorter {
         Core.subtract(ink, rulesWide, marks)
         ink.release()
 
-        // Print's color: the darker half of the rules' pixels, and ink inside sure printed words.
+        // Print's color: the darker half of the rules' pixels. Ink inside words the reader is sure
+        // of only helps when there are too few rules: it can be sure of neat handwriting too, and
+        // on a ruled page that's mostly what the words are.
         val rulePx = ByteArray(w * h).also { rules.get(0, 0, it) }
         val markPx = ByteArray(w * h).also { marks.get(0, 0, it) }
-        val inWord = BooleanArray(w * h)
-        for (area in printed) {
+        val ruleL = (0 until w * h).filter { rulePx[it] != 0.toByte() }.map { l(it) }.sorted()
+        val darkRule = ruleL.getOrNull(ruleL.size / 2) ?: 0
+        val boxes = printed.map { area ->
             val x0 = (area.left * w).toInt().coerceIn(0, w - 1)
             val x1 = (area.right * w).toInt().coerceIn(0, w - 1)
             val y0 = (area.top * h).toInt().coerceIn(0, h - 1)
             val y1 = (area.bottom * h).toInt().coerceIn(0, h - 1)
-            for (y in y0..y1) for (x in x0..x1) inWord[y * w + x] = true
+            (y0..y1).flatMap { y -> (x0..x1).map { x -> y * w + x } }.toIntArray()
         }
-        val ruleL = (0 until w * h).filter { rulePx[it] != 0.toByte() }.map { l(it) }.sorted()
-        val darkRule = ruleL.getOrNull(ruleL.size / 2) ?: 0
+        val ruled = ruleL.size / 2 >= MIN_REFERENCE
+        val inWord = BooleanArray(w * h)
+        if (!ruled) for (box in boxes) for (i in box) inWord[i] = true
         val refA = ArrayList<Int>()
         val refB = ArrayList<Int>()
         for (i in 0 until w * h) {
@@ -148,7 +152,6 @@ internal object InkSorter {
         val sumA = DoubleArray(count)
         val sumB = DoubleArray(count)
         val size = IntArray(count)
-        val inPrint = BooleanArray(count)
         for (i in 0 until w * h) {
             val k = labels[i]
             if (k == 0) continue
@@ -156,7 +159,6 @@ internal object InkSorter {
             sumA[k] += la[i] / n
             sumB[k] += lb[i] / n
             size[k]++
-            if (inWord[i]) inPrint[k] = true
         }
         val ca = DoubleArray(count) { if (size[it] > 0) sumA[it] / size[it] else 0.0 }
         val cb = DoubleArray(count) { if (size[it] > 0) sumB[it] / size[it] else 0.0 }
@@ -190,6 +192,19 @@ internal object InkSorter {
         if (gap < MIN_GAP) {
             listOf(rules, rulesWide, marks).forEach(Mat::release)
             return null
+        }
+        // Only words whose marks, taken together, are nearer print's color than the pen's protect
+        // what's in them.
+        val inPrint = BooleanArray(count)
+        for (box in boxes) {
+            val inside = box.map { labels[it] }.filter { it != 0 && size[it] > 0 }.distinct()
+            val total = inside.sumOf { size[it] }.toDouble()
+            if (total == 0.0) continue
+            val boxA = inside.sumOf { ca[it] * size[it] } / total
+            val boxB = inside.sumOf { cb[it] * size[it] } / total
+            // Clearly nearer: a word that could be either is left to its line and neighbors.
+            if (hypot(boxA - penA, boxB - penB) - hypot(boxA - printA, boxB - printB) < PRINT_MARGIN * gap) continue
+            for (k in inside) inPrint[k] = true
         }
 
         // Lines of writing: marks smeared sideways, one blob per line.
@@ -268,6 +283,8 @@ internal object InkSorter {
     private const val MIN_MARK = 6
     /** Print and pen closer than this in chroma can't be told apart by color. */
     private const val MIN_GAP = 2.0
+    /** How much nearer print than pen, as a share of the gap between them, a sure word must be. */
+    private const val PRINT_MARGIN = 0.3
     /** Less ink than this share of the page, rules aside, is a blank page. */
     private const val BLANK_SHARE = 0.002
     private const val ROW_SHARE = 0.35

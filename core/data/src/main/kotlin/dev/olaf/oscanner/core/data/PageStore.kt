@@ -373,7 +373,8 @@ class PageStore(
         return job
     }
 
-    private suspend fun renderNow(page: PageEntity) = renderPermits.withPermit {
+    private suspend fun renderNow(entity: PageEntity) = renderPermits.withPermit {
+        val page = withMeasuredBend(entity)
         val result = runCatching {
             withContext(Dispatchers.Default) {
                 val source = PageRenderer.loadUpright(page.originalPath, SOURCE_SIDE)
@@ -408,6 +409,16 @@ class PageStore(
             Log.e(TAG, "Render failed for page ${page.id}", it)
             db.documents().setState(page.documentId, ProcessingState.Failed.name)
         }
+    }
+
+    /** A flattened page whose bend isn't known (measured the old way, say) is measured first. */
+    private suspend fun withMeasuredBend(page: PageEntity): PageEntity {
+        val edits = EditsJson.read(page.editsJson)
+        if (!edits.flatten || edits.curve != null) return page
+        val json = EditsJson.write(edits.copy(curve = withContext(Dispatchers.Default) { measureCurve(page.originalPath, edits) }))
+        if (db.pages().get(page.id)?.editsJson != page.editsJson) return page
+        db.pages().setEdits(page.id, json)
+        return page.copy(editsJson = json)
     }
 
     /**

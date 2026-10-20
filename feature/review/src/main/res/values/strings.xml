@@ -36,7 +36,7 @@
     <string name="review_descreen">Reduce screen patterns</string>
     <string name="review_descreen_description">For photos of a screen, or of pictures printed in fine dots</string>
     <string name="review_flatten_measuring">Measuring how the lines bend…</string>
-    <string name="review_flatten_none">No clear lines of text to follow on this page, so it\'s left as it is</string>
+    <string name="review_flatten_none">This page is already flat, or has no lines to follow, so it\'s left as it is</string>
     <string name="review_done">Done</string>
     <string name="review_adjust_ink">Ink is pure black and white. Pick another look to adjust brightness and contrast.</string>
 </resources>

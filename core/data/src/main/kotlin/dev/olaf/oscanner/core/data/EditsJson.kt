@@ -45,7 +45,7 @@ internal object EditsJson {
         .apply { if (edits.descreen) put("descreen", true) }
         .apply {
             edits.curve?.let { curve ->
-                put("curve", JSONArray().apply { curve.lines.forEach { put(writeLine(it)) } })
+                put("bend", JSONArray().apply { curve.lines.forEach { put(writeLine(it)) } })
             }
         }
         .apply {
@@ -152,7 +152,9 @@ internal object EditsJson {
             },
             flatten = obj.optBoolean("flatten"),
             descreen = obj.optBoolean("descreen"),
-            curve = obj.optJSONArray("curve")?.let { a ->
+            // "curve" held bends measured the old way, which made pages worse: left unread, they're
+            // measured again.
+            curve = obj.optJSONArray("bend")?.let { a ->
                 // All lines or none: a partial bend would distort the page.
                 val lines = (0 until a.length()).map { readLine(a.optJSONArray(it)) }
                 PageCurve(if (lines.all { it != null }) lines.filterNotNull() else emptyList())
