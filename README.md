@@ -10,14 +10,17 @@ follows, in [`PLAN.md`](PLAN.md).
 
 ## What it does
 
-- **Scan**: live page detection with auto-capture, batch scanning, crop with a magnifier, and
-  the looks Original, Auto, Bright, Gray, Ink and Board, with shadow removal. Modes for ID cards
-  (printed at true size), books (split at the spine), whiteboards, and QR codes or barcodes.
+- **Scan**: live page detection with auto-capture, a glare warning, batch scanning, crop with a
+  magnifier, and the looks Original, Auto, Bright, Gray, Ink and Board, with shadow and grain
+  removal and neutral paper under tinted light. Curved pages are flattened; photos of screens can
+  have their moiré patterns reduced. Modes for ID cards (printed at true size), books (split at
+  the spine), whiteboards, and QR codes or barcodes.
 - **Text**: on-device OCR (Tesseract), full-text search, searchable PDFs, copy, and export to
   plain text or Word.
-- **Documents**: folders, Trash, merge, reorder/rotate/copy out pages, sign and draw, erase,
-  remove pen marks or fingers, password-protected PDFs (AES-256), page and file size options,
-  watermark, App lock.
+- **Documents**: folders, tags and notes, Trash, merge, reorder/rotate/copy out pages, sign,
+  draw, type text and stamps, erase, remove pen marks or fingers, black out private details
+  (found automatically or by hand, and removed from the text layer too), password-protected PDFs
+  (AES-256), page and file size options, watermark, App lock.
 - **Everywhere**: share sheet in and out, save to any file provider, print, a Scan shortcut,
   Quick Settings tile and widget.
 
