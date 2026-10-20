@@ -111,4 +111,10 @@ data class DocumentRow(
     val pageCount: Int,
     val sizeBytes: Long,
     val coverThumbPath: String?,
+    val note: String?,
+    /** Tag names joined with [TAG_SEPARATOR], in no set order; null without tags. */
+    val tagNames: String?,
 )
+
+/** Unit separator: can't be typed into a tag name, so it's safe to join on. */
+const val TAG_SEPARATOR = "\u001F"

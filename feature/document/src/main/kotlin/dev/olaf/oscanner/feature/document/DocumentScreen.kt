@@ -45,6 +45,7 @@ import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.PictureAsPdf
 import androidx.compose.material.icons.rounded.Print
 import androidx.compose.material.icons.rounded.SaveAlt
+import androidx.compose.material.icons.rounded.Sell
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.TextSnippet
 import androidx.compose.material3.AlertDialog
@@ -113,6 +114,7 @@ fun DocumentRoute(
     var renaming by rememberSaveable { mutableStateOf(false) }
     var moving by rememberSaveable { mutableStateOf(false) }
     var protecting by rememberSaveable { mutableStateOf(false) }
+    var details by rememberSaveable { mutableStateOf(false) }
 
     val savedText = stringResource(R.string.document_saved)
     val failedText = stringResource(R.string.document_failed)
@@ -266,6 +268,12 @@ fun DocumentRoute(
                         )
                         SheetAction(Icons.Rounded.DriveFileRenameOutline, stringResource(R.string.document_rename), stringResource(R.string.document_rename_description), act { renaming = true })
                         SheetAction(
+                            Icons.Rounded.Sell,
+                            stringResource(R.string.document_details),
+                            detailsSummary(document.tags, document.note) ?: stringResource(R.string.document_details_description),
+                            act { details = true },
+                        )
+                        SheetAction(
                             Icons.Rounded.DriveFileMove,
                             stringResource(R.string.document_move),
                             state.folders.firstOrNull { it.id == document.folderId }?.name ?: stringResource(R.string.document_no_folder),
@@ -288,6 +296,19 @@ fun DocumentRoute(
                 viewModel.rename(it)
             },
             onDismiss = { renaming = false },
+        )
+    }
+    if (details) {
+        DetailsSheet(
+            tags = document.tags,
+            note = document.note.orEmpty(),
+            allTags = state.allTags,
+            onAddTag = viewModel::addTag,
+            onRemoveTag = viewModel::removeTag,
+            onDismiss = { note ->
+                details = false
+                if (note.trim() != document.note.orEmpty()) viewModel.setNote(note)
+            },
         )
     }
     if (protecting) {

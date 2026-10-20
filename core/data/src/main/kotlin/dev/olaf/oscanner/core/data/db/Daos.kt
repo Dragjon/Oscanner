@@ -2,6 +2,7 @@ package dev.olaf.oscanner.core.data.db
 
 import androidx.room.Dao
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 
@@ -9,14 +10,16 @@ private const val ROW_COLUMNS = """
     d.id, d.title, d.folderId, d.createdAt, d.updatedAt, d.state, d.deletedAt, d.kind,
     (SELECT COUNT(*) FROM pages p WHERE p.documentId = d.id) AS pageCount,
     (SELECT COALESCE(SUM(p.sizeBytes), 0) FROM pages p WHERE p.documentId = d.id) AS sizeBytes,
-    (SELECT p.thumbPath FROM pages p WHERE p.documentId = d.id ORDER BY p.position LIMIT 1) AS coverThumbPath
+    (SELECT p.thumbPath FROM pages p WHERE p.documentId = d.id ORDER BY p.position LIMIT 1) AS coverThumbPath,
+    d.note,
+    (SELECT GROUP_CONCAT(t.name, char(31)) FROM document_tags dt JOIN tags t ON t.id = dt.tagId WHERE dt.documentId = d.id) AS tagNames
 """
 
 @Dao
 interface DocumentDao {
     /**
      * [sort]: 0 newest first, 1 oldest first, 2 name A–Z.
-     * [folderId] null means every folder.
+     * [folderId] null means every folder; [tagId] null means any tags.
      */
     @Query(
         """
@@ -24,6 +27,7 @@ interface DocumentDao {
         FROM documents d
         WHERE d.deletedAt IS NULL
             AND (:folderId IS NULL OR d.folderId = :folderId)
+            AND (:tagId IS NULL OR d.id IN (SELECT documentId FROM document_tags WHERE tagId = :tagId))
             AND (:query = '' OR d.title LIKE '%' || :query || '%')
         ORDER BY
             CASE WHEN :sort = 0 THEN d.updatedAt END DESC,
@@ -31,16 +35,19 @@ interface DocumentDao {
             CASE WHEN :sort = 2 THEN d.title END COLLATE NOCASE ASC
         """,
     )
-    fun observeRows(folderId: Long?, query: String, sort: Int): Flow<List<DocumentRow>>
+    fun observeRows(folderId: Long?, tagId: Long?, query: String, sort: Int): Flow<List<DocumentRow>>
 
-    /** Like [observeRows], but also matches words inside scans; [match] is an FTS4 query. */
+    /** Like [observeRows], but also matches notes, tag names and words inside scans; [match] is an FTS4 query. */
     @Query(
         """
         SELECT $ROW_COLUMNS
         FROM documents d
         WHERE d.deletedAt IS NULL
             AND (:folderId IS NULL OR d.folderId = :folderId)
+            AND (:tagId IS NULL OR d.id IN (SELECT documentId FROM document_tags WHERE tagId = :tagId))
             AND (d.title LIKE '%' || :query || '%'
+                OR d.note LIKE '%' || :query || '%'
+                OR d.id IN (SELECT dt.documentId FROM document_tags dt JOIN tags t ON t.id = dt.tagId WHERE t.name LIKE '%' || :query || '%')
                 OR d.id IN (SELECT p.documentId FROM pages p JOIN pages_fts f ON f.rowid = p.id WHERE pages_fts MATCH :match))
         ORDER BY
             CASE WHEN :sort = 0 THEN d.updatedAt END DESC,
@@ -48,7 +55,7 @@ interface DocumentDao {
             CASE WHEN :sort = 2 THEN d.title END COLLATE NOCASE ASC
         """,
     )
-    fun searchRows(folderId: Long?, query: String, match: String, sort: Int): Flow<List<DocumentRow>>
+    fun searchRows(folderId: Long?, tagId: Long?, query: String, match: String, sort: Int): Flow<List<DocumentRow>>
 
     @Query("SELECT $ROW_COLUMNS FROM documents d WHERE d.deletedAt IS NOT NULL ORDER BY d.deletedAt DESC")
     fun observeTrash(): Flow<List<DocumentRow>>
@@ -73,6 +80,9 @@ interface DocumentDao {
 
     @Query("UPDATE documents SET title = :title, updatedAt = :now WHERE id = :id")
     suspend fun rename(id: Long, title: String, now: Long)
+
+    @Query("UPDATE documents SET note = :note WHERE id = :id")
+    suspend fun setNote(id: Long, note: String?)
 
     @Query("UPDATE documents SET folderId = :folderId WHERE id = :id")
     suspend fun move(id: Long, folderId: Long?)
@@ -142,4 +152,33 @@ interface FolderDao {
 
     @Query("DELETE FROM folders")
     suspend fun deleteAll()
+}
+
+@Dao
+interface TagDao {
+    /** Tags on at least one document outside Trash, A–Z. */
+    @Query(
+        """
+        SELECT * FROM tags WHERE id IN (
+            SELECT dt.tagId FROM document_tags dt JOIN documents d ON d.id = dt.documentId WHERE d.deletedAt IS NULL
+        ) ORDER BY name COLLATE NOCASE
+        """,
+    )
+    fun observeInUse(): Flow<List<TagEntity>>
+
+    @Query("SELECT * FROM tags WHERE name = :name COLLATE NOCASE LIMIT 1")
+    suspend fun byName(name: String): TagEntity?
+
+    @Insert
+    suspend fun insert(tag: TagEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun link(ref: DocumentTagCrossRef)
+
+    @Query("DELETE FROM document_tags WHERE documentId = :documentId AND tagId = (SELECT id FROM tags WHERE name = :name COLLATE NOCASE)")
+    suspend fun unlink(documentId: Long, name: String)
+
+    /** Drops tags no document uses any more, so they stop being suggested. */
+    @Query("DELETE FROM tags WHERE id NOT IN (SELECT tagId FROM document_tags)")
+    suspend fun deleteUnused()
 }

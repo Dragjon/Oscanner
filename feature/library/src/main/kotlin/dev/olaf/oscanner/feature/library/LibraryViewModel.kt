@@ -6,9 +6,11 @@ import dev.olaf.oscanner.core.data.DocumentRepository
 import dev.olaf.oscanner.core.data.FolderRepository
 import dev.olaf.oscanner.core.data.PageStore
 import dev.olaf.oscanner.core.data.SettingsRepository
+import dev.olaf.oscanner.core.data.TagRepository
 import dev.olaf.oscanner.core.model.Document
 import dev.olaf.oscanner.core.model.Folder
 import dev.olaf.oscanner.core.model.SortOrder
+import dev.olaf.oscanner.core.model.Tag
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -31,6 +33,8 @@ data class LibraryUiState(
     val documents: List<Document> = emptyList(),
     val folders: List<Folder> = emptyList(),
     val selectedFolderId: Long? = null,
+    val tags: List<Tag> = emptyList(),
+    val selectedTagId: Long? = null,
     val query: String = "",
     val sortOrder: SortOrder = SortOrder.Newest,
 )
@@ -41,9 +45,12 @@ sealed interface LibraryEvent {
     data class Merged(val mergedId: Long, val sources: List<Long>) : LibraryEvent
 }
 
+private data class Filters(val folder: Long?, val tag: Long?, val query: String, val sort: SortOrder)
+
 class LibraryViewModel(
     private val documents: DocumentRepository,
     private val folders: FolderRepository,
+    private val tags: TagRepository,
     private val settings: SettingsRepository,
     private val pages: PageStore,
 ) : ViewModel() {
@@ -104,26 +111,32 @@ class LibraryViewModel(
 
     private val query = MutableStateFlow("")
     private val selectedFolder = MutableStateFlow<Long?>(null)
+    private val selectedTag = MutableStateFlow<Long?>(null)
     private val sortOrder = settings.settings.map { it.sortOrder }
 
+    private val filters = combine(selectedFolder, selectedTag, query, sortOrder, ::Filters)
+
     @OptIn(ExperimentalCoroutinesApi::class)
-    private val visibleDocuments = combine(selectedFolder, query, sortOrder, ::Triple)
-        .flatMapLatest { (folder, text, sort) -> documents.observeDocuments(folder, text, sort) }
+    private val visibleDocuments = filters
+        .flatMapLatest { f -> documents.observeDocuments(f.folder, f.tag, f.query, f.sort) }
 
     val state: StateFlow<LibraryUiState> = combine(
         documents.observeHasDocuments(),
         visibleDocuments,
         folders.observeFolders(),
-        combine(selectedFolder, query, sortOrder, ::Triple),
-    ) { hasDocuments, docs, folderList, (folder, text, sort) ->
+        tags.observeTags(),
+        filters,
+    ) { hasDocuments, docs, folderList, tagList, f ->
         LibraryUiState(
             loading = false,
             hasDocuments = hasDocuments,
             documents = docs,
             folders = folderList,
-            selectedFolderId = folder.takeIf { id -> folderList.any { it.id == id } },
-            query = text,
-            sortOrder = sort,
+            selectedFolderId = f.folder.takeIf { id -> folderList.any { it.id == id } },
+            tags = tagList,
+            selectedTagId = f.tag.takeIf { id -> tagList.any { it.id == id } },
+            query = f.query,
+            sortOrder = f.sort,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LibraryUiState())
 
@@ -133,6 +146,11 @@ class LibraryViewModel(
 
     fun onFolderSelected(id: Long?) {
         selectedFolder.value = id
+    }
+
+    /** Tapping the chosen tag again clears it. */
+    fun onTagSelected(id: Long) {
+        selectedTag.update { if (it == id) null else id }
     }
 
     fun onSortOrderChange(order: SortOrder) {

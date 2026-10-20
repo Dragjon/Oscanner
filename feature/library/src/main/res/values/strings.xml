@@ -20,6 +20,7 @@
     <string name="library_empty">Scan your first page. It stays on this phone.</string>
     <string name="library_no_results">Nothing matches “%1$s”.</string>
     <string name="library_folder_empty">This folder is empty.</string>
+    <string name="library_tag_empty">Nothing in this folder has that tag.</string>
     <string name="library_back">Back</string>
     <string name="library_select">Select</string>
     <string name="library_select_description">Choose documents to merge, move or delete together</string>

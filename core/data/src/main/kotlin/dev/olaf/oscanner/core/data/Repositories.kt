@@ -1,6 +1,10 @@
 package dev.olaf.oscanner.core.data
 
+import androidx.room.withTransaction
 import dev.olaf.oscanner.core.data.db.DocumentRow
+import dev.olaf.oscanner.core.data.db.DocumentTagCrossRef
+import dev.olaf.oscanner.core.data.db.TAG_SEPARATOR
+import dev.olaf.oscanner.core.data.db.TagEntity
 import dev.olaf.oscanner.core.data.db.FolderEntity
 import dev.olaf.oscanner.core.data.db.OscannerDatabase
 import dev.olaf.oscanner.core.model.Document
@@ -8,19 +12,20 @@ import dev.olaf.oscanner.core.model.DocumentKind
 import dev.olaf.oscanner.core.model.Folder
 import dev.olaf.oscanner.core.model.ProcessingState
 import dev.olaf.oscanner.core.model.SortOrder
+import dev.olaf.oscanner.core.model.Tag
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
 class DocumentRepository(private val db: OscannerDatabase) {
 
-    fun observeDocuments(folderId: Long?, query: String, sort: SortOrder): Flow<List<Document>> {
+    fun observeDocuments(folderId: Long?, tagId: Long?, query: String, sort: SortOrder): Flow<List<Document>> {
         val text = query.trim()
         val match = ftsQuery(text)
         val rows = if (match == null) {
-            db.documents().observeRows(folderId, text, sort.ordinal)
+            db.documents().observeRows(folderId, tagId, text, sort.ordinal)
         } else {
-            db.documents().searchRows(folderId, text, match, sort.ordinal)
+            db.documents().searchRows(folderId, tagId, text, match, sort.ordinal)
         }
         return rows.map { list -> list.map(DocumentRow::toModel) }
     }
@@ -42,6 +47,9 @@ class DocumentRepository(private val db: OscannerDatabase) {
 
     suspend fun move(id: Long, folderId: Long?) = db.documents().move(id, folderId)
 
+    /** Blank clears the note. */
+    suspend fun setNote(id: Long, note: String) = db.documents().setNote(id, note.trim().ifEmpty { null })
+
     /** Into Trash; kept 30 days, see [PageStore.purgeTrash]. */
     suspend fun moveToTrash(id: Long) = db.documents().setDeletedAt(id, System.currentTimeMillis())
 
@@ -56,6 +64,32 @@ class FolderRepository(private val db: OscannerDatabase) {
     suspend fun createFolder(name: String): Long =
         db.folders().insert(FolderEntity(name = name.trim(), createdAt = System.currentTimeMillis()))
 }
+
+class TagRepository(private val db: OscannerDatabase) {
+
+    fun observeTags(): Flow<List<Tag>> =
+        db.tags().observeInUse().map { list -> list.map { Tag(it.id, it.name) } }
+
+    /** Reuses an existing tag whatever its case, so "Tax" and "tax" stay one tag. */
+    suspend fun addTag(documentId: Long, name: String) {
+        val clean = cleanTagName(name) ?: return
+        db.withTransaction {
+            val id = db.tags().byName(clean)?.id ?: db.tags().insert(TagEntity(name = clean))
+            db.tags().link(DocumentTagCrossRef(documentId, id))
+        }
+    }
+
+    suspend fun removeTag(documentId: Long, name: String) {
+        db.withTransaction {
+            db.tags().unlink(documentId, name)
+            db.tags().deleteUnused()
+        }
+    }
+}
+
+/** Single line, no control characters, at most 40 characters; null when nothing is left. */
+internal fun cleanTagName(name: String): String? =
+    name.replace(Regex("\\p{Cntrl}+"), " ").replace(Regex("\\s+"), " ").trim().take(40).trim().ifEmpty { null }
 
 /**
  * Turns what someone typed into an FTS4 query: every word must appear, each as a prefix, so
@@ -79,4 +113,6 @@ internal fun DocumentRow.toModel() = Document(
     state = runCatching { ProcessingState.valueOf(state) }.getOrDefault(ProcessingState.Idle),
     deletedAt = deletedAt,
     kind = runCatching { DocumentKind.valueOf(kind) }.getOrDefault(DocumentKind.Document),
+    tags = tagNames?.split(TAG_SEPARATOR).orEmpty().sortedWith(String.CASE_INSENSITIVE_ORDER),
+    note = note,
 )

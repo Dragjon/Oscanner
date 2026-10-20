@@ -25,6 +25,16 @@
     <string name="document_import_more_description">Pick pictures from your gallery or files</string>
     <string name="document_rename">Rename</string>
     <string name="document_rename_description">Give this document a name you\'ll find again</string>
+    <string name="document_details">Tags and note</string>
+    <string name="document_details_description">Label this document and jot down why you kept it</string>
+    <string name="document_tags">Tags</string>
+    <string name="document_tags_explain">Tags show up as filters in the library. Search finds them too.</string>
+    <string name="document_add_tag">Add a tag</string>
+    <string name="document_add">Add</string>
+    <string name="document_remove_tag">Remove tag %1$s</string>
+    <string name="document_note">Note</string>
+    <string name="document_note_hint">Anything you want to remember about it</string>
+    <string name="document_done">Done</string>
     <string name="document_move">Move to folder</string>
     <string name="document_save_pdf">Save PDF to device</string>
     <string name="document_save_pdf_description">To Downloads, Drive or any app that keeps files</string>

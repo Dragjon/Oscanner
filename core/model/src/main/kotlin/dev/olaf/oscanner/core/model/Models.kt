@@ -14,6 +14,15 @@ data class Document(
     /** Set while the document sits in Trash. */
     val deletedAt: Long? = null,
     val kind: DocumentKind = DocumentKind.Document,
+    /** The person's own labels, A–Z. A document can have several; folders hold one each. */
+    val tags: List<String> = emptyList(),
+    val note: String? = null,
+)
+
+/** A label in use on at least one document. */
+data class Tag(
+    val id: Long,
+    val name: String,
 )
 
 /** What was scanned, which changes how pages are cut and how the PDF is laid out. */

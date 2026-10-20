@@ -82,6 +82,7 @@ import dev.olaf.oscanner.core.design.SearchField
 import dev.olaf.oscanner.core.design.SheetAction
 import dev.olaf.oscanner.core.model.Folder
 import dev.olaf.oscanner.core.model.SortOrder
+import dev.olaf.oscanner.core.model.Tag
 
 /** Space the list leaves under its last card so the floating dock never covers it. */
 private val DockClearance = 112.dp
@@ -131,6 +132,7 @@ fun LibraryRoute(
         snackbarHostState = snackbarHostState,
         onQueryChange = viewModel::onQueryChange,
         onFolderSelected = viewModel::onFolderSelected,
+        onTagSelected = viewModel::onTagSelected,
         onCreateFolder = viewModel::createFolder,
         onSortOrderChange = viewModel::onSortOrderChange,
         onScan = onScan,
@@ -160,6 +162,7 @@ fun LibraryScreen(
     snackbarHostState: SnackbarHostState,
     onQueryChange: (String) -> Unit,
     onFolderSelected: (Long?) -> Unit,
+    onTagSelected: (Long) -> Unit,
     onCreateFolder: (String) -> Unit,
     onSortOrderChange: (SortOrder) -> Unit,
     onScan: () -> Unit,
@@ -229,11 +232,18 @@ fun LibraryScreen(
                         onNewFolder = { showNewFolder = true },
                     )
                 }
+                if (state.tags.isNotEmpty()) {
+                    item(key = "tags") {
+                        TagChips(tags = state.tags, selectedId = state.selectedTagId, onSelect = onTagSelected)
+                    }
+                }
                 if (state.documents.isEmpty()) {
                     item(key = "no-results") {
                         Text(
                             if (state.query.isNotBlank()) {
                                 stringResource(R.string.library_no_results, state.query.trim())
+                            } else if (state.selectedTagId != null) {
+                                stringResource(R.string.library_tag_empty)
                             } else {
                                 stringResource(R.string.library_folder_empty)
                             },
@@ -366,6 +376,16 @@ private fun FolderChips(
         }
         item(key = "new") {
             FolderChip(stringResource(R.string.library_new_folder), selected = false, leadingAdd = true, onClick = onNewFolder)
+        }
+    }
+}
+
+/** Tags filter on top of the folder; they sit on a second row so folders keep their place. */
+@Composable
+private fun TagChips(tags: List<Tag>, selectedId: Long?, onSelect: (Long) -> Unit) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(tags, key = { it.id }) { tag ->
+            FolderChip("#${tag.name}", selected = tag.id == selectedId) { onSelect(tag.id) }
         }
     }
 }

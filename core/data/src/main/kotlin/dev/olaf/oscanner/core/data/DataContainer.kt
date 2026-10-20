@@ -11,6 +11,7 @@ class DataContainer(context: Context) {
 
     val documents by lazy { DocumentRepository(database) }
     val folders by lazy { FolderRepository(database) }
+    val tags by lazy { TagRepository(database) }
     val settings by lazy { SettingsRepository(appContext) }
     val languages by lazy { Languages(appContext) }
     val text by lazy { TextReader(appContext, database, settings, languages) }

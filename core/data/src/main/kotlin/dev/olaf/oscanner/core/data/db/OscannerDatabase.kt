@@ -23,6 +23,7 @@ abstract class OscannerDatabase : RoomDatabase() {
     abstract fun documents(): DocumentDao
     abstract fun folders(): FolderDao
     abstract fun pages(): PageDao
+    abstract fun tags(): TagDao
 
     companion object {
         fun create(context: Context): OscannerDatabase =

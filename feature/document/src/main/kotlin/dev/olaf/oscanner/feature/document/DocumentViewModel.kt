@@ -6,9 +6,11 @@ import androidx.lifecycle.viewModelScope
 import dev.olaf.oscanner.core.data.DocumentRepository
 import dev.olaf.oscanner.core.data.FolderRepository
 import dev.olaf.oscanner.core.data.PageStore
+import dev.olaf.oscanner.core.data.TagRepository
 import dev.olaf.oscanner.core.model.Document
 import dev.olaf.oscanner.core.model.Folder
 import dev.olaf.oscanner.core.model.Page
+import dev.olaf.oscanner.core.model.Tag
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,6 +27,8 @@ data class DocumentUiState(
     val document: Document? = null,
     val pages: List<Page> = emptyList(),
     val folders: List<Folder> = emptyList(),
+    /** Every tag in use, offered as suggestions. */
+    val allTags: List<Tag> = emptyList(),
     /** Set while a PDF or images are being prepared; the dock shows it in words. */
     val busy: Busy? = null,
 )
@@ -44,6 +48,7 @@ sealed interface DocumentEvent {
 class DocumentViewModel(
     private val documents: DocumentRepository,
     private val folders: FolderRepository,
+    private val tags: TagRepository,
     private val store: PageStore,
     val documentId: Long,
 ) : ViewModel() {
@@ -55,10 +60,10 @@ class DocumentViewModel(
     val state: StateFlow<DocumentUiState> = combine(
         documents.observeDocument(documentId),
         store.observePages(documentId),
-        folders.observeFolders(),
+        combine(folders.observeFolders(), tags.observeTags(), ::Pair),
         busy,
-    ) { document, pages, folderList, working ->
-        DocumentUiState(loading = false, document = document, pages = pages, folders = folderList, busy = working)
+    ) { document, pages, (folderList, tagList), working ->
+        DocumentUiState(loading = false, document = document, pages = pages, folders = folderList, allTags = tagList, busy = working)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DocumentUiState())
 
     fun sharePdf(password: String? = null) = work(Busy.PreparingPdf) { DocumentEvent.SharePdf(store.exportPdf(documentId, password)) }
@@ -90,6 +95,18 @@ class DocumentViewModel(
 
     fun moveTo(folderId: Long?) {
         viewModelScope.launch { documents.move(documentId, folderId) }
+    }
+
+    fun addTag(name: String) {
+        viewModelScope.launch { tags.addTag(documentId, name) }
+    }
+
+    fun removeTag(name: String) {
+        viewModelScope.launch { tags.removeTag(documentId, name) }
+    }
+
+    fun setNote(note: String) {
+        viewModelScope.launch { documents.setNote(documentId, note) }
     }
 
     fun moveToTrash() {
