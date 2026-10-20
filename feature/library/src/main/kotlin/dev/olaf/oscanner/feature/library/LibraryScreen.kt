@@ -91,6 +91,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.olaf.oscanner.core.design.ChalkSnowman
+import dev.olaf.oscanner.core.design.OlafSays
 import dev.olaf.oscanner.core.design.Dock
 import dev.olaf.oscanner.core.design.DockAction
 import dev.olaf.oscanner.core.design.DocumentCard
@@ -298,6 +299,14 @@ fun LibraryScreen(
                         selected = chosen?.let { document.id in it },
                         modifier = Modifier.animateItem(),
                     )
+                }
+                if (state.documents.isNotEmpty()) {
+                    // At the end of the list, the snowman with something to say.
+                    item(key = "olaf") {
+                        Box(Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 8.dp), contentAlignment = Alignment.Center) {
+                            OlafSays()
+                        }
+                    }
                 }
             }
         }

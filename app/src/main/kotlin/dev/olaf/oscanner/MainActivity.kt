@@ -16,12 +16,15 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.olaf.oscanner.core.design.OscannerTheme
 import dev.olaf.oscanner.core.design.isDarkTheme
 import dev.olaf.oscanner.core.model.ThemeMode
+import kotlinx.coroutines.delay
 
 /** A FragmentActivity because the system biometric prompt is shown through fragments. */
 class MainActivity : FragmentActivity() {
@@ -68,9 +71,17 @@ class MainActivity : FragmentActivity() {
                 if (!lockOn) locked.value = false
             }
 
+            // On a fresh start the snowman and his line stay a moment, long enough to read.
+            var greeting by rememberSaveable { mutableStateOf(savedInstanceState == null) }
+            LaunchedEffect(Unit) {
+                delay(STARTUP_MS)
+                greeting = false
+            }
+
             OscannerTheme(themeMode = settings?.themeMode ?: ThemeMode.Dark, dynamicColor = settings?.dynamicColor == true) {
                 when {
-                    settings == null -> Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
+                    settings == null && !greeting -> Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
+                    settings == null || greeting -> StartupScreen()
                     lockOn && locked.value -> LockScreen(onUnlock = { appLock.prompt { ok -> if (ok) locked.value = false } })
                     else -> OscannerNavHost(
                         container = container,
@@ -120,3 +131,6 @@ private fun Intent.stream(): Uri? =
 private fun Intent.streams(): List<Uri> =
     (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java) else getParcelableArrayListExtra(Intent.EXTRA_STREAM))
         .orEmpty()
+
+/** How long the startup snowman stays on a fresh start. */
+private const val STARTUP_MS = 1600L

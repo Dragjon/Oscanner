@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The system splash shows the chalk snowman where the startup screen draws him, so one
+         hands over to the other without a jump. -->
+    <style name="Theme.Oscanner" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/ground_night</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowSplashScreenBackground">@color/ground_night</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_snowman</item>
+    </style>
+</resources>

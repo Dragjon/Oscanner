@@ -16,4 +16,11 @@
         <item quantity="one">Apply to %d more page</item>
         <item quantity="other">Apply to %d more pages</item>
     </plurals>
+    <string-array name="design_olaf_quotes">
+        <item>Some people are worth melting for.</item>
+        <item>Hi, I\'m Olaf, and I like warm hugs!</item>
+        <item>Love is putting someone else\'s needs before yours.</item>
+        <item>Watch out for my butt!</item>
+        <item>Oh look, I\'ve been impaled.</item>
+    </string-array>
 </resources>
