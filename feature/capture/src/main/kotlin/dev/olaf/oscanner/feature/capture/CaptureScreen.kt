@@ -534,7 +534,8 @@ private fun TopChrome(
                     label = stringResource(if (flash) R.string.capture_flash_on else R.string.capture_flash_off),
                     onClick = onToggleFlash,
                     rotation = rotation,
-                    showLabel = !sideways,
+                    // The icon says it all; the word stays for screen readers.
+                    showLabel = false,
                 )
             }
         }
