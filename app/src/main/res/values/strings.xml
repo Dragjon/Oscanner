@@ -3,7 +3,8 @@
     <string name="app_name">Oscanner</string>
     <string name="app_share_target">Scan with Oscanner</string>
     <string name="app_import_title">Import %1$s</string>
-    <string name="app_import_failed">Couldn\'t read those pictures.</string>
+    <string name="app_import_failed">Couldn\'t read those files. A PDF locked with a password can\'t be opened.</string>
+    <string name="app_open_pdf">Open in Oscanner</string>
     <string name="app_moved_to_trash">Moved to Trash</string>
     <string name="app_undo">Undo</string>
     <string name="app_scan">Scan</string>

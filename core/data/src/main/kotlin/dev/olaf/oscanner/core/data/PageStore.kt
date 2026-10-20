@@ -53,6 +53,11 @@ data class CapturedImage(
     val liveQuad: Quad?,
     /** The page's outline, found in the photo or set by hand; null to find it when saved. */
     val quad: Quad? = null,
+    /**
+     * Already a flat, clean page (a page of an imported PDF): kept whole and as it is, with no
+     * outline to find, no look applied and none of the camera's fixes.
+     */
+    val flat: Boolean = false,
 )
 
 /**
@@ -132,13 +137,19 @@ class PageStore(
         val kind = kindOf(documentId)
         val fixes = settings.settings.first().scanFixes
         val prepared = withContext(Dispatchers.IO) {
-            images.flatMap { prepare(documentId, it, kind) }.map { (original, edits) -> original to withFixes(original, edits, fixes) }
+            images.flatMap { image ->
+                if (image.flat) {
+                    listOf(Triple(adopt(documentId, image), PageEdits(quad = Quad.Full, filter = PageFilter.Original), true))
+                } else {
+                    prepare(documentId, image, kind).map { (original, edits) -> Triple(original, withFixes(original, edits, fixes), false) }
+                }
+            }
         }
         val added = mutableListOf<Long>()
         db.withTransaction {
             var position = db.pages().lastPosition(documentId)
-            prepared.forEach { (original, edits) ->
-                added += db.pages().insert(
+            prepared.forEach { (original, edits, flat) ->
+                val id = db.pages().insert(
                     PageEntity(
                         documentId = documentId,
                         position = ++position,
@@ -149,6 +160,8 @@ class PageStore(
                         editsJson = EditsJson.write(edits),
                     ),
                 )
+                // Pages of a PDF stay as they were; clean-up is left to the person.
+                if (!flat) added += id
             }
             db.documents().touch(documentId, System.currentTimeMillis())
         }
@@ -290,15 +303,19 @@ class PageStore(
     ): Long {
         val staged = withContext(Dispatchers.IO) {
             val dir = File(context.cacheDir, "import").apply { mkdirs() }
-            uris.mapNotNull { uri ->
-                val file = File(dir, "${UUID.randomUUID()}.jpg")
+            uris.flatMap { uri ->
                 runCatching {
-                    context.contentResolver.openInputStream(uri)!!.use { input -> file.outputStream().use { input.copyTo(it) } }
-                    CapturedImage(file, liveQuad = null)
-                }.onFailure { Log.w(TAG, "Can't read $uri", it) }.getOrNull()
+                    if (isPdf(uri)) {
+                        PdfImport.pages(context, uri, dir).map { CapturedImage(it, liveQuad = null, flat = true) }
+                    } else {
+                        val file = File(dir, "${UUID.randomUUID()}.jpg")
+                        context.contentResolver.openInputStream(uri)!!.use { input -> file.outputStream().use { input.copyTo(it) } }
+                        listOf(CapturedImage(file, liveQuad = null))
+                    }
+                }.onFailure { Log.w(TAG, "Can't read $uri", it) }.getOrDefault(emptyList())
             }
         }
-        require(staged.isNotEmpty()) { "None of the picked images could be read" }
+        require(staged.isNotEmpty()) { "None of the picked files could be read" }
         return if (documentId == null) {
             createDocument(title, folderId = null, staged, kind)
         } else {
@@ -443,6 +460,20 @@ class PageStore(
      * Moves the capture into the document folder and works out where the page is in it. A book
      * spread becomes two pages, each pointing at its own copy of the photo.
      */
+    private fun isPdf(uri: Uri): Boolean =
+        context.contentResolver.getType(uri) == "application/pdf" ||
+            uri.lastPathSegment?.endsWith(".pdf", ignoreCase = true) == true
+
+    /** Moves a ready page into the document's folder as its original. */
+    private fun adopt(documentId: Long, image: CapturedImage): File {
+        val original = newOriginal(documentId)
+        if (!image.file.renameTo(original)) {
+            image.file.copyTo(original, overwrite = true)
+            image.file.delete()
+        }
+        return original
+    }
+
     private fun prepare(documentId: Long, image: CapturedImage, kind: DocumentKind): List<Pair<File, PageEdits>> {
         val original = newOriginal(documentId)
         if (!image.file.renameTo(original)) {

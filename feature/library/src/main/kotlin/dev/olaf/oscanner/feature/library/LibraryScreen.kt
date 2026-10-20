@@ -1,10 +1,16 @@
 package dev.olaf.oscanner.feature.library
 
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -16,14 +22,14 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Sort
 import androidx.compose.material.icons.rounded.Add
@@ -32,40 +38,24 @@ import androidx.compose.material.icons.rounded.CallMerge
 import androidx.compose.material.icons.rounded.Checklist
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Code
-import android.content.Intent
-import android.net.Uri
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.rounded.CreateNewFolder
-import androidx.compose.material.icons.rounded.DriveFileMove
-import androidx.compose.material.icons.rounded.Folder
-import androidx.compose.material.icons.rounded.FolderOff
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.DocumentScanner
+import androidx.compose.material.icons.rounded.DriveFileMove
+import androidx.compose.material.icons.rounded.FileOpen
+import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.FolderOff
 import androidx.compose.material.icons.rounded.MoreHoriz
+import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Share
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.foundation.Image
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.semantics
-import dev.olaf.oscanner.core.design.R as DesignR
-import dev.olaf.oscanner.core.design.share
-import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarResult
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -73,12 +63,15 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -86,18 +79,27 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.olaf.oscanner.core.design.ChalkSnowman
-import dev.olaf.oscanner.core.design.OlafSays
 import dev.olaf.oscanner.core.design.Dock
 import dev.olaf.oscanner.core.design.DockAction
 import dev.olaf.oscanner.core.design.DocumentCard
+import dev.olaf.oscanner.core.design.OlafSays
 import dev.olaf.oscanner.core.design.PrimaryPill
+import dev.olaf.oscanner.core.design.R as DesignR
 import dev.olaf.oscanner.core.design.SearchField
 import dev.olaf.oscanner.core.design.SheetAction
+import dev.olaf.oscanner.core.design.share
 import dev.olaf.oscanner.core.model.Folder
 import dev.olaf.oscanner.core.model.SortOrder
 import dev.olaf.oscanner.core.model.Tag
@@ -114,6 +116,7 @@ fun LibraryRoute(
     snackbarHostState: SnackbarHostState,
     onScan: () -> Unit,
     onImport: () -> Unit,
+    onImportFiles: () -> Unit,
     onOpenDocument: (Long) -> Unit,
     onOpenSettings: () -> Unit,
     onOpenTrash: () -> Unit,
@@ -169,6 +172,7 @@ fun LibraryRoute(
         onSortOrderChange = viewModel::onSortOrderChange,
         onScan = onScan,
         onImport = onImport,
+        onImportFiles = onImportFiles,
         onOpenDocument = onOpenDocument,
         onOpenSettings = onOpenSettings,
         onOpenTrash = onOpenTrash,
@@ -203,12 +207,14 @@ fun LibraryScreen(
     onSortOrderChange: (SortOrder) -> Unit,
     onScan: () -> Unit,
     onImport: () -> Unit,
+    onImportFiles: () -> Unit,
     onOpenDocument: (Long) -> Unit,
     onOpenSettings: () -> Unit,
     onOpenTrash: () -> Unit,
     versionName: String,
 ) {
     var showMore by rememberSaveable { mutableStateOf(false) }
+    var showImport by rememberSaveable { mutableStateOf(false) }
     var showNewFolder by rememberSaveable { mutableStateOf(false) }
     var showMoveSelected by rememberSaveable { mutableStateOf(false) }
     val chosen = selection.chosen
@@ -343,7 +349,7 @@ fun LibraryScreen(
             if (preparing) PreparingLine()
             Dock(modifier = Modifier.widthIn(max = 480.dp).fillMaxWidth()) {
                 if (chosen == null) {
-                    DockAction(Icons.Rounded.AddPhotoAlternate, stringResource(R.string.library_import), onImport)
+                    DockAction(Icons.Rounded.AddPhotoAlternate, stringResource(R.string.library_import), { showImport = true })
                     PrimaryPill(Icons.Rounded.DocumentScanner, stringResource(R.string.library_scan), onScan)
                     DockAction(Icons.Rounded.MoreHoriz, stringResource(R.string.library_more), { showMore = true })
                 } else {
@@ -353,6 +359,41 @@ fun LibraryScreen(
                     DockAction(Icons.Rounded.Share, stringResource(R.string.library_share), selection.share, enabled = any)
                     DockAction(Icons.Rounded.DeleteOutline, stringResource(R.string.library_delete), selection.trash, enabled = any)
                 }
+            }
+        }
+    }
+
+    if (showImport) {
+        ModalBottomSheet(
+            onDismissRequest = { showImport = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(start = 16.dp, end = 16.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                SheetAction(
+                    icon = Icons.Rounded.PhotoLibrary,
+                    title = stringResource(R.string.library_import_photos),
+                    description = stringResource(R.string.library_import_photos_description),
+                    onClick = {
+                        showImport = false
+                        onImport()
+                    },
+                )
+                SheetAction(
+                    icon = Icons.Rounded.FileOpen,
+                    title = stringResource(R.string.library_import_files),
+                    description = stringResource(R.string.library_import_files_description),
+                    onClick = {
+                        showImport = false
+                        onImportFiles()
+                    },
+                )
             }
         }
     }

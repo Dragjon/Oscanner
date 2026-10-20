@@ -42,6 +42,7 @@ import androidx.compose.material.icons.rounded.CleaningServices
 import androidx.compose.material.icons.rounded.Crop
 import androidx.compose.material.icons.rounded.Draw
 import androidx.compose.material.icons.rounded.GridView
+import androidx.compose.material.icons.rounded.FileOpen
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Info
@@ -144,6 +145,9 @@ fun DocumentRoute(
         uri?.let { viewModel.savePdfTo(it) { target -> context.contentResolver.openOutputStream(target) } }
     }
     val pickLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
+        viewModel.importPages(uris)
+    }
+    val fileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         viewModel.importPages(uris)
     }
 
@@ -287,6 +291,12 @@ fun DocumentRoute(
                             stringResource(R.string.document_import_more),
                             stringResource(R.string.document_import_more_description),
                             act { pickLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                        )
+                        SheetAction(
+                            Icons.Rounded.FileOpen,
+                            stringResource(R.string.document_import_files),
+                            stringResource(R.string.document_import_files_description),
+                            act { fileLauncher.launch(arrayOf("application/pdf", "image/*")) },
                         )
                     }
                     Sheet.Share -> {

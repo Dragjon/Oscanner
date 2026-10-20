@@ -110,6 +110,7 @@ fun OscannerNavHost(
     }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { import(it) }
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { import(it) }
 
     LaunchedEffect(scanRequested) {
         if (scanRequested) {
@@ -137,6 +138,7 @@ fun OscannerNavHost(
                 snackbarHostState = snackbarHostState,
                 onScan = { navController.navigate(Routes.capture()) },
                 onImport = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                onImportFiles = { filePicker.launch(IMPORTABLE) },
                 onOpenDocument = { navController.navigate(Routes.document(it)) },
                 onOpenSettings = { navController.navigate(Routes.SETTINGS) { launchSingleTop = true } },
                 onOpenTrash = { navController.navigate(Routes.TRASH) { launchSingleTop = true } },
@@ -328,3 +330,6 @@ private fun NavHostController.showDocument(documentId: Long) {
         }
     }
 }
+
+/** What can be brought in as pages: PDFs and pictures. */
+private val IMPORTABLE = arrayOf("application/pdf", "image/*")

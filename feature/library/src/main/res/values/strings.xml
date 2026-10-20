@@ -54,4 +54,8 @@
     <string name="library_delete_forever_description">Removes the pages from this phone</string>
     <string name="library_delete_forever_confirm">Delete this document forever?</string>
     <string name="library_cant_undo">This can\'t be undone.</string>
+    <string name="library_import_photos">Photos</string>
+    <string name="library_import_photos_description">Pictures from your gallery</string>
+    <string name="library_import_files">Files</string>
+    <string name="library_import_files_description">PDFs and pictures from Downloads, Drive or any app</string>
 </resources>

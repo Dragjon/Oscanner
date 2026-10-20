@@ -38,6 +38,8 @@
     <string name="document_scan_more_description">Take pictures and add them to the end</string>
     <string name="document_import_more">Add from photos</string>
     <string name="document_import_more_description">Pick pictures from your gallery or files</string>
+    <string name="document_import_files">Add from files</string>
+    <string name="document_import_files_description">Pages of a PDF, or pictures, from any app that keeps files</string>
     <string name="document_rename">Rename</string>
     <string name="document_rename_description">Give this document a name you\'ll find again</string>
     <string name="document_tool_text">Text</string>

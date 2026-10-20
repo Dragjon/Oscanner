@@ -118,6 +118,7 @@ private fun Intent.sharedImages(): List<Uri>? {
     val uris = when (action) {
         Intent.ACTION_SEND -> listOfNotNull(stream())
         Intent.ACTION_SEND_MULTIPLE -> streams()
+        Intent.ACTION_VIEW -> listOfNotNull(data)
         else -> return null
     }
     return uris.takeIf { it.isNotEmpty() }
