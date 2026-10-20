@@ -181,7 +181,8 @@ fun LibraryScreen(
             .background(MaterialTheme.colorScheme.background),
     ) {
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            // On tablets the list stays a readable width, centered.
+            modifier = Modifier.align(Alignment.TopCenter).widthIn(max = 720.dp).fillMaxSize(),
             contentPadding = PaddingValues(
                 start = 16.dp,
                 end = 16.dp,

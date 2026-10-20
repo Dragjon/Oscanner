@@ -2,6 +2,8 @@ package dev.olaf.oscanner.feature.library
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -85,10 +87,9 @@ fun TrashRoute(viewModel: TrashViewModel, onBack: () -> Unit) {
     val navBar = WindowInsets.navigationBars.asPaddingValues()
     val items = trash.orEmpty()
 
+    Box(Modifier.fillMaxSize().background(colors.background), contentAlignment = Alignment.TopCenter) {
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(colors.background),
+        modifier = Modifier.widthIn(max = 720.dp).fillMaxSize(),
         contentPadding = PaddingValues(
             start = 16.dp,
             end = 16.dp,
@@ -125,6 +126,8 @@ fun TrashRoute(viewModel: TrashViewModel, onBack: () -> Unit) {
         items(items, key = { it.id }) { document ->
             DocumentCard(document = document, onClick = { selectedId = document.id }, modifier = Modifier.animateItem())
         }
+    }
+
     }
 
     selectedId?.let { id ->
