@@ -46,7 +46,13 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /** A photo waiting to become a page, with the outline the camera saw (if any). */
-data class CapturedImage(val file: File, val liveQuad: Quad?)
+data class CapturedImage(
+    val file: File,
+    /** Where the camera's live outline was at the moment of capture. */
+    val liveQuad: Quad?,
+    /** The page's outline, found in the photo or set by hand; null to find it when saved. */
+    val quad: Quad? = null,
+)
 
 /**
  * Pages on disk and in the database. Layout: `files/docs/<docId>/<uuid>/original.jpg`, plus
@@ -380,15 +386,7 @@ class PageStore(
         }
         PageRenderer.ensureLoaded()
         val preview = runCatching { PageRenderer.loadUpright(original.path, DETECT_SIDE) }.getOrNull()
-        val quad = preview?.let { bitmap ->
-            runCatching {
-                val detector = DocumentDetector(
-                    angleTolerance = if (kind == DocumentKind.Whiteboard) 50.0 else 35.0,
-                    keepSpreads = kind == DocumentKind.Book,
-                )
-                detector.detect(bitmap).also { detector.release() }
-            }.getOrNull()
-        } ?: image.liveQuad ?: Quad.Full
+        val quad = image.quad ?: preview?.let { detect(it, kind) } ?: image.liveQuad ?: Quad.Full
 
         return when (kind) {
             DocumentKind.Document -> listOf(original to PageEdits(quad = quad))
@@ -408,6 +406,21 @@ class PageStore(
             }
         }.also { preview?.recycle() }
     }
+
+    /** Finds the page in a photo the way saving would; null when nothing page-shaped is there. */
+    suspend fun findPage(file: File, kind: DocumentKind): Quad? = withContext(Dispatchers.Default) {
+        PageRenderer.ensureLoaded()
+        val preview = runCatching { PageRenderer.loadUpright(file.path, DETECT_SIDE) }.getOrNull() ?: return@withContext null
+        detect(preview, kind).also { preview.recycle() }
+    }
+
+    private fun detect(preview: android.graphics.Bitmap, kind: DocumentKind): Quad? = runCatching {
+        val detector = DocumentDetector(
+            angleTolerance = if (kind == DocumentKind.Whiteboard) 50.0 else 35.0,
+            keepSpreads = kind == DocumentKind.Book,
+        )
+        detector.detect(preview).also { detector.release() }
+    }.getOrNull()
 
     private fun newOriginal(documentId: Long): File =
         File(File(docsDir, "$documentId/${UUID.randomUUID()}").apply { mkdirs() }, "original.jpg")

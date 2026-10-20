@@ -1,4 +1,4 @@
-package dev.olaf.oscanner.feature.review
+package dev.olaf.oscanner.core.design
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -35,7 +35,7 @@ import kotlin.math.min
  * opposite top corner shows exactly where it sits, because the finger hides it.
  */
 @Composable
-internal fun CropEditor(
+fun CropEditor(
     image: ImageBitmap,
     quad: Quad,
     onMoveCorner: (index: Int, x: Float, y: Float) -> Unit,

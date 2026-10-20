@@ -185,6 +185,15 @@ fun CaptureRoute(
             onToggleAuto = { viewModel.setAutoCapture(!state.autoCapture) },
             modifier = Modifier.align(Alignment.TopCenter),
         )
+
+        if (state.reviewing) {
+            CapturedPages(
+                captures = state.captures,
+                onOutline = viewModel::setOutline,
+                onDelete = viewModel::deleteCapture,
+                onClose = viewModel::closePages,
+            )
+        }
     }
 
     if (confirmLeave) {
@@ -324,6 +333,7 @@ private fun CameraLayer(viewModel: CaptureViewModel, state: CaptureUiState, titl
                 onModeChange = viewModel::setMode,
                 onImport = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                 onDone = { viewModel.save(title) },
+                onOpenPages = viewModel::openPages,
             )
         }
     }
@@ -427,6 +437,7 @@ private fun BottomChrome(
     onModeChange: (CaptureMode) -> Unit,
     onImport: () -> Unit,
     onDone: () -> Unit,
+    onOpenPages: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -471,7 +482,7 @@ private fun BottomChrome(
             if (state.captures.isEmpty()) {
                 ChromePill(Icons.Rounded.AddPhotoAlternate, stringResource(R.string.capture_import), onImport, Modifier.align(Alignment.CenterStart))
             } else {
-                BatchStack(captures = state.captures.map { it.file }, modifier = Modifier.align(Alignment.CenterStart))
+                BatchStack(captures = state.captures.map { it.file }, onClick = onOpenPages, modifier = Modifier.align(Alignment.CenterStart))
             }
             Shutter(
                 progress = if (state.autoCapture) state.progress else 0f,
@@ -543,14 +554,21 @@ private fun Shutter(progress: Float, enabled: Boolean, onClick: () -> Unit, modi
 }
 
 @Composable
-private fun BatchStack(captures: List<File>, modifier: Modifier = Modifier) {
+private fun BatchStack(captures: List<File>, onClick: () -> Unit, modifier: Modifier = Modifier) {
     if (captures.isEmpty()) {
         Spacer(modifier.size(56.dp))
         return
     }
     val last by rememberPageImage(captures.last().path, maxSide = 200)
     val description = pluralStringResource(R.plurals.capture_pages_taken, captures.size, captures.size)
-    Box(modifier.semantics(mergeDescendants = true) { contentDescription = description }) {
+    val open = stringResource(R.string.capture_pages_open)
+    // Tap to look over the pages so far, without ending the scan.
+    Box(
+        modifier
+            .clip(MaterialTheme.shapes.small)
+            .clickable(onClickLabel = open, onClick = onClick)
+            .semantics(mergeDescendants = true) { contentDescription = description },
+    ) {
         Box(
             Modifier
                 .size(56.dp)

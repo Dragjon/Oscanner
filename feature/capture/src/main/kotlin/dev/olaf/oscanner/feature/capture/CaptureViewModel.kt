@@ -55,6 +55,8 @@ data class CaptureUiState(
     val saving: Boolean = false,
     /** A reflection on the page in most recent frames: the screen suggests tilting. */
     val glare: Boolean = false,
+    /** The pages taken so far are open for a look; the camera holds off meanwhile. */
+    val reviewing: Boolean = false,
 )
 
 /** Where to go once captures are saved: the document and the index of its first new page. */
@@ -112,7 +114,7 @@ class CaptureViewModel(
             if (glareFrames.size > GLARE_WINDOW) glareFrames.removeFirst()
             glareFrames.count { it } >= GLARE_NEEDED
         }
-        val result = synchronized(tracker) { tracker.onFrame(quad, sharpness, now, _state.value.autoCapture) }
+        val result = synchronized(tracker) { tracker.onFrame(quad, sharpness, now, _state.value.autoCapture && !_state.value.reviewing) }
         if (result.fire && !_state.value.busy) shutter.trySend(Unit)
         val status = when {
             now - capturedAt < CAPTURED_HOLD_MS -> CaptureStatus.Captured
@@ -139,6 +141,31 @@ class CaptureViewModel(
                 captures = it.captures + CapturedImage(file, liveQuad = it.quad),
             )
         }
+        // Find the page in the full photo now, while the next one is lined up, so it's ready
+        // to adjust and Done doesn't have to wait for it.
+        val kind = _state.value.mode.kind ?: DocumentKind.Document
+        viewModelScope.launch {
+            val found = runCatching { pages.findPage(file, kind) }.getOrNull() ?: return@launch
+            _state.update { s -> s.copy(captures = s.captures.map { if (it.file == file && it.quad == null) it.copy(quad = found) else it }) }
+        }
+    }
+
+    /** Opens the pages taken so far, to fix an outline or drop a page, without ending the scan. */
+    fun openPages() = _state.update { if (it.captures.isEmpty()) it else it.copy(reviewing = true) }
+
+    fun closePages() = _state.update { it.copy(reviewing = false) }
+
+    /** Sets a captured page's outline by hand. */
+    fun setOutline(file: File, quad: Quad) =
+        _state.update { s -> s.copy(captures = s.captures.map { if (it.file == file) it.copy(quad = quad) else it }) }
+
+    /** Drops one captured page; with none left, back to the camera. */
+    fun deleteCapture(file: File) {
+        _state.update { s ->
+            val left = s.captures.filter { it.file != file }
+            s.copy(captures = left, reviewing = s.reviewing && left.isNotEmpty())
+        }
+        viewModelScope.launch(Dispatchers.IO) { file.delete() }
     }
 
     fun onPictureFailed() {
@@ -165,7 +192,7 @@ class CaptureViewModel(
                 }
             }
             result.onSuccess { saved.send(it) }
-            _state.update { it.copy(saving = false, captures = if (result.isSuccess) emptyList() else it.captures) }
+            _state.update { it.copy(saving = false, reviewing = false, captures = if (result.isSuccess) emptyList() else it.captures) }
         }
     }
 
