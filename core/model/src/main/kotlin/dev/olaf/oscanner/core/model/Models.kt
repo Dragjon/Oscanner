@@ -241,7 +241,11 @@ data class AppSettings(
     val appLock: Boolean = false,
     /** Fixes the camera applies to every new scan. */
     val scanFixes: ScanFixes = ScanFixes(),
+    val cameraOrientation: CameraOrientation = CameraOrientation.Auto,
 )
+
+/** Which way up the camera takes pages: as the phone is held, or always one way. */
+enum class CameraOrientation { Auto, Portrait, Landscape }
 
 /**
  * Fixes applied to each new page as it's saved, set up in the camera so a scan comes out ready.

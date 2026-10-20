@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dev.olaf.oscanner.core.model.AppSettings
+import dev.olaf.oscanner.core.model.CameraOrientation
 import dev.olaf.oscanner.core.model.PageFilter
 import dev.olaf.oscanner.core.model.ScanFixes
 import dev.olaf.oscanner.core.model.PdfPageFormat
@@ -38,6 +39,7 @@ class SettingsRepository(context: Context) {
                 descreen = prefs[FIX_DESCREEN] ?: false,
                 look = prefs[FIX_LOOK]?.let { name -> PageFilter.entries.firstOrNull { it.name == name } },
             ),
+            cameraOrientation = prefs[CAMERA_ORIENTATION].toEnum(CameraOrientation.Auto),
         )
     }
 
@@ -50,6 +52,10 @@ class SettingsRepository(context: Context) {
             val look = fixes.look
             if (look == null) it.remove(FIX_LOOK) else it[FIX_LOOK] = look.name
         }
+    }
+
+    suspend fun setCameraOrientation(orientation: CameraOrientation) {
+        store.edit { it[CAMERA_ORIENTATION] = orientation.name }
     }
 
     suspend fun setAppLock(enabled: Boolean) {
@@ -103,6 +109,7 @@ class SettingsRepository(context: Context) {
         val FIX_FLATTEN = booleanPreferencesKey("fix_flatten")
         val FIX_DESCREEN = booleanPreferencesKey("fix_descreen")
         val FIX_LOOK = stringPreferencesKey("fix_look")
+        val CAMERA_ORIENTATION = stringPreferencesKey("camera_orientation")
     }
 }
 

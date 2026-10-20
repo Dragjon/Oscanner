@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import dev.olaf.oscanner.core.data.CapturedImage
 import dev.olaf.oscanner.core.data.PageStore
 import dev.olaf.oscanner.core.data.SettingsRepository
+import androidx.exifinterface.media.ExifInterface
+import dev.olaf.oscanner.core.model.CameraOrientation
 import dev.olaf.oscanner.core.model.ScanFixes
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -66,6 +68,7 @@ data class CaptureUiState(
     val hint: CaptureHint? = null,
     /** Fixes applied to every page as it's saved. */
     val fixes: ScanFixes = ScanFixes(),
+    val orientation: CameraOrientation = CameraOrientation.Auto,
 )
 
 /** Where to go once captures are saved: the document and the index of its first new page. */
@@ -95,12 +98,16 @@ class CaptureViewModel(
     private var capturedAt = 0L
     /** How far the phone is turned (0, 90, 180, 270); photos come out upright for it. */
     @Volatile private var deviceTurn = 0
+    @Volatile private var sensedTurn = 0
     /** Glare in each of the last few frames, newest last, so the hint doesn't flicker. */
     private val glareFrames = ArrayDeque<Boolean>()
 
     init {
         viewModelScope.launch {
             settings.settings.map { it.scanFixes }.distinctUntilChanged().collect { fixes -> _state.update { it.copy(fixes = fixes) } }
+        }
+        viewModelScope.launch {
+            settings.settings.map { it.cameraOrientation }.distinctUntilChanged().collect { o -> _state.update { it.copy(orientation = o) } }
         }
         if (documentId != null) {
             _state.update { it.copy(modeLocked = true) }
@@ -163,8 +170,20 @@ class CaptureViewModel(
     /** A new file for the camera to write into. */
     fun newCaptureFile(): File = File(sessionDir.apply { mkdirs() }, "${UUID.randomUUID()}.jpg")
 
-    fun setDeviceTurn(turn: Int) {
+    /**
+     * [turn] is how the pages are taken, [sensed] how the phone is actually held; they differ
+     * when the orientation is locked, and each photo is then turned to match [turn].
+     */
+    fun setDeviceTurn(turn: Int, sensed: Int) {
         deviceTurn = turn
+        sensedTurn = sensed
+    }
+
+    /** Auto, then always portrait, then always landscape; kept for next time. */
+    fun cycleOrientation() {
+        val next = CameraOrientation.entries[(_state.value.orientation.ordinal + 1) % CameraOrientation.entries.size]
+        _state.update { it.copy(orientation = next) }
+        viewModelScope.launch { settings.setCameraOrientation(next) }
     }
 
     fun onShutterPressed() {
@@ -172,6 +191,10 @@ class CaptureViewModel(
     }
 
     fun onPictureSaved(file: File) {
+        // The camera turned the photo for how the phone was held; a locked orientation wants
+        // it the other way.
+        val extra = (deviceTurn - sensedTurn).mod(360)
+        if (extra != 0) runCatching { turnPhoto(file, extra) }
         synchronized(tracker) { tracker.onCaptured() }
         capturedAt = System.currentTimeMillis()
         _state.update {
@@ -279,6 +302,20 @@ class CaptureViewModel(
         // Saved captures were moved out already; anything left is abandoned.
         val dir = sessionDir
         Thread { dir.deleteRecursively() }.start()
+    }
+
+    /** Turns [file] clockwise by [degrees] by its EXIF orientation, without re-encoding it. */
+    private fun turnPhoto(file: File, degrees: Int) {
+        val exif = ExifInterface(file)
+        val turned = (exif.rotationDegrees + degrees) % 360
+        val tag = when (turned) {
+            90 -> ExifInterface.ORIENTATION_ROTATE_90
+            180 -> ExifInterface.ORIENTATION_ROTATE_180
+            270 -> ExifInterface.ORIENTATION_ROTATE_270
+            else -> ExifInterface.ORIENTATION_NORMAL
+        }
+        exif.setAttribute(ExifInterface.TAG_ORIENTATION, tag.toString())
+        exif.saveAttributes()
     }
 
     private companion object {

@@ -53,6 +53,9 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.FlashOff
 import androidx.compose.material.icons.rounded.FlashOn
+import androidx.compose.material.icons.rounded.StayCurrentLandscape
+import androidx.compose.material.icons.rounded.StayCurrentPortrait
+import androidx.compose.material.icons.rounded.ScreenRotation
 import androidx.compose.material.icons.rounded.MotionPhotosAuto
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material3.AlertDialog
@@ -136,6 +139,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.olaf.oscanner.core.design.LocalOscannerExtras
 import dev.olaf.oscanner.core.design.PrimaryPill
+import dev.olaf.oscanner.core.model.CameraOrientation
 import dev.olaf.oscanner.core.design.pressScale
 import dev.olaf.oscanner.core.design.rememberPageImage
 import dev.olaf.oscanner.core.design.rememberReducedMotion
@@ -181,9 +185,16 @@ fun CaptureRoute(
 
     // The screen stays portrait; only the controls at the top turn to face the person.
     LockPortrait()
-    val turn by rememberDeviceTurn()
+    val sensed by rememberDeviceTurn()
+    // Locked, the controls and photos stay one way however the phone is held. Landscape takes
+    // whichever side the phone is turned to, or the left when it's upright.
+    val turn = when (state.orientation) {
+        CameraOrientation.Auto -> sensed
+        CameraOrientation.Portrait -> 0
+        CameraOrientation.Landscape -> if (sensed == 90) 90 else 270
+    }
     val upright = rememberUprightRotation(turn)
-    LaunchedEffect(turn) { viewModel.setDeviceTurn(turn) }
+    LaunchedEffect(turn, sensed) { viewModel.setDeviceTurn(turn, sensed) }
 
     var showFixes by rememberSaveable { mutableStateOf(false) }
     var confirmLeave by rememberSaveable { mutableStateOf(false) }
@@ -222,6 +233,8 @@ fun CaptureRoute(
             onClose = leave,
             onToggleFlash = viewModel::toggleFlash,
             onToggleAuto = { viewModel.setAutoCapture(!state.autoCapture) },
+            orientation = state.orientation,
+            onCycleOrientation = viewModel::cycleOrientation,
             fixesOn = state.fixes.count,
             showFixes = granted && state.mode != CaptureMode.Code,
             onOpenFixes = { showFixes = true },
@@ -447,6 +460,8 @@ private fun TopChrome(
     onClose: () -> Unit,
     onToggleFlash: () -> Unit,
     onToggleAuto: () -> Unit,
+    orientation: CameraOrientation,
+    onCycleOrientation: () -> Unit,
     /** How many Auto-fix fixes are on, shown on its button. */
     fixesOn: Int,
     showFixes: Boolean,
@@ -495,6 +510,25 @@ private fun TopChrome(
                 Spacer(Modifier.width(8.dp))
             }
             if (showCameraControls) {
+                // Icon only: the top bar is full, and the icon itself shows the way it's locked.
+                ChromePill(
+                    icon = when (orientation) {
+                        CameraOrientation.Auto -> Icons.Rounded.ScreenRotation
+                        CameraOrientation.Portrait -> Icons.Rounded.StayCurrentPortrait
+                        CameraOrientation.Landscape -> Icons.Rounded.StayCurrentLandscape
+                    },
+                    label = stringResource(
+                        when (orientation) {
+                            CameraOrientation.Auto -> R.string.capture_orientation_auto
+                            CameraOrientation.Portrait -> R.string.capture_orientation_portrait
+                            CameraOrientation.Landscape -> R.string.capture_orientation_landscape
+                        },
+                    ),
+                    onClick = onCycleOrientation,
+                    rotation = rotation,
+                    showLabel = false,
+                )
+                Spacer(Modifier.width(8.dp))
                 ChromePill(
                     icon = if (flash) Icons.Rounded.FlashOn else Icons.Rounded.FlashOff,
                     label = stringResource(if (flash) R.string.capture_flash_on else R.string.capture_flash_off),
