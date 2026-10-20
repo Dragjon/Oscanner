@@ -20,10 +20,11 @@ data class OcrResult(
 )
 
 /**
- * Tesseract on a cleaned page image. Not thread-safe and holds native memory: create one per
- * job, call [close] when done.
+ * Tesseract on a cleaned page image: every language it has data for. English pages go to
+ * [PaddleReader] instead; Tesseract's word confidence also tells print from handwriting.
+ * Not thread-safe and holds native memory: create one per job, call [close] when done.
  */
-class TextRecognizer(languages: Languages, codes: List<String>) : AutoCloseable {
+class TextRecognizer(languages: Languages, codes: List<String>) : PageReader {
 
     private val api = TessBaseAPI()
 
@@ -38,7 +39,7 @@ class TextRecognizer(languages: Languages, codes: List<String>) : AutoCloseable 
         api.setVariable("user_defined_dpi", "300")
     }
 
-    fun read(image: Bitmap): OcrResult {
+    override fun read(image: Bitmap): OcrResult {
         api.setImage(image)
         val text = api.utF8Text.orEmpty().trim()
         val words = mutableListOf<OcrWord>()

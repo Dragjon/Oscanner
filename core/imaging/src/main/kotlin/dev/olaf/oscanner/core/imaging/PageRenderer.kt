@@ -225,10 +225,10 @@ object PageRenderer {
      * The page as Tesseract should see it: same crop, straightening and rotation as [render], so
      * word boxes line up with the page people see, but always in clean black and white (Ink).
      */
-    fun renderForOcr(source: Bitmap, edits: PageEdits): Bitmap =
+    fun renderForOcr(source: Bitmap, edits: PageEdits, filter: PageFilter = PageFilter.Ink): Bitmap =
         // Blacked-out areas read as blank paper: big black blocks make Tesseract misjudge the
         // words beside them. What was under them is gone either way.
-        render(source, edits.copy(filter = PageFilter.Ink, marks = emptyList(), texts = emptyList()), OCR_SIDE, android.graphics.Color.WHITE)
+        render(source, edits.copy(filter = filter, marks = emptyList(), texts = emptyList()), OCR_SIDE, android.graphics.Color.WHITE)
 
     /**
      * What clean-up will remove, as an 8-bit alpha image the size of the straightened page

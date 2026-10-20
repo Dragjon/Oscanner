@@ -14,9 +14,12 @@ import dev.olaf.oscanner.core.data.db.PageEntity
 import dev.olaf.oscanner.core.imaging.PageRenderer
 import dev.olaf.oscanner.core.model.Area
 import dev.olaf.oscanner.core.model.PageEdits
+import dev.olaf.oscanner.core.model.PageFilter
 import dev.olaf.oscanner.core.model.ProcessingState
 import dev.olaf.oscanner.core.ocr.Languages
 import dev.olaf.oscanner.core.ocr.OcrResult
+import dev.olaf.oscanner.core.ocr.PaddleReader
+import dev.olaf.oscanner.core.ocr.PageReader
 import dev.olaf.oscanner.core.ocr.TextRecognizer
 import dev.olaf.oscanner.core.pdf.PdfWord
 import kotlinx.coroutines.Dispatchers
@@ -78,7 +81,7 @@ class TextReader(
         db.documents().setState(documentId, ProcessingState.ReadingText.name)
         try {
             withContext(Dispatchers.Default) {
-                TextRecognizer(languages, codes).use { recognizer ->
+                openReader(codes).use { recognizer ->
                     for (page in pages) {
                         // A page deleted or re-cropped meanwhile is skipped; it'll be queued again.
                         val current = db.pages().get(page.id) ?: continue
@@ -128,9 +131,26 @@ class TextReader(
     fun words(page: PageEntity): List<PdfWord> =
         runCatching { readWords(ocrFile(page)) }.getOrDefault(emptyList())
 
-    private fun read(recognizer: TextRecognizer, page: PageEntity): OcrResult {
+    /**
+     * PP-OCR for English, which reads photographed and faint print far better; Tesseract for
+     * everything else, and as a fallback should the models fail to load.
+     */
+    private fun openReader(codes: List<String>): PageReader {
+        if (codes.isEmpty() || codes.all { it == Languages.ENGLISH }) {
+            runCatching { PaddleReader(context) }
+                .onFailure { Log.w(TAG, "Text models failed to load; using Tesseract", it) }
+                .getOrNull()
+                ?.let { return it }
+        }
+        return TextRecognizer(languages, codes)
+    }
+
+    private fun read(recognizer: PageReader, page: PageEntity): OcrResult {
         val source = PageRenderer.loadUpright(page.originalPath, SOURCE_SIDE)
-        val image = PageRenderer.renderForOcr(source, EditsJson.read(page.editsJson))
+        // Tesseract wants crisp black and white; the PP-OCR models were trained on photos, and
+        // thresholding breaks up small or faint letters they could still have read in gray.
+        val filter = if (recognizer is PaddleReader) PageFilter.Gray else PageFilter.Ink
+        val image = PageRenderer.renderForOcr(source, EditsJson.read(page.editsJson), filter)
         source.recycle()
         return recognizer.read(image).also { image.recycle() }
     }

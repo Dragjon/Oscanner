@@ -4,3 +4,6 @@
 *.png binary
 *.webp binary
 *.ttf binary
+*.onnx binary
+*.dat binary
+*.traineddata binary

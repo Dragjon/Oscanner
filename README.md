@@ -15,7 +15,8 @@ follows, in [`PLAN.md`](PLAN.md).
   removal and neutral paper under tinted light. Curved pages are flattened; photos of screens can
   have their moiré patterns reduced. Modes for ID cards (printed at true size), books (split at
   the spine), whiteboards, and QR codes or barcodes.
-- **Text**: on-device OCR (Tesseract), full-text search, searchable PDFs, copy, and export to
+- **Text**: on-device OCR (PP-OCR models for English, with doubtful words corrected from word
+  statistics; Tesseract for other languages), full-text search, searchable PDFs, copy, and export to
   plain text or Word.
 - **Documents**: folders, tags and notes, Trash, merge, reorder/rotate/copy out pages, sign,
   draw, type text and stamps, erase, remove pen marks or fingers, black out private details
@@ -43,7 +44,7 @@ app/              navigation, theme host, app lock, shortcut/tile/widget
 core/model        plain data types (documents, pages, edit recipes)
 core/data         Room database, page files, rendering queue, OCR jobs, export
 core/imaging      OpenCV: detection, straightening, looks, clean-up, book split
-core/ocr          Tesseract wrapper and language downloads
+core/ocr          PP-OCR reader and word fixer, Tesseract wrapper, language downloads
 core/pdf          dependency-free PDF writer (text layer, AES-256) and DOCX writer
 core/design       Soft Card, Night design system: theme, type, components
 feature/*         library, capture, review, document, text, settings
@@ -57,5 +58,5 @@ look, sliders, marks, clean-up), and what you see is a render that can always be
 - Model-based clean-up (LaMa inpainting, a handwriting classifier) and a learned page detector
 - Translation (Bergamot), pending a licence check of the language models
 - App-level encryption at rest (Android's file-based encryption protects data meanwhile)
-- Source builds of OpenCV and Tesseract for F-Droid; a baseline profile for faster cold start
+- Source builds of OpenCV, Tesseract and ONNX Runtime for F-Droid; a baseline profile for faster cold start
 - A freedom-to-operate review of the areas flagged ⚠ in `PLAN.md` before any public release
