@@ -3,6 +3,7 @@ package dev.olaf.oscanner.feature.document
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dev.olaf.oscanner.core.model.PdfQuality
 import dev.olaf.oscanner.core.data.DocumentRepository
 import dev.olaf.oscanner.core.data.FolderRepository
 import dev.olaf.oscanner.core.data.PageStore
@@ -67,6 +68,9 @@ class DocumentViewModel(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DocumentUiState())
 
     fun sharePdf(password: String? = null) = work(Busy.PreparingPdf) { DocumentEvent.SharePdf(store.exportPdf(documentId, password)) }
+
+    /** A PDF small enough for email or a form's upload limit, whatever the quality setting. */
+    fun shareSmallPdf() = work(Busy.PreparingPdf) { DocumentEvent.SharePdf(store.exportPdf(documentId, quality = PdfQuality.Small)) }
 
     fun shareImages() = work(Busy.PreparingImages) { DocumentEvent.ShareImages(store.exportJpegs(documentId)) }
 

@@ -43,6 +43,7 @@ import androidx.compose.material.icons.rounded.Crop
 import androidx.compose.material.icons.rounded.Draw
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.FileOpen
+import androidx.compose.material.icons.rounded.Compress
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.ViewDay
 import androidx.compose.material.icons.rounded.Lock
@@ -303,6 +304,7 @@ fun DocumentRoute(
                     Sheet.Share -> {
                         SheetSection(stringResource(R.string.document_section_send))
                         SheetAction(Icons.Rounded.PictureAsPdf, stringResource(R.string.document_share_pdf), stringResource(R.string.document_share_pdf_description), act { viewModel.sharePdf() })
+                        SheetAction(Icons.Rounded.Compress, stringResource(R.string.document_share_small_pdf), stringResource(R.string.document_share_small_pdf_description), act(viewModel::shareSmallPdf))
                         SheetAction(Icons.Rounded.Lock, stringResource(R.string.document_share_protected), stringResource(R.string.document_share_protected_description), act { protecting = true })
                         SheetAction(Icons.Rounded.Image, stringResource(R.string.document_share_images), stringResource(R.string.document_share_images_description), act(viewModel::shareImages))
                         if (document.pageCount > 1) {

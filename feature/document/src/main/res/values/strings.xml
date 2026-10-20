@@ -23,6 +23,8 @@
     <string name="document_text">Text</string>
     <string name="document_share_pdf">Share as PDF</string>
     <string name="document_share_pdf_description">One file with every page</string>
+    <string name="document_share_small_pdf">Share a smaller PDF</string>
+    <string name="document_share_small_pdf_description">For email or upload limits; text stays sharp enough to read</string>
     <string name="document_share_protected">Share PDF with a password</string>
     <string name="document_share_protected_description">Only people with the password can open it</string>
     <string name="document_password_title">Choose a password</string>

@@ -525,7 +525,7 @@ class PageStore(
      * Writes the document as a PDF to [out], with the page size and file size from Settings.
      * Renders any page that isn't ready yet first. A [password] encrypts it with AES-256.
      */
-    suspend fun writePdf(documentId: Long, out: OutputStream, password: String? = null) {
+    suspend fun writePdf(documentId: Long, out: OutputStream, password: String? = null, quality: PdfQuality? = null) {
         awaitRenders(documentId)
         val prefs = settings.settings.first()
         val row = db.documents().getRow(documentId)
@@ -534,7 +534,7 @@ class PageStore(
             try {
                 val pages = db.pages().forDocument(documentId).mapNotNull { page ->
                     val render = page.renderPath?.let(::File)?.takeIf(File::exists) ?: return@mapNotNull null
-                    PdfPage(compress(render, prefs.pdfQuality, prefs.watermark, temp), visibleWords(page))
+                    PdfPage(compress(render, quality ?: prefs.pdfQuality, prefs.watermark, temp), visibleWords(page))
                 }
                 val format = when (prefs.pdfPageFormat) {
                     PdfPageFormat.Auto -> PdfPageSize.Auto
@@ -576,10 +576,11 @@ class PageStore(
     }
 
     /** A PDF in the share cache, named after the document. */
-    suspend fun exportPdf(documentId: Long, password: String? = null): File {
+    /** The document as a PDF in the share cache; [quality] overrides the setting, e.g. Small to send. */
+    suspend fun exportPdf(documentId: Long, password: String? = null, quality: PdfQuality? = null): File {
         val title = db.documents().getRow(documentId)?.title ?: "Scan"
         val file = File(exportsDir.apply { mkdirs() }, "${safeName(title)}.pdf")
-        withContext(Dispatchers.IO) { file.outputStream().buffered().use { writePdf(documentId, it, password) } }
+        withContext(Dispatchers.IO) { file.outputStream().buffered().use { writePdf(documentId, it, password, quality) } }
         return file
     }
 
