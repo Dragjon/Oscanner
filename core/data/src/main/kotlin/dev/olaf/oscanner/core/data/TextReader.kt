@@ -12,6 +12,8 @@ import androidx.work.workDataOf
 import dev.olaf.oscanner.core.data.db.OscannerDatabase
 import dev.olaf.oscanner.core.data.db.PageEntity
 import dev.olaf.oscanner.core.imaging.PageRenderer
+import dev.olaf.oscanner.core.model.Area
+import dev.olaf.oscanner.core.model.PageEdits
 import dev.olaf.oscanner.core.model.ProcessingState
 import dev.olaf.oscanner.core.ocr.Languages
 import dev.olaf.oscanner.core.ocr.OcrResult
@@ -97,6 +99,31 @@ class TextReader(
         }
     }
 
+    /**
+     * Where the printed words are on a page as [edits] shape it, for telling print from
+     * handwriting. Tesseract reads print with high confidence and handwriting with low, and
+     * print on one page is all about the same height, so only confident words of the common
+     * height count. Takes a few seconds.
+     */
+    suspend fun printedAreas(originalPath: String, edits: PageEdits): List<Area> = withContext(Dispatchers.Default) {
+        val codes = settings.settings.first().textLanguages
+        val source = PageRenderer.loadUpright(originalPath, SOURCE_SIDE)
+        // Handwriting must still be on the page to be told apart.
+        val image = PageRenderer.renderForOcr(source, edits.copy(removePenInk = false, printed = null, erase = emptyList(), keep = emptyList()))
+        source.recycle()
+        val words = try {
+            TextRecognizer(languages, codes).use { it.read(image).words }
+        } finally {
+            image.recycle()
+        }
+        val sure = words.filter { it.confidence >= PRINT_CONFIDENCE && it.text.any(Char::isLetterOrDigit) }
+        if (sure.isEmpty()) return@withContext emptyList()
+        val heights = sure.map { it.bottom - it.top }.sorted()
+        val typical = heights[heights.size / 2]
+        sure.filter { (it.bottom - it.top) in typical * 0.5f..typical * 2.2f }
+            .map { Area(it.left, it.top, it.right, it.bottom) }
+    }
+
     /** Words with boxes for a page's PDF text layer; empty if it hasn't been read. */
     fun words(page: PageEntity): List<PdfWord> =
         runCatching { readWords(ocrFile(page)) }.getOrDefault(emptyList())
@@ -130,6 +157,8 @@ class TextReader(
     private companion object {
         const val TAG = "TextReader"
         const val SOURCE_SIDE = 4000
+        /** Tesseract's 0–100 word confidence above which a word is taken as print. */
+        const val PRINT_CONFIDENCE = 75f
     }
 }
 

@@ -1,5 +1,6 @@
 package dev.olaf.oscanner.core.data
 
+import dev.olaf.oscanner.core.model.Area
 import dev.olaf.oscanner.core.model.Corner
 import dev.olaf.oscanner.core.model.CurveLine
 import dev.olaf.oscanner.core.model.PageCurve
@@ -33,6 +34,11 @@ internal object EditsJson {
         .apply { if (edits.keep.isNotEmpty()) put("keep", JSONArray().apply { edits.keep.forEach { put(writeMark(it)) } }) }
         .apply { if (edits.removePenInk) put("removePenInk", true) }
         .apply { if (edits.removeFingers) put("removeFingers", true) }
+        .apply {
+            edits.printed?.let { areas ->
+                put("printed", JSONArray().apply { areas.forEach { put(it.left.toDouble()); put(it.top.toDouble()); put(it.right.toDouble()); put(it.bottom.toDouble()) } })
+            }
+        }
         .apply { if (edits.flatten) put("flatten", true) }
         .apply { if (edits.descreen) put("descreen", true) }
         .apply {
@@ -126,6 +132,10 @@ internal object EditsJson {
             keep = strokes("keep"),
             removePenInk = obj.optBoolean("removePenInk"),
             removeFingers = obj.optBoolean("removeFingers"),
+            printed = obj.optJSONArray("printed")?.let { a ->
+                List(a.length() / 4) { i -> Area(a.optDouble(i * 4).toFloat(), a.optDouble(i * 4 + 1).toFloat(), a.optDouble(i * 4 + 2).toFloat(), a.optDouble(i * 4 + 3).toFloat()) }
+                    .filter { listOf(it.left, it.top, it.right, it.bottom).none(Float::isNaN) }
+            },
             flatten = obj.optBoolean("flatten"),
             descreen = obj.optBoolean("descreen"),
             curve = obj.optJSONArray("curve")?.let { a ->

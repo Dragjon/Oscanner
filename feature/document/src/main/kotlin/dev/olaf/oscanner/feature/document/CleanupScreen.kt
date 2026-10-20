@@ -3,11 +3,23 @@ package dev.olaf.oscanner.feature.document
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.rounded.Gesture
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -23,7 +35,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Undo
@@ -33,7 +44,6 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Compare
 import androidx.compose.material.icons.rounded.FrontHand
 import androidx.compose.material.icons.rounded.Shield
-import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -63,14 +73,12 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -140,34 +148,39 @@ fun CleanupRoute(viewModel: CleanupViewModel, onDone: () -> Unit) {
 
         if (edits != null) {
             Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Toggle(Icons.Rounded.Edit, stringResource(R.string.document_remove_handwriting), edits.removePenInk) { viewModel.setRemovePenInk(!edits.removePenInk) }
-                    Toggle(Icons.Rounded.FrontHand, stringResource(R.string.document_remove_fingers), edits.removeFingers) { viewModel.setRemoveFingers(!edits.removeFingers) }
+                CleanupHint(state)
+                // Two kinds of control, kept apart: switches that find things on their own, and a
+                // brush you paint with.
+                SectionLabel(stringResource(R.string.document_cleanup_auto))
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    AutoSwitch(
+                        icon = Icons.Rounded.Gesture,
+                        title = stringResource(R.string.document_remove_handwriting),
+                        description = stringResource(R.string.document_remove_handwriting_description),
+                        on = edits.removePenInk,
+                        busy = state.findingPrint,
+                        onToggle = { viewModel.setRemovePenInk(!edits.removePenInk) },
+                    )
+                    AutoSwitch(
+                        icon = Icons.Rounded.FrontHand,
+                        title = stringResource(R.string.document_remove_fingers),
+                        description = stringResource(R.string.document_remove_fingers_description),
+                        on = edits.removeFingers,
+                        busy = false,
+                        onToggle = { viewModel.setRemoveFingers(!edits.removeFingers) },
+                    )
                 }
-                Text(
-                    stringResource(if (edits.removePenInk) R.string.document_remove_handwriting_on else R.string.document_cleanup_hint),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = colors.onSurfaceVariant,
+                SectionLabel(stringResource(R.string.document_brush))
+                BrushPanel(
+                    brush = state.brush,
+                    size = state.size,
+                    onBrush = viewModel::setBrush,
+                    onSize = viewModel::setSize,
                 )
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Toggle(Icons.Rounded.Brush, stringResource(R.string.document_brush_erase), state.brush == CleanupBrush.Erase) { viewModel.setBrush(CleanupBrush.Erase) }
-                    Toggle(Icons.Rounded.Shield, stringResource(R.string.document_brush_keep), state.brush == CleanupBrush.Keep) { viewModel.setBrush(CleanupBrush.Keep) }
-                    Spacer(Modifier.width(4.dp))
-                    BrushSize.entries.forEach { size ->
-                        val label = stringResource(
-                            when (size) {
-                                BrushSize.Small -> R.string.document_brush_small
-                                BrushSize.Medium -> R.string.document_brush_medium
-                                BrushSize.Large -> R.string.document_brush_large
-                            },
-                        )
-                        Toggle(null, label, state.size == size) { viewModel.setSize(size) }
-                    }
-                }
             }
         }
 
-        // Press and hold to see the result; let go to see what's marked again.
+        // Press and hold to see the page as it was; let go to see the result again.
         Surface(
             shape = MaterialTheme.shapes.medium,
             color = if (comparing) colors.primaryContainer else colors.surfaceContainer,
@@ -215,37 +228,159 @@ fun CleanupRoute(viewModel: CleanupViewModel, onDone: () -> Unit) {
 }
 
 @Composable
-private fun Toggle(icon: ImageVector?, label: String, selected: Boolean, onClick: () -> Unit) {
+private fun SectionLabel(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 4.dp, top = 4.dp).semantics { heading() },
+    )
+}
+
+/** One line under the page: what's happening, or what the brush does. */
+@Composable
+private fun CleanupHint(state: CleanupUiState) {
+    val colors = MaterialTheme.colorScheme
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+        if (state.findingPrint) {
+            CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = colors.onSurfaceVariant)
+            Spacer(Modifier.width(8.dp))
+        }
+        Text(
+            stringResource(
+                when {
+                    state.findingPrint -> R.string.document_finding_print
+                    state.noPrintFound -> R.string.document_no_print_found
+                    state.brush == CleanupBrush.Keep -> R.string.document_brush_keep_hint
+                    else -> R.string.document_brush_erase_hint
+                },
+            ),
+            style = MaterialTheme.typography.bodyMedium,
+            color = colors.onSurfaceVariant,
+        )
+    }
+}
+
+/** An automatic removal, on or off: a card with a switch, unlike the brush controls below. */
+@Composable
+private fun AutoSwitch(
+    icon: ImageVector,
+    title: String,
+    description: String,
+    on: Boolean,
+    busy: Boolean,
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val colors = MaterialTheme.colorScheme
     Surface(
-        onClick = onClick,
-        shape = MaterialTheme.shapes.medium,
-        color = if (selected) colors.primary else colors.surfaceContainer,
-        contentColor = if (selected) colors.onPrimary else colors.onSurfaceVariant,
-        modifier = Modifier
-            .height(40.dp)
-            .semantics {
-                role = Role.Checkbox
-                this.selected = selected
-            },
+        checked = on,
+        onCheckedChange = { onToggle() },
+        enabled = !busy,
+        shape = MaterialTheme.shapes.large,
+        color = if (on) colors.primaryContainer else colors.surfaceContainer,
+        contentColor = if (on) colors.onPrimaryContainer else colors.onSurface,
+        modifier = modifier.fillMaxWidth().semantics { role = Role.Switch },
     ) {
-        Row(Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (icon != null) {
-                Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
+        Row(Modifier.padding(start = 16.dp, end = 12.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.labelLarge)
+                Text(
+                    description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (on) colors.onPrimaryContainer.copy(alpha = 0.8f) else colors.onSurfaceVariant,
+                )
             }
-            Text(label, style = MaterialTheme.typography.labelLarge)
+            if (busy) {
+                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = colors.onSurfaceVariant)
+            } else {
+                Switch(
+                    checked = on,
+                    onCheckedChange = null,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = colors.onPrimary,
+                        checkedTrackColor = colors.primary,
+                        uncheckedThumbColor = colors.onSurfaceVariant,
+                        uncheckedTrackColor = colors.surfaceContainerHigh,
+                        uncheckedBorderColor = colors.outline,
+                    ),
+                )
+            }
         }
     }
 }
 
-/** The page with the hatch over what will be removed; a finger paints with the chosen brush. */
+/**
+ * The brush, in its own panel: what it does (Erase or Keep) as a two-way switch, and how wide
+ * it is as three dots of that width, so the size is seen rather than read.
+ */
+@Composable
+private fun BrushPanel(brush: CleanupBrush, size: BrushSize, onBrush: (CleanupBrush) -> Unit, onSize: (BrushSize) -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Surface(shape = MaterialTheme.shapes.large, color = colors.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            SingleChoiceSegmentedButtonRow(Modifier.weight(1f)) {
+                listOf(
+                    Triple(CleanupBrush.Erase, Icons.Rounded.Brush, R.string.document_brush_erase),
+                    Triple(CleanupBrush.Keep, Icons.Rounded.Shield, R.string.document_brush_keep),
+                ).forEachIndexed { index, (value, icon, label) ->
+                    SegmentedButton(
+                        selected = brush == value,
+                        onClick = { onBrush(value) },
+                        shape = SegmentedButtonDefaults.itemShape(index, 2),
+                        icon = { Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        colors = SegmentedButtonDefaults.colors(
+                            activeContainerColor = colors.primaryContainer,
+                            activeContentColor = colors.onPrimaryContainer,
+                            inactiveContainerColor = colors.surfaceContainer,
+                            inactiveContentColor = colors.onSurfaceVariant,
+                            activeBorderColor = colors.outlineVariant,
+                            inactiveBorderColor = colors.outlineVariant,
+                        ),
+                    ) { Text(stringResource(label), style = MaterialTheme.typography.labelLarge, maxLines = 1) }
+                }
+            }
+            Spacer(Modifier.width(8.dp))
+            BrushSize.entries.forEach { option ->
+                val label = stringResource(
+                    when (option) {
+                        BrushSize.Small -> R.string.document_brush_small
+                        BrushSize.Medium -> R.string.document_brush_medium
+                        BrushSize.Large -> R.string.document_brush_large
+                    },
+                )
+                val chosen = option == size
+                Box(
+                    Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(if (chosen) colors.primaryContainer else Color.Transparent)
+                        .border(if (chosen) 2.dp else 0.dp, if (chosen) colors.primary else Color.Transparent, CircleShape)
+                        .selectable(selected = chosen, role = Role.RadioButton, onClick = { onSize(option) })
+                        .semantics { contentDescription = label },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    val dot = when (option) {
+                        BrushSize.Small -> 6.dp
+                        BrushSize.Medium -> 12.dp
+                        BrushSize.Large -> 20.dp
+                    }
+                    Box(Modifier.size(dot).clip(CircleShape).background(if (chosen) colors.onPrimaryContainer else colors.onSurfaceVariant))
+                }
+            }
+        }
+    }
+}
+
+/** The page as it will be, removed areas tinted; a finger paints with the chosen brush. */
 @Composable
 private fun CleanupCanvas(state: CleanupUiState, comparing: Boolean, onStroke: (List<Corner>) -> Unit, modifier: Modifier = Modifier) {
     val before = remember(state.before) { state.before!!.asImageBitmap() }
     val after = remember(state.after) { state.after?.asImageBitmap() }
     val mask = remember(state.mask) { state.mask?.asImageBitmap() }
-    val hatch = LocalOscannerExtras.current.maskHatch
+    val tint = MaterialTheme.colorScheme.primary
     val keepColor = LocalOscannerExtras.current.success
     val brush = MaterialTheme.colorScheme.primary
     val current = remember { mutableStateListOf<Corner>() }
@@ -283,20 +418,13 @@ private fun CleanupCanvas(state: CleanupUiState, comparing: Boolean, onStroke: (
                 }
                 .pointerInput(shown) { detectTapGestures { onStroke(listOf(toPage(it))) } },
         ) {
-            drawImage(if (comparing && after != null) after else before, dstOffset = dst, dstSize = dstSize)
+            drawImage(if (comparing || after == null) before else after, dstOffset = dst, dstSize = dstSize)
         }
         if (!comparing && mask != null) {
-            // Diagonal lines kept only where the mask is opaque: an offscreen layer, then DstIn.
+            // A light tint where paper was put back, so you can see what went: a flat color
+            // kept only where the mask is opaque (offscreen layer, then DstIn).
             Canvas(Modifier.fillMaxSize().graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)) {
-                val step = 8.dp.toPx()
-                // The mask only trims inside the page, so the lines must not leave it.
-                clipRect(shown.left, shown.top, shown.right, shown.bottom) {
-                    var x = shown.left - shown.height
-                    while (x < shown.right) {
-                        drawLine(hatch.copy(alpha = 0.9f), Offset(x, shown.bottom), Offset(x + shown.height, shown.top), 2.dp.toPx())
-                        x += step
-                    }
-                }
+                drawRect(tint.copy(alpha = 0.22f), topLeft = shown.topLeft, size = shown.size)
                 drawImage(mask, dstOffset = dst, dstSize = dstSize, blendMode = BlendMode.DstIn)
             }
         }

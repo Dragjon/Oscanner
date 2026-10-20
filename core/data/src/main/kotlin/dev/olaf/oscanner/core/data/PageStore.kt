@@ -11,6 +11,7 @@ import dev.olaf.oscanner.core.imaging.BookSplitter
 import dev.olaf.oscanner.core.imaging.DocumentDetector
 import dev.olaf.oscanner.core.imaging.PageRenderer
 import dev.olaf.oscanner.core.imaging.QuadGeometry
+import dev.olaf.oscanner.core.model.Area
 import dev.olaf.oscanner.core.model.Corner
 import dev.olaf.oscanner.core.model.DocumentKind
 import dev.olaf.oscanner.core.model.Page
@@ -515,6 +516,9 @@ class PageStore(
 
     /** Replaces a page's text with the user's corrections. Boxes for the PDF stay as read. */
     suspend fun setText(pageId: Long, value: String) = db.pages().setText(pageId, value)
+
+    /** Where the printed words are on [page] as [edits] shape it; see [TextReader.printedAreas]. */
+    suspend fun printedAreas(page: Page, edits: PageEdits): List<Area> = text.printedAreas(page.originalPath, edits)
 
     /** Reads the text now, even if automatic reading is off. */
     fun readNow(documentId: Long) = text.schedule(documentId)

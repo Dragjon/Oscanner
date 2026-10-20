@@ -38,8 +38,12 @@ data class CleanupUiState(
     val brush: CleanupBrush = CleanupBrush.Erase,
     val size: BrushSize = BrushSize.Medium,
     val working: Boolean = false,
+    /** Reading the page to tell its print from handwriting. */
+    val findingPrint: Boolean = false,
     val saved: Boolean = false,
 ) {
+    /** Handwriting removal is on but no printed words were found: all writing goes. */
+    val noPrintFound: Boolean get() = edits?.removePenInk == true && edits.printed?.isEmpty() == true
     val changed: Boolean get() = page != null && edits != null && edits != page.edits
 }
 
@@ -71,7 +75,27 @@ class CleanupViewModel(
         }
     }
 
-    fun setRemovePenInk(on: Boolean) = edit { it.copy(removePenInk = on) }
+    /**
+     * Turning handwriting removal on first finds the printed words (once per page; kept in
+     * the edits), since dark ink outside them is what counts as handwriting.
+     */
+    fun setRemovePenInk(on: Boolean) {
+        val s = _state.value
+        val page = s.page ?: return
+        val edits = s.edits ?: return
+        if (!on || edits.printed != null) {
+            edit { it.copy(removePenInk = on) }
+            return
+        }
+        if (s.findingPrint) return
+        _state.update { it.copy(findingPrint = true) }
+        viewModelScope.launch {
+            val printed = runCatching { store.printedAreas(page, edits) }.getOrNull()
+            _state.update { it.copy(findingPrint = false) }
+            // Unreadable (no language data, say): colored pen is still found.
+            edit { it.copy(removePenInk = true, printed = printed) }
+        }
+    }
 
     fun setRemoveFingers(on: Boolean) = edit { it.copy(removeFingers = on) }
 
@@ -135,4 +159,4 @@ class CleanupViewModel(
 
 /** The same page with no clean-up and no drawn marks: the "before" for comparing. */
 internal fun PageEdits.withoutCleanup() =
-    copy(erase = emptyList(), keep = emptyList(), removePenInk = false, removeFingers = false, marks = emptyList(), texts = emptyList())
+    copy(erase = emptyList(), keep = emptyList(), removePenInk = false, printed = null, removeFingers = false, marks = emptyList(), texts = emptyList())

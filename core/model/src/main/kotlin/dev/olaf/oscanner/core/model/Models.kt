@@ -113,8 +113,17 @@ data class PageEdits(
     val erase: List<InkMark> = emptyList(),
     /** Clean-up: brush strokes protecting areas from the automatic removals below. */
     val keep: List<InkMark> = emptyList(),
-    /** Clean-up: remove blue, red and green pen strokes, keeping black print. */
+    /**
+     * Clean-up: remove handwriting, keeping print. Colored pen anywhere, plus dark ink outside
+     * the [printed] words.
+     */
     val removePenInk: Boolean = false,
+    /**
+     * Where printed words were read with confidence when handwriting removal was turned on,
+     * normalized to the page as shown. Ink inside them is print and stays. Null on pages from
+     * before this existed: those remove colored pen only.
+     */
+    val printed: List<Area>? = null,
     /** Clean-up: remove skin-colored shapes reaching in from the page edge, like holding fingers. */
     val removeFingers: Boolean = false,
     /**
@@ -141,7 +150,15 @@ data class PageEdits(
     fun rotatedClockwise(): PageEdits {
         fun List<InkMark>.turned() = map { mark -> mark.copy(points = mark.points.map { Corner(1f - it.y, it.x) }) }
         val turnedTexts = texts.map { it.copy(x = 1f - it.y, y = it.x, angle = (it.angle + 90) % 360) }
-        return copy(rotation = (rotation + 90) % 360, marks = marks.turned(), texts = turnedTexts, erase = erase.turned(), keep = keep.turned())
+        val turnedPrinted = printed?.map { Area(1f - it.bottom, it.left, 1f - it.top, it.right) }
+        return copy(
+            rotation = (rotation + 90) % 360,
+            marks = marks.turned(),
+            texts = turnedTexts,
+            erase = erase.turned(),
+            keep = keep.turned(),
+            printed = turnedPrinted,
+        )
     }
 }
 
@@ -170,6 +187,9 @@ data class TextMark(
     /** A frame around it, like a rubber stamp. */
     val stamp: Boolean = false,
 )
+
+/** A rectangle normalized to the page as shown, edges 0…1. */
+data class Area(val left: Float, val top: Float, val right: Float, val bottom: Float)
 
 /**
  * One stroke on a finished page. Points are normalized to the page as shown (after crop and
