@@ -476,7 +476,12 @@ class DocumentDetector(
             val contrast = abs(profile.last() - profile.first())
             var steepest = 0.0
             for (j in 0 until profile.size - 2) steepest = max(steepest, abs(profile[j + 2] - profile[j]))
-            return contrast >= MIN_CONTRAST && steepest >= STEEP * contrast
+            // White paper on a light counter can sit only ten or so levels above it; its edge is
+            // still a step if it changes almost all at once. Only paper lighter than what it's
+            // on: a faint darker shape is far more often a door or a cupboard than a page.
+            val lighterInside = profile.last() > profile.first()
+            return (contrast >= MIN_CONTRAST && steepest >= STEEP * contrast) ||
+                (lighterInside && contrast >= FAINT_CONTRAST && steepest >= FAINT_STEEP * contrast)
         }
 
         fun release() {
@@ -507,6 +512,9 @@ class DocumentDetector(
         /** A step changes this share of its contrast within two pixels; a ramp doesn't. */
         private const val STEEP = 0.4
         private const val MIN_CONTRAST = 18.0
+        /** A fainter step counts when it's this sharp. */
+        private const val FAINT_CONTRAST = 10.0
+        private const val FAINT_STEEP = 0.6
         /** An inner sheet this well outlined, at most this share of an outer one, splits it. */
         private const val WHOLE = 0.9
         private const val UNION_SHARE = 0.85
