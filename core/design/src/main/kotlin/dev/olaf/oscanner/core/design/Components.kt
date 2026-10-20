@@ -32,6 +32,8 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -61,6 +63,21 @@ fun Dock(
     }
 }
 
+/**
+ * The dock's one-word labels grow with the system font size up to [MAX_DOCK_SCALE], then stop,
+ * so four of them still fit side by side at 200%. Like system navigation bars; TalkBack reads
+ * the same words either way.
+ */
+@Composable
+private fun cappedScale(style: TextStyle): TextStyle {
+    val scale = LocalDensity.current.fontScale
+    if (scale <= MAX_DOCK_SCALE) return style
+    val factor = MAX_DOCK_SCALE / scale
+    return style.copy(fontSize = style.fontSize * factor, lineHeight = style.lineHeight * factor)
+}
+
+private const val MAX_DOCK_SCALE = 1.3f
+
 /** A neutral action: icon above a word. Never colored, because it is not the primary action. */
 @Composable
 fun DockAction(
@@ -89,7 +106,7 @@ fun DockAction(
         ) {
             Icon(icon, contentDescription = null, modifier = Modifier.size(24.dp))
             Spacer(Modifier.height(4.dp))
-            Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+            Text(label, style = cappedScale(MaterialTheme.typography.labelMedium), maxLines = 1)
         }
     }
 }
@@ -120,7 +137,7 @@ fun PrimaryPill(
         ) {
             Icon(icon, contentDescription = null, modifier = Modifier.size(24.dp))
             Spacer(Modifier.width(10.dp))
-            Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+            Text(label, style = cappedScale(MaterialTheme.typography.labelLarge), maxLines = 1)
         }
     }
 }
