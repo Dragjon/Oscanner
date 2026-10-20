@@ -469,13 +469,26 @@ private fun TopChrome(
     onOpenFixes: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
+    // Words on the pills only while they fit with a clear gap after the close button: Auto's
+    // goes first, then Auto-fix's. Narrow phones and large text keep the icons apart.
+    val fixesWord = stringResource(R.string.capture_fixes)
+    val fixesLabel = if (fixesOn > 0) "$fixesWord · $fixesOn" else fixesWord
+    val autoLabel = stringResource(if (autoCapture) R.string.capture_auto else R.string.capture_manual)
+    val measurer = rememberTextMeasurer()
+    val pillStyle = MaterialTheme.typography.labelMedium
+    val density = LocalDensity.current
+    BoxWithConstraints(
         modifier
             .fillMaxWidth()
             .statusBarsPadding()
             .padding(horizontal = 8.dp, vertical = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+    fun wordWidth(text: String) = with(density) { measurer.measure(text, pillStyle).size.width.toDp() } + PILL_WORD_EXTRA
+    val icons = PILL_ICON * ((if (showFixes) 1 else 0) + (if (showAuto) 1 else 0) + (if (showCameraControls) 2 else 0)) +
+        8.dp * 4 + 48.dp + CLOSE_GAP
+    val fixesWords = showFixes && icons + wordWidth(fixesLabel) <= maxWidth
+    val autoWords = showAuto && fixesWords && icons + wordWidth(fixesLabel) + wordWidth(autoLabel) <= maxWidth
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             IconButton(
                 onClick = onClose,
@@ -488,25 +501,25 @@ private fun TopChrome(
                     modifier = Modifier.graphicsLayer { rotationZ = rotation },
                 )
             }
+            Spacer(Modifier.width(CLOSE_GAP))
             Spacer(Modifier.weight(1f))
             if (showFixes) {
-                val word = stringResource(R.string.capture_fixes)
                 ChromePill(
                     icon = Icons.Rounded.AutoFixHigh,
-                    label = if (fixesOn > 0) "$word · $fixesOn" else word,
+                    label = fixesLabel,
                     onClick = onOpenFixes,
                     rotation = rotation,
-                    showLabel = !sideways,
+                    showLabel = !sideways && fixesWords,
                 )
                 Spacer(Modifier.width(8.dp))
             }
             if (showAuto) {
                 ChromePill(
                     icon = if (autoCapture) Icons.Rounded.MotionPhotosAuto else Icons.Rounded.TouchApp,
-                    label = stringResource(if (autoCapture) R.string.capture_auto else R.string.capture_manual),
+                    label = autoLabel,
                     onClick = onToggleAuto,
                     rotation = rotation,
-                    showLabel = !sideways,
+                    showLabel = !sideways && autoWords,
                 )
                 Spacer(Modifier.width(8.dp))
             }
@@ -541,7 +554,14 @@ private fun TopChrome(
             }
         }
     }
+    }
 }
+
+/** A pill's width without its word (icon and padding), and what its word adds besides itself. */
+private val PILL_ICON = 48.dp
+private val PILL_WORD_EXTRA = 6.dp
+/** The least space between the close button and the pills. */
+private val CLOSE_GAP = 12.dp
 
 /**
  * A word about the shot, under the status: a warning (amber) or a tip (a light bulb), each with
