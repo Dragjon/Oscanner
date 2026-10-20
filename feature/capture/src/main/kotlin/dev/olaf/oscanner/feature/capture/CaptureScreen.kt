@@ -94,6 +94,23 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.text.font.FontWeight
+import kotlin.math.abs
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
@@ -148,6 +165,13 @@ fun CaptureRoute(
     // Back from system settings with the permission turned on.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { granted = context.hasCameraPermission() }
 
+
+    // The screen stays portrait; only the controls at the top turn to face the person.
+    LockPortrait()
+    val turn by rememberDeviceTurn()
+    val upright = rememberUprightRotation(turn)
+    LaunchedEffect(turn) { viewModel.setDeviceTurn(turn) }
+
     var confirmLeave by rememberSaveable { mutableStateOf(false) }
     val leave = { if (state.captures.isNotEmpty()) confirmLeave = true else onClose() }
     BackHandler(enabled = state.captures.isNotEmpty() && !state.saving) { confirmLeave = true }
@@ -175,7 +199,8 @@ fun CaptureRoute(
         }
 
         TopChrome(
-            status = if (granted) statusText(state) else null,
+            rotation = upright,
+            sideways = turn % 180 != 0,
             flash = state.flash,
             autoCapture = state.autoCapture,
             showCameraControls = granted,
@@ -185,6 +210,18 @@ fun CaptureRoute(
             onToggleAuto = { viewModel.setAutoCapture(!state.autoCapture) },
             modifier = Modifier.align(Alignment.TopCenter),
         )
+        if (granted) {
+            // Held sideways, the status reads across the middle of the view, turned upright;
+            // a long pill turned on its side at the top would run down over the page.
+            StatusPill(
+                text = statusText(state),
+                modifier = if (turn % 180 == 0) {
+                    Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 72.dp)
+                } else {
+                    Modifier.align(Alignment.Center)
+                }.graphicsLayer { rotationZ = upright },
+            )
+        }
 
         if (state.reviewing) {
             CapturedPages(
@@ -249,6 +286,7 @@ private fun CameraLayer(viewModel: CaptureViewModel, state: CaptureUiState, titl
         val executor = Executors.newSingleThreadExecutor()
         val analyzer = PageAnalyzer(
             mode = { viewModel.state.value.mode },
+            toScreen = context.backCameraToPortrait(),
             onCode = viewModel::onCode,
             onResult = { quad, sharpness, aspect, glare -> viewModel.onFrame(quad, sharpness, aspect, glare) },
         )
@@ -357,7 +395,10 @@ private fun statusText(state: CaptureUiState): String = when {
 
 @Composable
 private fun TopChrome(
-    status: String?,
+    /** Degrees that keep the controls upright for how the phone is held. */
+    rotation: Float,
+    /** Held sideways: the controls drop their words and stay compact. */
+    sideways: Boolean,
     flash: Boolean,
     autoCapture: Boolean,
     showCameraControls: Boolean,
@@ -379,7 +420,12 @@ private fun TopChrome(
                 onClick = onClose,
                 modifier = Modifier.background(Scrim, CircleShape),
             ) {
-                Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.capture_close), tint = ChromeInk)
+                Icon(
+                    Icons.Rounded.Close,
+                    contentDescription = stringResource(R.string.capture_close),
+                    tint = ChromeInk,
+                    modifier = Modifier.graphicsLayer { rotationZ = rotation },
+                )
             }
             Spacer(Modifier.weight(1f))
             if (showAuto) {
@@ -387,6 +433,8 @@ private fun TopChrome(
                     icon = if (autoCapture) Icons.Rounded.MotionPhotosAuto else Icons.Rounded.TouchApp,
                     label = stringResource(if (autoCapture) R.string.capture_auto else R.string.capture_manual),
                     onClick = onToggleAuto,
+                    rotation = rotation,
+                    showLabel = !sideways,
                 )
                 Spacer(Modifier.width(8.dp))
             }
@@ -395,37 +443,52 @@ private fun TopChrome(
                     icon = if (flash) Icons.Rounded.FlashOn else Icons.Rounded.FlashOff,
                     label = stringResource(if (flash) R.string.capture_flash_on else R.string.capture_flash_off),
                     onClick = onToggleFlash,
+                    rotation = rotation,
+                    showLabel = !sideways,
                 )
-            }
-        }
-        if (status != null) {
-            Spacer(Modifier.height(8.dp))
-            Surface(
-                color = Scrim,
-                contentColor = ChromeInk,
-                shape = CircleShape,
-                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-            ) {
-                Text(status, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
             }
         }
     }
 }
 
+/** What the camera is doing, in a few words; TalkBack reads changes as they happen. */
+@Composable
+private fun StatusPill(text: String, modifier: Modifier = Modifier) {
+    Surface(
+        color = Scrim,
+        contentColor = ChromeInk,
+        shape = CircleShape,
+        modifier = modifier.semantics { liveRegion = LiveRegionMode.Polite },
+    ) {
+        Text(text, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
+    }
+}
+
 /** A neutral camera control on the scrim: icon and a word. */
 @Composable
-private fun ChromePill(icon: ImageVector, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun ChromePill(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    rotation: Float = 0f,
+    showLabel: Boolean = true,
+) {
     Surface(
         onClick = onClick,
         color = Scrim,
         contentColor = ChromeInk,
         shape = CircleShape,
-        modifier = modifier.height(48.dp),
+        modifier = modifier
+            .height(48.dp)
+            .semantics { contentDescription = label },
     ) {
         Row(Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(6.dp))
-            Text(label, style = MaterialTheme.typography.labelMedium)
+            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp).graphicsLayer { rotationZ = rotation })
+            if (showLabel) {
+                Spacer(Modifier.width(6.dp))
+                Text(label, style = MaterialTheme.typography.labelMedium)
+            }
         }
     }
 }
@@ -449,17 +512,8 @@ private fun BottomChrome(
     ) {
         // Modes can not change mid-batch: a batch becomes one kind of document.
         if (!state.modeLocked && state.captures.isEmpty()) {
-            Row(
-                Modifier
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                CaptureMode.entries.forEach { mode ->
-                    ModeChip(stringResource(mode.label()), selected = mode == state.mode) { onModeChange(mode) }
-                }
-            }
-            Spacer(Modifier.height(16.dp))
+            ModeWheel(selected = state.mode, onSelect = onModeChange)
+            Spacer(Modifier.height(12.dp))
         }
         if (state.mode == CaptureMode.Code) {
             Text(
@@ -500,23 +554,106 @@ private fun BottomChrome(
     }
 }
 
+/**
+ * Modes on a wheel, like a camera app's: swipe or tap, and the mode in the middle is the one in
+ * use, larger and in full color; the others shrink and fade toward the edges.
+ */
 @Composable
-private fun ModeChip(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun ModeWheel(selected: CaptureMode, onSelect: (CaptureMode) -> Unit) {
+    val modes = WHEEL_ORDER
+    val list = rememberLazyListState(initialFirstVisibleItemIndex = modes.indexOf(selected))
+    val scope = rememberCoroutineScope()
     val colors = MaterialTheme.colorScheme
-    Surface(
-        onClick = onClick,
-        shape = MaterialTheme.shapes.medium,
-        color = if (selected) colors.primary else Color.White.copy(alpha = 0.12f),
-        contentColor = if (selected) colors.onPrimary else ChromeInk,
-        modifier = Modifier
-            .height(40.dp)
-            .semantics { role = Role.RadioButton },
-    ) {
-        Box(Modifier.padding(horizontal = 18.dp), contentAlignment = Alignment.Center) {
-            Text(label, style = MaterialTheme.typography.labelLarge)
+    val currentSelected by rememberUpdatedState(selected)
+    val currentOnSelect by rememberUpdatedState(onSelect)
+
+    // The item nearest the middle once the wheel settles becomes the mode.
+    LaunchedEffect(list) {
+        snapshotFlow { list.isScrollInProgress }.collect { moving ->
+            if (moving) return@collect
+            val middle = centered(list) ?: return@collect
+            if (modes[middle] != currentSelected) currentOnSelect(modes[middle])
+        }
+    }
+    // A mode set from elsewhere (say, after a scan) brings the wheel round to it.
+    LaunchedEffect(selected) {
+        val index = modes.indexOf(selected)
+        if (centered(list) != index) list.animateScrollToItem(index)
+    }
+
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val side = (maxWidth - ITEM_WIDTH) / 2
+        LazyRow(
+            state = list,
+            flingBehavior = rememberSnapFlingBehavior(list),
+            contentPadding = PaddingValues(horizontal = side),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                // Names fade out toward the edges instead of being cut off there.
+                .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+                .drawWithContent {
+                    drawContent()
+                    drawRect(
+                        Brush.horizontalGradient(0f to Color.Transparent, 0.2f to Color.Black, 0.8f to Color.Black, 1f to Color.Transparent),
+                        blendMode = BlendMode.DstIn,
+                    )
+                }
+                .semantics { role = Role.RadioButton },
+        ) {
+            items(modes.size) { index ->
+                val mode = modes[index]
+                // 1 at the middle, falling to 0 a couple of items away.
+                val nearness by remember {
+                    derivedStateOf {
+                        val info = list.layoutInfo
+                        val item = info.visibleItemsInfo.firstOrNull { it.index == index } ?: return@derivedStateOf 0f
+                        val viewportMiddle = (info.viewportStartOffset + info.viewportEndOffset) / 2f
+                        val itemMiddle = item.offset + item.size / 2f
+                        (1f - abs(itemMiddle - viewportMiddle) / (item.size * 2f)).coerceIn(0f, 1f)
+                    }
+                }
+                val active = mode == selected
+                Box(
+                    Modifier
+                        .width(ITEM_WIDTH)
+                        .fillMaxHeight()
+                        .clickable(onClickLabel = stringResource(mode.label())) {
+                            scope.launch { list.animateScrollToItem(index) }
+                        }
+                        .semantics { this.selected = active },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        stringResource(mode.label()),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+                        color = if (active) colors.primary else ChromeInk,
+                        maxLines = 1,
+                        modifier = Modifier.graphicsLayer {
+                            val scale = 0.8f + 0.35f * nearness
+                            scaleX = scale
+                            scaleY = scale
+                            alpha = 0.45f + 0.55f * nearness
+                        },
+                    )
+                }
+            }
         }
     }
 }
+
+/** The index of the item whose middle is nearest the wheel's middle. */
+private fun centered(list: LazyListState): Int? {
+    val info = list.layoutInfo
+    val middle = (info.viewportStartOffset + info.viewportEndOffset) / 2f
+    return info.visibleItemsInfo.minByOrNull { abs(it.offset + it.size / 2f - middle) }?.index
+}
+
+private val ITEM_WIDTH = 104.dp
+
+/** Document, the usual choice, in the middle; the others either side, one swipe away. */
+private val WHEEL_ORDER = listOf(CaptureMode.IdCard, CaptureMode.Book, CaptureMode.Document, CaptureMode.Whiteboard, CaptureMode.Code)
 
 /** Orange ring, white core. While auto-capture waits for a steady page, the ring fills clockwise. */
 @Composable

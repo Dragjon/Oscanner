@@ -88,7 +88,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.olaf.oscanner.core.design.Dock
 import dev.olaf.oscanner.core.design.DockAction
-import dev.olaf.oscanner.core.design.PrimaryPill
 import dev.olaf.oscanner.core.design.SheetAction
 import dev.olaf.oscanner.core.design.StatusChip
 import dev.olaf.oscanner.core.design.printPdf
@@ -238,9 +237,9 @@ fun DocumentRoute(
                     // One button per kind of thing you do with a document: change it, send it out,
                     // read its words, or look after the document itself.
                     DockAction(Icons.Rounded.Edit, stringResource(R.string.document_edit), { sheet = Sheet.Edit })
-                    PrimaryPill(Icons.Rounded.Share, stringResource(R.string.document_share), { sheet = Sheet.Share })
                     DockAction(Icons.Rounded.TextSnippet, stringResource(R.string.document_text), { onText(document.id, pagerState.currentPage) })
                     DockAction(Icons.Rounded.Info, stringResource(R.string.document_info), { sheet = Sheet.Document })
+                    DockAction(Icons.Rounded.Share, stringResource(R.string.document_share), { sheet = Sheet.Share })
                 }
             }
         }

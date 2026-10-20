@@ -13,8 +13,8 @@
     <group
         android:scaleX="1.05"
         android:scaleY="1.05"
-        android:translateX="-4.8"
-        android:translateY="1.5">
+        android:translateX="-2.7"
+        android:translateY="-3.225">
         <!-- Twigs -->
         <path
             android:strokeColor="#9A6A45"

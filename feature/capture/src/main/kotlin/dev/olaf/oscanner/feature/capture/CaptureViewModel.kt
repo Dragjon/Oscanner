@@ -82,6 +82,8 @@ class CaptureViewModel(
     val savedScans: Flow<SavedScan> = saved.receiveAsFlow()
 
     private var capturedAt = 0L
+    /** How far the phone is turned (0, 90, 180, 270); photos come out upright for it. */
+    @Volatile private var deviceTurn = 0
     /** Glare in each of the last few frames, newest last, so the hint doesn't flicker. */
     private val glareFrames = ArrayDeque<Boolean>()
 
@@ -127,6 +129,10 @@ class CaptureViewModel(
     /** A new file for the camera to write into. */
     fun newCaptureFile(): File = File(sessionDir.apply { mkdirs() }, "${UUID.randomUUID()}.jpg")
 
+    fun setDeviceTurn(turn: Int) {
+        deviceTurn = turn
+    }
+
     fun onShutterPressed() {
         _state.update { it.copy(busy = true) }
     }
@@ -138,7 +144,9 @@ class CaptureViewModel(
             it.copy(
                 busy = false,
                 status = CaptureStatus.Captured,
-                captures = it.captures + CapturedImage(file, liveQuad = it.quad),
+                // The live outline is in screen coordinates, which match the photo only when the
+                // phone is upright; turned, the outline found in the photo itself is used.
+                captures = it.captures + CapturedImage(file, liveQuad = it.quad.takeIf { deviceTurn == 0 }),
             )
         }
         // Find the page in the full photo now, while the next one is lined up, so it's ready

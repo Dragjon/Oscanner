@@ -18,6 +18,12 @@ import kotlin.math.max
  */
 internal class PageAnalyzer(
     private val mode: () -> CaptureMode,
+    /**
+     * Clockwise degrees from the camera's frames to the screen, which stays upright in portrait
+     * while scanning: the sensor's mounting angle. Not the frame's own rotation, which follows
+     * the phone as it turns, because the camera keeps photos upright that way.
+     */
+    private val toScreen: Int,
     private val onCode: (ScannedCode) -> Unit,
     private val onResult: (quad: Quad?, sharpness: Double, frameAspect: Float, glare: Boolean) -> Unit,
 ) : ImageAnalysis.Analyzer {
@@ -59,7 +65,7 @@ internal class PageAnalyzer(
             val detection = detector.detect(frame)
             val glare = detection.quad?.let { Glare.onPage(frame, it) } ?: false
             luminance.release()
-            val rotation = image.imageInfo.rotationDegrees
+            val rotation = toScreen
             val upright = detection.quad?.let { QuadGeometry.rotate(it, rotation) }
             val aspect = if (rotation % 180 == 0) {
                 image.width.toFloat() / image.height

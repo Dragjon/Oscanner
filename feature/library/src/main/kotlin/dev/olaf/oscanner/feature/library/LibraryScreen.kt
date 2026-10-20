@@ -90,6 +90,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.olaf.oscanner.core.design.ChalkSnowman
 import dev.olaf.oscanner.core.design.Dock
 import dev.olaf.oscanner.core.design.DockAction
 import dev.olaf.oscanner.core.design.DocumentCard
@@ -302,17 +303,24 @@ fun LibraryScreen(
         }
 
         if (!state.loading && !state.hasDocuments) {
-            Text(
-                stringResource(R.string.library_empty),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
+            // Nothing scanned yet: a chalk snowman with a page, and what to do first.
+            Column(
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
+                    .align(Alignment.Center)
                     .navigationBarsPadding()
-                    .padding(start = 32.dp, end = 32.dp, bottom = DockClearance + 16.dp)
+                    .padding(start = 32.dp, end = 32.dp, top = 120.dp, bottom = DockClearance)
                     .widthIn(max = 320.dp),
-            )
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                ChalkSnowman(Modifier.size(width = 200.dp, height = 220.dp))
+                Spacer(Modifier.height(20.dp))
+                Text(
+                    stringResource(R.string.library_empty),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+            }
         }
 
         Column(
