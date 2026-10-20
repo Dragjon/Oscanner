@@ -590,12 +590,17 @@ private fun ModeWheel(selected: CaptureMode, onSelect: (CaptureMode) -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .height(48.dp)
-                // Names fade out toward the edges instead of being cut off there.
+                // Names fade toward the edges but stay partly there, a hint that the wheel turns.
                 .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
                 .drawWithContent {
                     drawContent()
                     drawRect(
-                        Brush.horizontalGradient(0f to Color.Transparent, 0.2f to Color.Black, 0.8f to Color.Black, 1f to Color.Transparent),
+                        Brush.horizontalGradient(
+                            0f to Color.Black.copy(alpha = 0.35f),
+                            0.22f to Color.Black,
+                            0.78f to Color.Black,
+                            1f to Color.Black.copy(alpha = 0.35f),
+                        ),
                         blendMode = BlendMode.DstIn,
                     )
                 }
@@ -634,7 +639,7 @@ private fun ModeWheel(selected: CaptureMode, onSelect: (CaptureMode) -> Unit) {
                             val scale = 0.8f + 0.35f * nearness
                             scaleX = scale
                             scaleY = scale
-                            alpha = 0.45f + 0.55f * nearness
+                            alpha = 0.6f + 0.4f * nearness
                         },
                     )
                 }
@@ -650,7 +655,7 @@ private fun centered(list: LazyListState): Int? {
     return info.visibleItemsInfo.minByOrNull { abs(it.offset + it.size / 2f - middle) }?.index
 }
 
-private val ITEM_WIDTH = 104.dp
+private val ITEM_WIDTH = 96.dp
 
 /** Document, the usual choice, in the middle; the others either side, one swipe away. */
 private val WHEEL_ORDER = listOf(CaptureMode.IdCard, CaptureMode.Book, CaptureMode.Document, CaptureMode.Whiteboard, CaptureMode.Code)
