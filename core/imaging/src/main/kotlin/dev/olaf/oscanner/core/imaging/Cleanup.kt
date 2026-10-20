@@ -26,8 +26,7 @@ internal object Cleanup {
     fun apply(rgb: Mat, edits: PageEdits) {
         val (mask, mend) = plan(rgb, edits)
         if (mask != null) {
-            val paper = Filters.backgroundOf(rgb)
-            fillFromAround(paper, mask)
+            val paper = paperUnder(rgb, mask)
             paper.copyTo(rgb, mask)
             paper.release()
             mask.release()
@@ -54,16 +53,31 @@ internal object Cleanup {
         var mend: Pair<Mat, Scalar>? = null
         if (edits.removePenInk) {
             penInk(rgb).also { Core.bitwise_or(mask, it, mask); it.release() }
-            edits.printed?.let { printed ->
-                // By ink color first; where pen and print are one color, by layout.
+            edits.printed?.let { sure ->
+                val printed = confidentPrint(rgb, sure)
+                // Pen of another color than the print goes by its color; black and gray writing,
+                // the print's own color, by where it is: outside the lines of print.
                 val sorted = runCatching { InkSorter.handwriting(rgb, printed) }.getOrNull()
-                if (sorted != null) {
-                    Core.bitwise_or(mask, sorted.remove, mask)
-                    sorted.remove.release()
-                    mend = sorted.mend to sorted.lineColor
-                } else {
-                    darkHandwriting(rgb, printed).also { Core.bitwise_or(mask, it, mask); it.release() }
+                val writing = Mat.zeros(h, w, CvType.CV_8UC1)
+                sorted?.remove?.let { Core.bitwise_or(writing, it, writing); it.release() }
+                if (sorted?.blank != true) {
+                    darkHandwriting(rgb, printed).also { Core.bitwise_or(writing, it, writing); it.release() }
                 }
+                sorted?.let { s ->
+                    // Rules stay, and are drawn on through the gaps the writing leaves.
+                    val near = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0))
+                    val wide = Mat()
+                    Imgproc.dilate(s.rules, wide, near)
+                    Core.subtract(writing, wide, writing)
+                    val gaps = Mat()
+                    Core.subtract(s.bridged, s.rules, gaps)
+                    Imgproc.dilate(writing, wide, near)
+                    Core.bitwise_and(gaps, wide, gaps)
+                    mend = gaps to s.lineColor
+                    listOf(wide, s.rules, s.bridged).forEach(Mat::release)
+                }
+                Core.bitwise_or(mask, writing, mask)
+                writing.release()
             }
         }
         if (edits.removeFingers) fingers(rgb).also { Core.bitwise_or(mask, it, mask); it.release() }
@@ -78,28 +92,104 @@ internal object Cleanup {
     }
 
     /**
-     * The paper estimate comes from closing away small dark things, which is exact under pen
-     * strokes but not under a thumb: that is wider than the kernel, so the "paper" there is the
-     * thumb. Masked areas are refilled from the paper around them instead (Telea 2004
-     * inpainting, on a small copy: paper changes slowly).
+     * Blank paper to put under [mask], drawn in from the nearest pixels that are clearly paper,
+     * with no ink and nothing being removed, so it follows the light across the page. Closing
+     * away the ink instead left dense writing's gray behind, like a shadow where the writing had
+     * been; and a thumb is wider than any closing. Lighting changes slowly, so it's worked out on
+     * a small copy (Telea 2004 inpainting).
      */
-    private fun fillFromAround(paper: Mat, mask: Mat) {
-        val scale = min(1.0, FILL_SIDE / max(paper.cols(), paper.rows()))
-        val smallPaper = Mat()
-        val smallMask = Mat()
-        Imgproc.resize(paper, smallPaper, Size(), scale, scale, Imgproc.INTER_AREA)
-        Imgproc.resize(mask, smallMask, smallPaper.size(), 0.0, 0.0, Imgproc.INTER_AREA)
-        Imgproc.threshold(smallMask, smallMask, 0.0, 255.0, Imgproc.THRESH_BINARY)
-        // The closing smears the removed thing's color a little past its outline; take that too.
-        val grow = Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(5.0, 5.0))
-        Imgproc.dilate(smallMask, smallMask, grow, Point(-1.0, -1.0), 2)
-        grow.release()
+    private fun paperUnder(rgb: Mat, mask: Mat): Mat {
+        // What isn't paper is found at full size, where even thin strokes stand out; a spot of
+        // the small copy is paper only if nothing in it was ink.
+        val gray = Mat()
+        Imgproc.cvtColor(rgb, gray, Imgproc.COLOR_RGB2GRAY)
+        val notPaper = Mat()
+        Imgproc.adaptiveThreshold(gray, notPaper, 255.0, Imgproc.ADAPTIVE_THRESH_MEAN_C, Imgproc.THRESH_BINARY_INV, max(15, (max(rgb.cols(), rgb.rows()) / 40) or 1), 6.0)
+        gray.release()
+        Core.bitwise_or(notPaper, mask, notPaper)
+        Imgproc.dilate(notPaper, notPaper, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(5.0, 5.0)))
+        val scale = min(1.0, FILL_SIDE / max(rgb.cols(), rgb.rows()))
+        val small = Mat()
+        Imgproc.resize(rgb, small, Size(), scale, scale, Imgproc.INTER_AREA)
+        val holes = Mat()
+        Imgproc.resize(notPaper, holes, small.size(), 0.0, 0.0, Imgproc.INTER_AREA)
+        notPaper.release()
+        Imgproc.threshold(holes, holes, 0.0, 255.0, Imgproc.THRESH_BINARY)
+        // A page with no clear paper at all keeps its own colors.
         val filled = Mat()
-        Photo.inpaint(smallPaper, smallMask, filled, 4.0, Photo.INPAINT_TELEA)
+        if (Core.countNonZero(holes) < holes.total()) {
+            Photo.inpaint(small, holes, filled, 3.0, Photo.INPAINT_TELEA)
+            // The fill can carry a little texture from the hole's edge; paper hasn't any.
+            Imgproc.GaussianBlur(filled, filled, Size(5.0, 5.0), 0.0)
+        } else {
+            small.copyTo(filled)
+        }
+        listOf(small, holes).forEach(Mat::release)
         val full = Mat()
-        Imgproc.resize(filled, full, paper.size(), 0.0, 0.0, Imgproc.INTER_LINEAR)
-        full.copyTo(paper, mask)
-        listOf(smallPaper, smallMask, filled, full).forEach(Mat::release)
+        Imgproc.resize(filled, full, rgb.size(), 0.0, 0.0, Imgproc.INTER_LINEAR)
+        filled.release()
+        return full
+    }
+
+    /**
+     * The reader can be sure of a neat handwritten word too, now and then. Of its sure words,
+     * only lines that are mostly sure count as print: on a line of print nearly every word reads
+     * well; on a line of handwriting a sure word sits among ones that don't.
+     */
+    private fun confidentPrint(rgb: Mat, printed: List<Area>): List<Area> {
+        if (printed.isEmpty()) return printed
+        val w = rgb.cols()
+        val h = rgb.rows()
+        val gray = Mat()
+        Imgproc.cvtColor(rgb, gray, Imgproc.COLOR_RGB2GRAY)
+        val inkMat = Mat()
+        Imgproc.adaptiveThreshold(gray, inkMat, 255.0, Imgproc.ADAPTIVE_THRESH_MEAN_C, Imgproc.THRESH_BINARY_INV, max(15, (max(w, h) / 40) or 1), 18.0)
+        gray.release()
+        // Rules run under every word; they'd count as covered and uncovered alike.
+        val rules = Mat()
+        Imgproc.morphologyEx(inkMat, rules, Imgproc.MORPH_OPEN, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(max(w, h) * 0.06, 1.0)))
+        Core.subtract(inkMat, rules, inkMat)
+        rules.release()
+        val ink = ByteArray(w * h).also { inkMat.get(0, 0, it) }
+        inkMat.release()
+        val kept = mutableListOf<Area>()
+        for (line in lineGroups(printed)) {
+            val height = (line.maxOf { it.bottom } - line.minOf { it.top }) * h
+            val y0 = (line.minOf { it.top } * h).toInt().coerceIn(0, h - 1)
+            val y1 = (line.maxOf { it.bottom } * h).toInt().coerceIn(0, h - 1)
+            val x0 = (line.minOf { it.left } * w - LINE_REACH * height).toInt().coerceIn(0, w - 1)
+            val x1 = (line.maxOf { it.right } * w + LINE_REACH * height).toInt().coerceIn(0, w - 1)
+            var all = 0
+            var covered = 0
+            for (y in y0..y1) for (x in x0..x1) {
+                if (ink[y * w + x] == 0.toByte()) continue
+                all++
+                val nx = (x + 0.5f) / w
+                val ny = (y + 0.5f) / h
+                if (line.any { nx >= it.left && nx <= it.right && ny >= it.top && ny <= it.bottom }) covered++
+            }
+            // A run of print is long; the handwriting it's sure of is a short word or two. A short
+            // label ("Class:") counts only when almost all of its line is sure.
+            val run = line.sumOf { ((it.right - it.left) * w).toDouble() } / height
+            val cover = if (all == 0) 1.0 else covered.toDouble() / all
+            if ((cover >= SURE_LINE && run >= LONG_RUN) || (cover >= SURE_LABEL && run >= LABEL_RUN)) kept += line
+        }
+        return kept
+    }
+
+    /** Words that overlap vertically by more than half, as lines. */
+    private fun lineGroups(words: List<Area>): List<List<Area>> {
+        val lines = mutableListOf<MutableList<Area>>()
+        for (word in words.sortedBy { it.top }) {
+            val height = word.bottom - word.top
+            val line = lines.firstOrNull { line ->
+                val top = line.minOf { it.top }
+                val bottom = line.maxOf { it.bottom }
+                min(bottom, word.bottom) - max(top, word.top) > 0.5f * min(height, bottom - top)
+            }
+            if (line != null) line += word else lines += mutableListOf(word)
+        }
+        return lines
     }
 
     /**
@@ -162,15 +252,8 @@ internal object Cleanup {
         val block = (side / 40) or 1
         Imgproc.adaptiveThreshold(gray, ink, 255.0, Imgproc.ADAPTIVE_THRESH_MEAN_C, Imgproc.THRESH_BINARY_INV, max(15, block), 18.0)
         gray.release()
-        // Pencil and dark pen are colorless; skin, stamps and colored print are not. (Colored pen
-        // is found by [penInk].)
-        val hsv = Mat()
-        Imgproc.cvtColor(rgb, hsv, Imgproc.COLOR_RGB2HSV)
-        val colorless = Mat()
-        Core.inRange(hsv, Scalar(0.0, 0.0, 0.0), Scalar(180.0, 60.0, 255.0), colorless)
-        hsv.release()
-        Core.bitwise_and(ink, colorless, ink)
-        colorless.release()
+        // Any color: pen in shadow is too dark to tell by its color, but it's still outside the
+        // print. Logos, photos and skin are big shapes, kept below.
         // Straight rules and table lines come out first, so a signature on a signature line takes
         // only itself away.
         val rules = Mat()
@@ -204,6 +287,10 @@ internal object Cleanup {
         val longLine = side * 0.15
         val thin = side * 0.008
         val bigBlob = (side * 0.04).let { it * it }
+        // Writing comes in marks about a line high; a crest or a drawing stands taller.
+        val heights = (1 until count).filter { stats.get(it, Imgproc.CC_STAT_AREA)[0] >= minArea }
+            .map { stats.get(it, Imgproc.CC_STAT_HEIGHT)[0] }.sorted()
+        val tall = max(side * 0.04, 3.0 * (heights.getOrNull(heights.size / 2) ?: 0.0))
         for (label in 1 until count) {
             val area = stats.get(label, Imgproc.CC_STAT_AREA)[0]
             if (area < minArea) continue
@@ -211,8 +298,9 @@ internal object Cleanup {
             val bh = stats.get(label, Imgproc.CC_STAT_HEIGHT)[0]
             // Ruled lines and table borders: long and thin.
             if (max(bw, bh) > longLine && min(bw, bh) < thin) continue
-            // Logos, photos, black boxes: big and mostly solid.
+            // Logos, photos, black boxes: big and mostly solid; crests and drawings: tall.
             if (bw * bh > bigBlob && area / (bw * bh) > 0.45) continue
+            if (bh > tall) continue
             Core.compare(labels, Scalar(label.toDouble()), one, Core.CMP_EQ)
             Core.bitwise_or(result, one, result)
         }
@@ -232,17 +320,7 @@ internal object Cleanup {
      * down for ascenders and descenders.
      */
     internal fun printedLines(printed: List<Area>, w: Int, h: Int): List<DoubleArray> {
-        val lines = mutableListOf<MutableList<Area>>()
-        for (word in printed.sortedBy { it.top }) {
-            val height = word.bottom - word.top
-            val line = lines.firstOrNull { line ->
-                val top = line.minOf { it.top }
-                val bottom = line.maxOf { it.bottom }
-                min(bottom, word.bottom) - max(top, word.top) > 0.5f * min(height, bottom - top)
-            }
-            if (line != null) line += word else lines += mutableListOf(word)
-        }
-        val boxes = lines.map { line ->
+        val boxes = lineGroups(printed).map { line ->
             doubleArrayOf(line.minOf { it.left } * w.toDouble(), line.minOf { it.top } * h.toDouble(), line.maxOf { it.right } * w.toDouble(), line.maxOf { it.bottom } * h.toDouble())
         }
         return boxes.map { box ->
@@ -355,4 +433,13 @@ internal object Cleanup {
     }
 
     private const val FILL_SIDE = 320.0
+    /** How far past a line's sure words, in line heights, its other words are looked for. */
+    private const val LINE_REACH = 2.0
+    /** The share of a line's ink inside sure words for it to count as print... */
+    private const val SURE_LINE = 0.6
+    /** ...when its sure words run this many line heights; */
+    private const val LONG_RUN = 6.0
+    /** or for a short label of this many line heights, this share. */
+    private const val SURE_LABEL = 0.9
+    private const val LABEL_RUN = 2.5
 }

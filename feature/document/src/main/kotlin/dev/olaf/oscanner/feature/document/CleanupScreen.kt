@@ -86,6 +86,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.olaf.oscanner.core.design.ZoomBox
 import dev.olaf.oscanner.core.design.ApplyToPagesDialog
 import dev.olaf.oscanner.core.design.Dock
 import dev.olaf.oscanner.core.design.DockAction
@@ -146,7 +147,10 @@ fun CleanupRoute(viewModel: CleanupViewModel, onDone: () -> Unit) {
             if (before == null || edits == null) {
                 CircularProgressIndicator(Modifier.size(32.dp), strokeWidth = 3.dp, color = colors.onSurfaceVariant)
             } else {
-                CleanupCanvas(state, comparing, onStroke = viewModel::addStroke, modifier = Modifier.fillMaxSize())
+                // Pinch to zoom in on small things; one finger paints.
+                ZoomBox(Modifier.fillMaxSize()) {
+                    CleanupCanvas(state, comparing, onStroke = viewModel::addStroke, modifier = Modifier.fillMaxSize())
+                }
             }
         }
 

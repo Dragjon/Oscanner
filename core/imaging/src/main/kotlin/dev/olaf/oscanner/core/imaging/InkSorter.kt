@@ -22,8 +22,12 @@ import kotlin.math.max
  */
 internal object InkSorter {
 
-    /** What to remove, and where to redraw ruled lines that writing crossed. */
-    class Result(val remove: Mat, val mend: Mat, val lineColor: Scalar)
+    /**
+     * Pen to [remove], found by its color (none when pen and print are one color); the page's
+     * [rules], and where they would run on under writing ([bridged]), drawn in [lineColor];
+     * and whether the page is [blank] apart from its rules.
+     */
+    class Result(val remove: Mat, val rules: Mat, val bridged: Mat, val lineColor: Scalar, val blank: Boolean = false)
 
     /**
      * Null when the page's inks can't be told apart by color (black pen on black print): the
@@ -52,8 +56,14 @@ internal object InkSorter {
         Imgproc.adaptiveThreshold(gray, faint, 255.0, Imgproc.ADAPTIVE_THRESH_MEAN_C, Imgproc.THRESH_BINARY_INV, block, 5.0)
         // Dense writing darkens the neighborhood a local threshold compares against, until a thin
         // rule through it no longer stands out; a threshold for the whole page still sees it.
+        // Against the paper's own brightness, so a shadow across the page isn't all "dark".
         val dark = Mat()
-        Imgproc.threshold(gray, dark, 0.0, 255.0, Imgproc.THRESH_BINARY_INV + Imgproc.THRESH_OTSU)
+        val paper = Filters.backgroundOf(gray)
+        val even = Mat()
+        Core.divide(gray, paper, even, 255.0)
+        paper.release()
+        Imgproc.threshold(even, dark, 0.0, 255.0, Imgproc.THRESH_BINARY_INV + Imgproc.THRESH_OTSU)
+        even.release()
         Core.bitwise_or(faint, dark, faint)
         dark.release()
         gray.release()
@@ -119,7 +129,7 @@ internal object InkSorter {
             }
         }
         if (refA.size < MIN_REFERENCE) {
-            listOf(rules, rulesWide, marks).forEach(Mat::release)
+            listOf(rules, rulesWide, marks, bridged).forEach(Mat::release)
             return null
         }
         val printA = refA.sorted()[refA.size / 2].toDouble()
@@ -169,8 +179,8 @@ internal object InkSorter {
         // print. Print stays where the reference put it; a page of writing would pull it over.
         val far = considered.maxByOrNull { hypot(ca[it] - printA, cb[it] - printB) * if (size[it] >= 20) 1 else 0 }
         if (far == null) {
-            listOf(rules, rulesWide, marks).forEach(Mat::release)
-            return null
+            listOf(rulesWide, marks).forEach(Mat::release)
+            return Result(Mat.zeros(h, w, CvType.CV_8UC1), rules, bridged, Core.mean(rgb, rules))
         }
         var penA = ca[far]
         var penB = cb[far]
@@ -187,11 +197,12 @@ internal object InkSorter {
         // Next to no ink besides the rules: a blank form, nothing written on it.
         if (considered.sumOf { size[it] } < w * h * BLANK_SHARE) {
             listOf(rulesWide, marks).forEach(Mat::release)
-            return Result(Mat.zeros(h, w, CvType.CV_8UC1), Mat.zeros(h, w, CvType.CV_8UC1), Core.mean(rgb, rules).also { rules.release() })
+            return Result(Mat.zeros(h, w, CvType.CV_8UC1), rules, bridged, Core.mean(rgb, rules), blank = true)
         }
+        // Pen and print one color: nothing to tell apart by it, but the rules still stand.
         if (gap < MIN_GAP) {
-            listOf(rules, rulesWide, marks).forEach(Mat::release)
-            return null
+            listOf(rulesWide, marks).forEach(Mat::release)
+            return Result(Mat.zeros(h, w, CvType.CV_8UC1), rules, bridged, Core.mean(rgb, rules))
         }
         // Only words whose marks, taken together, are nearer print's color than the pen's protect
         // what's in them.
@@ -263,18 +274,7 @@ internal object InkSorter {
         Core.bitwise_not(keep, keep)
         Core.bitwise_and(remove, keep, remove)
         listOf(keep, rulesWide, marks).forEach(Mat::release)
-
-        // Mend rules through the gaps writing left: redraw the bridged rule where something on it
-        // is being removed.
-        val mend = Mat()
-        Core.subtract(bridged, rules, mend)
-        val removedHere = Mat()
-        Imgproc.dilate(remove, removedHere, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0)))
-        Core.bitwise_and(mend, removedHere, mend)
-        listOf(removedHere, bridged).forEach(Mat::release)
-        val lineColor = Core.mean(rgb, rules)
-        rules.release()
-        return Result(remove, mend, lineColor)
+        return Result(remove, rules, bridged, Core.mean(rgb, rules))
     }
 
     /** Fewer surely-print pixels than this and the print's color isn't known well enough. */

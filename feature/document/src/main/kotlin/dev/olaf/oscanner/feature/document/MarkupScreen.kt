@@ -103,6 +103,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.olaf.oscanner.core.data.Signature
+import dev.olaf.oscanner.core.design.ZoomBox
 import dev.olaf.oscanner.core.design.Dock
 import dev.olaf.oscanner.core.design.DockAction
 import dev.olaf.oscanner.core.design.PrimaryPill
@@ -162,28 +163,31 @@ fun MarkupRoute(viewModel: MarkupViewModel, onDone: () -> Unit) {
             if (base == null) {
                 CircularProgressIndicator(Modifier.size(32.dp), strokeWidth = 3.dp, color = colors.onSurfaceVariant)
             } else {
-                MarkupCanvas(
-                    base = remember(base) { base.asImageBitmap() },
-                    state = state,
-                    onStroke = viewModel::addStroke,
-                    onErase = { at, aspect -> viewModel.eraseAt(at, state.eraserSize, aspect) },
-                    onMoveSignature = viewModel::moveSignature,
-                    onTextTap = { at ->
-                        // A tap selects a text (the options then change its style); a second tap
-                        // on it changes its words; a tap on blank paper adds new text.
-                        val hit = viewModel.textAt(at, base.width.toFloat(), base.height.toFloat())
-                        when {
-                            hit < 0 -> newTextAt = at
-                            hit == state.selectedText -> editingText = hit
-                            else -> viewModel.selectText(hit)
-                        }
-                    },
-                    onTextDragStart = { at ->
-                        viewModel.textAt(at, base.width.toFloat(), base.height.toFloat()).also { if (it >= 0) viewModel.startMovingText() }
-                    },
-                    onTextDrag = viewModel::moveText,
-                    modifier = Modifier.fillMaxSize(),
-                )
+                // Pinch to zoom in for small writing; one finger draws.
+                ZoomBox(Modifier.fillMaxSize()) {
+                    MarkupCanvas(
+                        base = remember(base) { base.asImageBitmap() },
+                        state = state,
+                        onStroke = viewModel::addStroke,
+                        onErase = { at, aspect -> viewModel.eraseAt(at, state.eraserSize, aspect) },
+                        onMoveSignature = viewModel::moveSignature,
+                        onTextTap = { at ->
+                            // A tap selects a text (the options then change its style); a second tap
+                            // on it changes its words; a tap on blank paper adds new text.
+                            val hit = viewModel.textAt(at, base.width.toFloat(), base.height.toFloat())
+                            when {
+                                hit < 0 -> newTextAt = at
+                                hit == state.selectedText -> editingText = hit
+                                else -> viewModel.selectText(hit)
+                            }
+                        },
+                        onTextDragStart = { at ->
+                            viewModel.textAt(at, base.width.toFloat(), base.height.toFloat()).also { if (it >= 0) viewModel.startMovingText() }
+                        },
+                        onTextDrag = viewModel::moveText,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
             }
         }
 

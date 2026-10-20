@@ -98,6 +98,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material.icons.rounded.Lightbulb
 import androidx.compose.material.icons.rounded.AutoFixHigh
@@ -774,7 +775,11 @@ private fun ModeWheel(selected: CaptureMode, onSelect: (CaptureMode) -> Unit) {
                     Modifier
                         .width(widths[index])
                         .fillMaxHeight()
-                        .clickable(onClickLabel = labels[index]) { scope.launch { list.centerOn(index, animate = true) } }
+                        .clickable(onClickLabel = labels[index]) {
+                            // Chosen at the tap; the wheel turns to it after.
+                            currentOnSelect(mode)
+                            scope.launch { list.centerOn(index, animate = true) }
+                        }
                         .semantics { this.selected = active },
                     contentAlignment = Alignment.Center,
                 ) {
@@ -783,7 +788,9 @@ private fun ModeWheel(selected: CaptureMode, onSelect: (CaptureMode) -> Unit) {
                     Text(
                         labels[index],
                         style = style,
-                        color = if (active) colors.primary else ChromeInk,
+                        // Orange follows the name nearest the middle as the wheel turns, not
+                        // only once it settles.
+                        color = lerp(ChromeInk, colors.primary, nearness),
                         maxLines = 1,
                         softWrap = false,
                         modifier = Modifier.graphicsLayer {
