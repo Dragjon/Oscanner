@@ -44,6 +44,7 @@ import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.PictureAsPdf
 import androidx.compose.material.icons.rounded.Print
+import androidx.compose.material.icons.rounded.Rectangle
 import androidx.compose.material.icons.rounded.SaveAlt
 import androidx.compose.material.icons.rounded.Sell
 import androidx.compose.material.icons.rounded.Share
@@ -105,6 +106,7 @@ fun DocumentRoute(
     onArrange: (documentId: Long) -> Unit,
     onMarkup: (documentId: Long, page: Int) -> Unit,
     onCleanup: (documentId: Long, page: Int) -> Unit,
+    onRedact: (documentId: Long, page: Int) -> Unit,
     onTrashed: (documentId: Long) -> Unit,
 ) {
     val context = LocalContext.current
@@ -257,6 +259,7 @@ fun DocumentRoute(
                     }
                     Sheet.More -> {
                         SheetAction(Icons.Rounded.CleaningServices, stringResource(R.string.document_cleanup), stringResource(R.string.document_cleanup_description), act { onCleanup(document.id, pagerState.currentPage) })
+                        SheetAction(Icons.Rounded.Rectangle, stringResource(R.string.document_redact), stringResource(R.string.document_redact_description), act { onRedact(document.id, pagerState.currentPage) })
                         SheetAction(Icons.Rounded.Draw, stringResource(R.string.document_markup), stringResource(R.string.document_markup_description), act { onMarkup(document.id, pagerState.currentPage) })
                         SheetAction(Icons.Rounded.GridView, stringResource(R.string.document_arrange), stringResource(R.string.document_arrange_description), act { onArrange(document.id) })
                         SheetAction(Icons.Rounded.DocumentScanner, stringResource(R.string.document_scan_more), stringResource(R.string.document_scan_more_description), act { onScanMore(document.id) })

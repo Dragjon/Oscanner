@@ -1,6 +1,7 @@
 package dev.olaf.oscanner.core.imaging
 
 import dev.olaf.oscanner.core.model.Corner
+import dev.olaf.oscanner.core.model.PageEdits
 import dev.olaf.oscanner.core.model.Quad
 import kotlin.math.abs
 import kotlin.math.acos
@@ -143,6 +144,57 @@ object QuadGeometry {
         val top = mid(quad.topLeft, quad.topRight)
         val bottom = mid(quad.bottomLeft, quad.bottomRight)
         return Quad(quad.topLeft, top, bottom, quad.bottomLeft) to Quad(top, quad.topRight, quad.bottomRight, bottom)
+    }
+
+    /**
+     * Where a point on the page as shown (after straightening by [quad] and turning
+     * [rotation] degrees clockwise) sits in the photo, both normalized. This is the exact
+     * perspective map the renderer warps with: scaling either side to pixels doesn't change it.
+     */
+    fun pageToSource(quad: Quad, rotation: Int, point: Corner): Corner {
+        val (u, v) = unturn(point, rotation)
+        return Homography.squareTo(quad).map(u, v)
+    }
+
+    /** The inverse of [pageToSource]. */
+    fun sourceToPage(quad: Quad, rotation: Int, point: Corner): Corner {
+        val p = Homography.squareTo(quad).inverse().map(point.x.toDouble(), point.y.toDouble())
+        return turn(p, rotation)
+    }
+
+    private fun unturn(c: Corner, rotation: Int): Pair<Double, Double> {
+        val x = c.x.toDouble()
+        val y = c.y.toDouble()
+        return when (((rotation % 360) + 360) % 360) {
+            90 -> y to 1 - x
+            180 -> 1 - x to 1 - y
+            270 -> 1 - y to x
+            else -> x to y
+        }
+    }
+
+    private fun turn(c: Corner, rotation: Int): Corner = when (((rotation % 360) + 360) % 360) {
+        90 -> Corner(1f - c.y, c.x)
+        180 -> Corner(1f - c.x, 1f - c.y)
+        270 -> Corner(c.y, 1f - c.x)
+        else -> c
+    }
+
+    /** Each blacked-out area of [edits] as a polygon on the page as shown. */
+    fun redactionsOnPage(edits: PageEdits): List<List<Corner>> =
+        edits.redactions.map { area -> area.corners.map { sourceToPage(edits.quad, edits.rotation, it) } }
+
+    /** Even-odd test; works for any simple polygon. */
+    fun contains(polygon: List<Corner>, p: Corner): Boolean {
+        var inside = false
+        var j = polygon.size - 1
+        for (i in polygon.indices) {
+            val a = polygon[i]
+            val b = polygon[j]
+            if ((a.y > p.y) != (b.y > p.y) && p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x) inside = !inside
+            j = i
+        }
+        return inside
     }
 
     fun clampToUnit(quad: Quad): Quad = Quad.of(quad.corners.map { Corner(it.x.coerceIn(0f, 1f), it.y.coerceIn(0f, 1f)) })

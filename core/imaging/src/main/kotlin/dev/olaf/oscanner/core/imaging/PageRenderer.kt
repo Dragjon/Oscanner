@@ -17,8 +17,10 @@ import org.opencv.android.OpenCVLoader
 import org.opencv.android.Utils
 import org.opencv.core.Core
 import org.opencv.core.Mat
+import org.opencv.core.MatOfPoint
 import org.opencv.core.MatOfPoint2f
 import org.opencv.core.Point
+import org.opencv.core.Scalar
 import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
 import java.io.File
@@ -68,9 +70,10 @@ object PageRenderer {
     }
 
     /** Crops, straightens, rotates and filters [source] (an upright photo). */
-    fun render(source: Bitmap, edits: PageEdits, maxSide: Int = RENDER_SIDE): Bitmap {
+    fun render(source: Bitmap, edits: PageEdits, maxSide: Int = RENDER_SIDE, redactionColor: Int = android.graphics.Color.BLACK): Bitmap {
         ensureLoaded()
         val warped = warp(source, edits, maxSide)
+        paperOverRedactions(warped, edits)
         Cleanup.apply(warped, edits)
         val filtered = Filters.apply(warped, edits.filter)
         warped.release()
@@ -78,6 +81,31 @@ object PageRenderer {
         return toBitmap(adjusted).also {
             adjusted.release()
             drawMarks(it, edits.marks)
+            drawRedactions(it, edits, redactionColor)
+        }
+    }
+
+    /**
+     * Solid black over each blacked-out area, last, so no look or slider can lighten it. The
+     * photo underneath was already blacked out in [warp]; this keeps the box crisp and dark.
+     */
+    fun drawRedactions(page: Bitmap, edits: PageEdits, fill: Int = android.graphics.Color.BLACK) {
+        if (edits.redactions.isEmpty()) return
+        val canvas = Canvas(page)
+        val paint = Paint().apply {
+            color = fill
+            // A hair wider than the area, over the soft edge the warp leaves around it.
+            style = Paint.Style.FILL_AND_STROKE
+            strokeJoin = Paint.Join.MITER
+            strokeWidth = max(3f, page.width * 0.002f)
+        }
+        val w = page.width.toFloat()
+        val h = page.height.toFloat()
+        for (shape in QuadGeometry.redactionsOnPage(edits)) {
+            val path = Path()
+            shape.forEachIndexed { i, p -> if (i == 0) path.moveTo(p.x * w, p.y * h) else path.lineTo(p.x * w, p.y * h) }
+            path.close()
+            canvas.drawPath(path, paint)
         }
     }
 
@@ -139,7 +167,9 @@ object PageRenderer {
      * word boxes line up with the page people see, but always in clean black and white (Ink).
      */
     fun renderForOcr(source: Bitmap, edits: PageEdits): Bitmap =
-        render(source, edits.copy(filter = PageFilter.Ink, marks = emptyList()), OCR_SIDE)
+        // Blacked-out areas read as blank paper: big black blocks make Tesseract misjudge the
+        // words beside them. What was under them is gone either way.
+        render(source, edits.copy(filter = PageFilter.Ink, marks = emptyList()), OCR_SIDE, android.graphics.Color.WHITE)
 
     /**
      * What clean-up will remove, as an 8-bit alpha image the size of the straightened page
@@ -192,10 +222,33 @@ object PageRenderer {
         if (thumb != render) thumb.recycle()
     }
 
+    /**
+     * Fills blacked-out areas of the straightened page with its average color, a little wider
+     * than the area. The looks judge paper from its surroundings, and a big black block would
+     * darken or garble the words beside it, which text reading then gets wrong.
+     */
+    private fun paperOverRedactions(page: Mat, edits: PageEdits) {
+        if (edits.redactions.isEmpty()) return
+        val paper = Core.mean(page)
+        val w = page.cols().toDouble()
+        val h = page.rows().toDouble()
+        val outlines = QuadGeometry.redactionsOnPage(edits).map { shape -> MatOfPoint(*shape.map { Point(it.x * w, it.y * h) }.toTypedArray()) }
+        Imgproc.fillPoly(page, outlines, paper)
+        Imgproc.polylines(page, outlines, true, paper, max(4, (w * 0.004).toInt()))
+        outlines.forEach(Mat::release)
+    }
+
     private fun warp(source: Bitmap, edits: PageEdits, maxSide: Int): Mat {
         val rgb = toRgb(source)
         val w = source.width
         val h = source.height
+        // Blacked-out areas leave the photo first, so nothing downstream (looks, clean-up,
+        // text reading, previews) ever sees what was under them.
+        for (area in edits.redactions) {
+            val outline = MatOfPoint(*area.corners.map { Point(it.x.toDouble() * w, it.y.toDouble() * h) }.toTypedArray())
+            Imgproc.fillPoly(rgb, listOf(outline), Scalar(0.0, 0.0, 0.0))
+            outline.release()
+        }
         val (outW, outH) = QuadGeometry.warpSize(edits.quad, w, h).let { (mw, mh) ->
             val aspect = edits.aspect ?: return@let mw to mh
             // Keep the longer measured side for resolution; derive the other from the aspect.

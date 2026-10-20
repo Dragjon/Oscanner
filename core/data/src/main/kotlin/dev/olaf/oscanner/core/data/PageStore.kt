@@ -11,16 +11,19 @@ import dev.olaf.oscanner.core.imaging.BookSplitter
 import dev.olaf.oscanner.core.imaging.DocumentDetector
 import dev.olaf.oscanner.core.imaging.PageRenderer
 import dev.olaf.oscanner.core.imaging.QuadGeometry
+import dev.olaf.oscanner.core.model.Corner
 import dev.olaf.oscanner.core.model.DocumentKind
 import dev.olaf.oscanner.core.model.Page
 import dev.olaf.oscanner.core.model.PageEdits
 import dev.olaf.oscanner.core.model.PageFilter
 import dev.olaf.oscanner.core.model.ProcessingState
 import dev.olaf.oscanner.core.model.Quad
+import dev.olaf.oscanner.core.model.WordBox
 import dev.olaf.oscanner.core.pdf.DocxWriter
 import dev.olaf.oscanner.core.pdf.JpegPdfWriter
 import dev.olaf.oscanner.core.pdf.PdfPage
 import dev.olaf.oscanner.core.pdf.PdfPageSize
+import dev.olaf.oscanner.core.pdf.PdfWord
 import dev.olaf.oscanner.core.model.PdfPageFormat
 import dev.olaf.oscanner.core.model.PdfQuality
 import kotlinx.coroutines.flow.first
@@ -67,6 +70,27 @@ class PageStore(
     suspend fun pages(documentId: Long): List<Page> = db.pages().forDocument(documentId).map(PageEntity::toModel)
 
     suspend fun page(id: Long): Page? = db.pages().get(id)?.toModel()
+
+    /** Words read on a page, with boxes on the page as shown; empty until it has been read. */
+    suspend fun words(pageId: Long): List<WordBox> {
+        val page = db.pages().get(pageId) ?: return emptyList()
+        return withContext(Dispatchers.IO) { visibleWords(page) }.map { WordBox(it.text, it.left, it.top, it.right, it.bottom) }
+    }
+
+    /**
+     * Words for a page's text layer, minus any under a blacked-out area. A page is read again
+     * whenever its areas change, so this only matters while that's still queued.
+     */
+    private fun visibleWords(page: PageEntity): List<PdfWord> {
+        val words = text.words(page)
+        val edits = EditsJson.read(page.editsJson)
+        if (edits.redactions.isEmpty()) return words
+        val shapes = QuadGeometry.redactionsOnPage(edits)
+        return words.filterNot { w ->
+            val center = Corner((w.left + w.right) / 2, (w.top + w.bottom) / 2)
+            shapes.any { QuadGeometry.contains(it, center) }
+        }
+    }
 
     suspend fun kindOf(documentId: Long): DocumentKind = db.documents().getRow(documentId)?.kind
         ?.let { name -> DocumentKind.entries.firstOrNull { it.name == name } } ?: DocumentKind.Document
@@ -229,7 +253,8 @@ class PageStore(
         val reread = before != null && (
             before.quad != edits.quad || before.rotation != edits.rotation ||
                 before.erase != edits.erase || before.keep != edits.keep ||
-                before.removePenInk != edits.removePenInk || before.removeFingers != edits.removeFingers
+                before.removePenInk != edits.removePenInk || before.removeFingers != edits.removeFingers ||
+                before.redactions != edits.redactions
             )
         if (reread) {
             text.forget(pageId)
@@ -370,7 +395,7 @@ class PageStore(
             try {
                 val pages = db.pages().forDocument(documentId).mapNotNull { page ->
                     val render = page.renderPath?.let(::File)?.takeIf(File::exists) ?: return@mapNotNull null
-                    PdfPage(compress(render, prefs.pdfQuality, prefs.watermark, temp), text.words(page))
+                    PdfPage(compress(render, prefs.pdfQuality, prefs.watermark, temp), visibleWords(page))
                 }
                 val format = when (prefs.pdfPageFormat) {
                     PdfPageFormat.Auto -> PdfPageSize.Auto

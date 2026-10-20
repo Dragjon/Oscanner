@@ -25,6 +25,27 @@
     <string name="document_import_more_description">Pick pictures from your gallery or files</string>
     <string name="document_rename">Rename</string>
     <string name="document_rename_description">Give this document a name you\'ll find again</string>
+    <string name="document_redact">Black out</string>
+    <string name="document_redact_description">Cover names, numbers or anything private before you share</string>
+    <string name="document_redact_find">Find what to cover</string>
+    <string name="document_redact_hint">Drag across anything to cover it. Tap a box to take it away. Covered parts are solid black in everything you share, and left out of the page\'s text. Your original photo stays on this phone.</string>
+    <string name="document_redact_discard">Apply the black boxes?</string>
+    <string name="document_redact_not_read">The text on this page hasn\'t been read yet. Open Text for this document, then come back to find things to cover. You can still drag boxes by hand.</string>
+    <string name="document_redact_emails">Email addresses</string>
+    <string name="document_redact_numbers">Long numbers</string>
+    <plurals name="document_redact_found">
+        <item quantity="one">%d found</item>
+        <item quantity="other">%d found</item>
+    </plurals>
+    <plurals name="document_redact_numbers_found">
+        <item quantity="one">%d found: card, account, phone or ID number</item>
+        <item quantity="other">%d found: card, account, phone or ID numbers</item>
+    </plurals>
+    <string name="document_redact_none_found">No email addresses or long numbers left uncovered on this page.</string>
+    <string name="document_redact_word">Cover a word or name</string>
+    <string name="document_redact_word_hint">Everywhere it appears on this page</string>
+    <string name="document_redact_cover">Cover %1$d</string>
+    <string name="document_redact_no_match">Not found on this page.</string>
     <string name="document_details">Tags and note</string>
     <string name="document_details_description">Label this document and jot down why you kept it</string>
     <string name="document_tags">Tags</string>

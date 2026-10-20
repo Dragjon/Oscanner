@@ -33,6 +33,8 @@ import dev.olaf.oscanner.feature.document.DocumentRoute
 import dev.olaf.oscanner.feature.document.DocumentViewModel
 import dev.olaf.oscanner.feature.document.MarkupRoute
 import dev.olaf.oscanner.feature.document.MarkupViewModel
+import dev.olaf.oscanner.feature.document.RedactRoute
+import dev.olaf.oscanner.feature.document.RedactViewModel
 import dev.olaf.oscanner.feature.library.LibraryRoute
 import dev.olaf.oscanner.feature.library.LibraryViewModel
 import dev.olaf.oscanner.feature.library.TrashRoute
@@ -62,6 +64,7 @@ private object Routes {
     const val ARRANGE = "arrange/{documentId}"
     const val MARKUP = "markup/{documentId}?page={page}"
     const val CLEANUP = "cleanup/{documentId}?page={page}"
+    const val REDACT = "redact/{documentId}?page={page}"
 
     fun capture(documentId: Long? = null) = "capture?documentId=${documentId ?: -1}"
     fun review(documentId: Long, page: Int = 0) = "review/$documentId?page=$page"
@@ -70,6 +73,7 @@ private object Routes {
     fun arrange(documentId: Long) = "arrange/$documentId"
     fun markup(documentId: Long, page: Int) = "markup/$documentId?page=$page"
     fun cleanup(documentId: Long, page: Int) = "cleanup/$documentId?page=$page"
+    fun redact(documentId: Long, page: Int) = "redact/$documentId?page=$page"
 }
 
 @Composable
@@ -223,6 +227,7 @@ fun OscannerNavHost(
                 onScanMore = { navController.navigate(Routes.capture(it)) },
                 onArrange = { navController.navigate(Routes.arrange(it)) },
                 onMarkup = { id, page -> navController.navigate(Routes.markup(id, page)) },
+                onRedact = { id, page -> navController.navigate(Routes.redact(id, page)) },
                 onCleanup = { id, page -> navController.navigate(Routes.cleanup(id, page)) },
                 onTrashed = { id ->
                     navController.popBackStack(Routes.LIBRARY, inclusive = false)
@@ -246,6 +251,20 @@ fun OscannerNavHost(
                 factory = viewModelFactory { initializer { CleanupViewModel(container.pages, documentId, page) } },
             )
             CleanupRoute(viewModel = viewModel, onDone = { navController.popBackStack() })
+        }
+        composable(
+            Routes.REDACT,
+            arguments = listOf(
+                navArgument("documentId") { type = NavType.LongType },
+                navArgument("page") { type = NavType.IntType; defaultValue = 0 },
+            ),
+        ) { entry ->
+            val documentId = entry.arguments!!.getLong("documentId")
+            val page = entry.arguments!!.getInt("page")
+            val viewModel: RedactViewModel = viewModel(
+                factory = viewModelFactory { initializer { RedactViewModel(container.pages, documentId, page) } },
+            )
+            RedactRoute(viewModel = viewModel, onDone = { navController.popBackStack() })
         }
         composable(
             Routes.MARKUP,

@@ -81,4 +81,36 @@ class QuadGeometryTest {
         val q = quad(0f, 0f, 0.5f, 0f, 0.5f, 1f, 0f, 1f)
         assertEquals(500 to 2000, QuadGeometry.warpSize(q, 1000, 2000))
     }
+
+    private val tilted = Quad(Corner(0.12f, 0.08f), Corner(0.91f, 0.15f), Corner(0.85f, 0.95f), Corner(0.05f, 0.88f))
+
+    private fun assertNear(expected: Corner, actual: Corner) {
+        assertEquals(expected.x, actual.x, 1e-4f)
+        assertEquals(expected.y, actual.y, 1e-4f)
+    }
+
+    @Test
+    fun pageCornersLandOnTheQuadCorners() {
+        assertNear(tilted.topLeft, QuadGeometry.pageToSource(tilted, 0, Corner(0f, 0f)))
+        assertNear(tilted.bottomRight, QuadGeometry.pageToSource(tilted, 0, Corner(1f, 1f)))
+        // Turned a quarter clockwise, the page's top-left shows what was the bottom-left.
+        assertNear(tilted.bottomLeft, QuadGeometry.pageToSource(tilted, 90, Corner(0f, 0f)))
+        assertNear(tilted.topRight, QuadGeometry.pageToSource(tilted, 270, Corner(0f, 0f)))
+    }
+
+    @Test
+    fun pageAndSourceMapsUndoEachOther() {
+        for (rotation in listOf(0, 90, 180, 270)) {
+            val p = Corner(0.3f, 0.7f)
+            val back = QuadGeometry.sourceToPage(tilted, rotation, QuadGeometry.pageToSource(tilted, rotation, p))
+            assertNear(p, back)
+        }
+    }
+
+    @Test
+    fun containsUsesTheOutline() {
+        val square = listOf(Corner(0.2f, 0.2f), Corner(0.6f, 0.2f), Corner(0.6f, 0.6f), Corner(0.2f, 0.6f))
+        assertTrue(QuadGeometry.contains(square, Corner(0.4f, 0.4f)))
+        assertFalse(QuadGeometry.contains(square, Corner(0.7f, 0.4f)))
+    }
 }

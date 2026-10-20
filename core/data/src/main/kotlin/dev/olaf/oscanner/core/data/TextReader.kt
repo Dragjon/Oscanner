@@ -84,6 +84,9 @@ class TextReader(
                         val result = runCatching { read(recognizer, page) }
                             .onFailure { Log.w(TAG, "Reading page ${page.id} failed", it) }
                             .getOrNull() ?: continue
+                        // Changed while being read (say, an area blacked out): what we read is
+                        // stale and may hold words that must not be kept. It's queued again.
+                        if (db.pages().get(page.id)?.editsJson != page.editsJson) continue
                         withContext(Dispatchers.IO) { writeOcr(ocrFile(page), result) }
                         db.pages().setText(page.id, result.text)
                     }

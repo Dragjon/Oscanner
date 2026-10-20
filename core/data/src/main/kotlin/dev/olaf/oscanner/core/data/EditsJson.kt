@@ -29,7 +29,19 @@ internal object EditsJson {
         .apply { if (edits.keep.isNotEmpty()) put("keep", JSONArray().apply { edits.keep.forEach { put(writeMark(it)) } }) }
         .apply { if (edits.removePenInk) put("removePenInk", true) }
         .apply { if (edits.removeFingers) put("removeFingers", true) }
+        .apply {
+            if (edits.redactions.isNotEmpty()) {
+                put("redact", JSONArray().apply { edits.redactions.forEach { put(writeQuad(it)) } })
+            }
+        }
         .toString()
+
+    private fun writeQuad(quad: Quad) = JSONArray().apply { quad.corners.forEach { put(it.x.toDouble()); put(it.y.toDouble()) } }
+
+    private fun readQuad(a: JSONArray?): Quad? = a
+        ?.takeIf { it.length() == 8 }
+        ?.let { Quad.of(List(4) { i -> Corner(a.optDouble(i * 2).toFloat(), a.optDouble(i * 2 + 1).toFloat()) }) }
+        ?.takeIf { q -> q.corners.all { !it.x.isNaN() && !it.y.isNaN() } }
 
     private fun writeMark(mark: InkMark) = JSONObject()
         .put("color", mark.color)
@@ -47,11 +59,7 @@ internal object EditsJson {
 
     fun read(json: String): PageEdits {
         val obj = runCatching { JSONObject(json) }.getOrNull() ?: return PageEdits()
-        val quad = obj.optJSONArray("quad")
-            ?.takeIf { it.length() == 8 }
-            ?.let { a -> Quad.of(List(4) { Corner(a.optDouble(it * 2).toFloat(), a.optDouble(it * 2 + 1).toFloat()) }) }
-            ?.takeIf { q -> q.corners.all { !it.x.isNaN() && !it.y.isNaN() } }
-            ?: Quad.Full
+        val quad = readQuad(obj.optJSONArray("quad")) ?: Quad.Full
         val filter = PageFilter.entries.firstOrNull { it.name == obj.optString("filter") } ?: PageFilter.Auto
         val rotation = obj.optInt("rotation", 0).let { ((it % 360) + 360) % 360 / 90 * 90 }
         fun unit(name: String, min: Float) = obj.optDouble(name, 0.0).toFloat().takeUnless { it.isNaN() }?.coerceIn(min, 1f) ?: 0f
@@ -71,6 +79,7 @@ internal object EditsJson {
             keep = strokes("keep"),
             removePenInk = obj.optBoolean("removePenInk"),
             removeFingers = obj.optBoolean("removeFingers"),
+            redactions = obj.optJSONArray("redact")?.let { a -> (0 until a.length()).mapNotNull { readQuad(a.optJSONArray(it)) } }.orEmpty(),
         )
     }
 }

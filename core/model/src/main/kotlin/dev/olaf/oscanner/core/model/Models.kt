@@ -59,6 +59,9 @@ data class Page(
     val text: String? = null,
 )
 
+/** A recognized word and its box, normalized to the page as shown (after crop and rotation). */
+data class WordBox(val text: String, val left: Float, val top: Float, val right: Float, val bottom: Float)
+
 /** A point in normalized image coordinates: (0,0) is the top-left of the upright image, (1,1) the bottom-right. */
 data class Corner(val x: Float, val y: Float)
 
@@ -112,6 +115,12 @@ data class PageEdits(
     val removePenInk: Boolean = false,
     /** Clean-up: remove skin-colored shapes reaching in from the page edge, like holding fingers. */
     val removeFingers: Boolean = false,
+    /**
+     * Areas blacked out, as outlines in the original photo (normalized upright-image
+     * coordinates, like [quad]), so they stay over the same words when the page is re-cropped
+     * or turned. Painted black before anything else reads the photo.
+     */
+    val redactions: List<Quad> = emptyList(),
 ) {
     val adjusted: Boolean get() = brightness != 0f || contrast != 0f || detail != 0f
 
