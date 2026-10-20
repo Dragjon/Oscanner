@@ -42,6 +42,17 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import dev.olaf.oscanner.core.imaging.PageRenderer
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.material.icons.rounded.FormatColorReset
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import dev.olaf.oscanner.core.imaging.InkPath
+import dev.olaf.oscanner.core.model.LineStyle
+import dev.olaf.oscanner.core.model.TextFont
 import dev.olaf.oscanner.core.model.TextMark
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
@@ -65,6 +76,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -154,11 +166,17 @@ fun MarkupRoute(viewModel: MarkupViewModel, onDone: () -> Unit) {
                     base = remember(base) { base.asImageBitmap() },
                     state = state,
                     onStroke = viewModel::addStroke,
-                    onErase = viewModel::eraseAt,
+                    onErase = { at, aspect -> viewModel.eraseAt(at, state.eraserSize, aspect) },
                     onMoveSignature = viewModel::moveSignature,
                     onTextTap = { at ->
+                        // A tap selects a text (the options then change its style); a second tap
+                        // on it changes its words; a tap on blank paper adds new text.
                         val hit = viewModel.textAt(at, base.width.toFloat(), base.height.toFloat())
-                        if (hit >= 0) editingText = hit else newTextAt = at
+                        when {
+                            hit < 0 -> newTextAt = at
+                            hit == state.selectedText -> editingText = hit
+                            else -> viewModel.selectText(hit)
+                        }
                     },
                     onTextDragStart = { at ->
                         viewModel.textAt(at, base.width.toFloat(), base.height.toFloat()).also { if (it >= 0) viewModel.startMovingText() }
@@ -189,7 +207,14 @@ fun MarkupRoute(viewModel: MarkupViewModel, onDone: () -> Unit) {
                 })
             }
         } else {
-            ToolRow(state, onTool = viewModel::setTool, onColor = viewModel::setColor)
+            ToolRow(state, onTool = viewModel::setTool)
+            ToolOptions(
+                state = state,
+                onPen = viewModel::setPen,
+                onHighlighter = viewModel::setHighlighter,
+                onText = viewModel::setTextStyle,
+                onEraser = viewModel::setEraserSize,
+            )
             Dock(Modifier.align(Alignment.CenterHorizontally).navigationBarsPadding().padding(16.dp).widthIn(max = 480.dp).fillMaxWidth()) {
                 DockAction(Icons.Rounded.Draw, stringResource(R.string.document_sign), { signing = true })
                 PrimaryPill(Icons.Rounded.Check, stringResource(R.string.document_ok), viewModel::save)
@@ -215,9 +240,9 @@ fun MarkupRoute(viewModel: MarkupViewModel, onDone: () -> Unit) {
     newTextAt?.let { at ->
         TextDialog(
             initial = null,
-            onDone = { text, size, stamp ->
+            onDone = { text, stamp ->
                 newTextAt = null
-                viewModel.addText(text, at, size, stamp)
+                viewModel.addText(text, at, stamp)
             },
             onDelete = null,
             onDismiss = { newTextAt = null },
@@ -226,8 +251,8 @@ fun MarkupRoute(viewModel: MarkupViewModel, onDone: () -> Unit) {
     state.texts.getOrNull(editingText)?.let { mark ->
         TextDialog(
             initial = mark,
-            onDone = { text, size, stamp ->
-                viewModel.updateText(editingText, text, size, stamp)
+            onDone = { text, stamp ->
+                viewModel.updateText(editingText, text, stamp)
                 editingText = -1
             },
             onDelete = {
@@ -253,8 +278,9 @@ fun MarkupRoute(viewModel: MarkupViewModel, onDone: () -> Unit) {
     }
 }
 
+/** Which tool: pen, highlighter, text or eraser. Its own options sit in a panel underneath. */
 @Composable
-private fun ToolRow(state: MarkupUiState, onTool: (MarkupTool) -> Unit, onColor: (Int) -> Unit) {
+private fun ToolRow(state: MarkupUiState, onTool: (MarkupTool) -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -267,27 +293,264 @@ private fun ToolRow(state: MarkupUiState, onTool: (MarkupTool) -> Unit, onColor:
         ToolChip(Icons.Rounded.Highlight, stringResource(R.string.document_tool_highlighter), state.tool == MarkupTool.Highlighter) { onTool(MarkupTool.Highlighter) }
         ToolChip(Icons.Rounded.TextFields, stringResource(R.string.document_tool_text), state.tool == MarkupTool.Text) { onTool(MarkupTool.Text) }
         ToolChip(Icons.Rounded.FormatClear, stringResource(R.string.document_tool_eraser), state.tool == MarkupTool.Eraser) { onTool(MarkupTool.Eraser) }
-        Spacer(Modifier.width(4.dp))
-        val names = listOf(R.string.document_color_black, R.string.document_color_blue, R.string.document_color_red)
-        INK_COLORS.forEachIndexed { i, color ->
-            val chosen = (state.tool == MarkupTool.Pen || state.tool == MarkupTool.Text) && state.color == color
-            val name = stringResource(names[i])
+    }
+}
+
+/**
+ * The chosen tool's own settings, in a panel of their own: colors as swatches, sizes as dots of
+ * that size, line types and fonts as small previews of themselves.
+ */
+@Composable
+private fun ToolOptions(
+    state: MarkupUiState,
+    onPen: (PenSettings) -> Unit,
+    onHighlighter: (HighlighterSettings) -> Unit,
+    onText: (TextSettings) -> Unit,
+    onEraser: (Float) -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        color = colors.surfaceContainerHigh,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, top = 8.dp),
+    ) {
+        Column(Modifier.padding(vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            when (state.tool) {
+                MarkupTool.Pen -> {
+                    val pen = state.pen
+                    Swatches(PEN_COLORS, pen.color) { onPen(pen.copy(color = it)) }
+                    OptionRow {
+                        SizeDots(PEN_WIDTHS, pen.width, R.string.document_option_width) { onPen(pen.copy(width = it)) }
+                        Spacer(Modifier.width(12.dp))
+                        LineStyle.entries.forEach { style ->
+                            LineStyleChip(style, pen.style == style) { onPen(pen.copy(style = style)) }
+                        }
+                    }
+                }
+                MarkupTool.Highlighter -> {
+                    val h = state.highlighter
+                    Swatches(HIGHLIGHTER_COLORS, h.color) { onHighlighter(h.copy(color = it)) }
+                    OptionRow { SizeDots(HIGHLIGHTER_WIDTHS, h.width, R.string.document_option_width) { onHighlighter(h.copy(width = it)) } }
+                }
+                MarkupTool.Text -> {
+                    val t = state.text
+                    Text(
+                        stringResource(if (state.selectedText >= 0) R.string.document_text_selected_hint else R.string.document_text_tool_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
+                    Swatches(PEN_COLORS, t.color) { onText(t.copy(color = it)) }
+                    OptionRow {
+                        TextFont.entries.forEach { font -> FontChip(font, t.font == font) { onText(t.copy(font = font)) } }
+                        Spacer(Modifier.width(4.dp))
+                        BoldChip(t.bold) { onText(t.copy(bold = !t.bold)) }
+                    }
+                    OptionRow {
+                        SizeDots(TEXT_SIZES, t.size, R.string.document_option_size, letters = true) { onText(t.copy(size = it)) }
+                        Spacer(Modifier.width(12.dp))
+                        TEXT_BACKGROUNDS.forEach { fill -> BackgroundChip(fill, t.background == fill) { onText(t.copy(background = fill)) } }
+                    }
+                }
+                MarkupTool.Eraser -> OptionRow { SizeDots(ERASER_SIZES, state.eraserSize, R.string.document_option_size) { onEraser(it) } }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OptionRow(content: @Composable () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) { content() }
+}
+
+/** Colors as round swatches; the chosen one ringed and ticked. */
+@Composable
+private fun Swatches(options: List<Int>, chosen: Int, onPick: (Int) -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    OptionRow {
+        options.forEach { argb ->
+            val selected = argb == chosen
+            val swatch = Color(argb)
+            val name = colorName(argb)
             Box(
                 Modifier
                     .size(40.dp)
-                    .semantics {
-                        role = Role.RadioButton
-                        selected = chosen
-                        contentDescription = name
-                    }
-                    .border(if (chosen) 3.dp else 0.dp, MaterialTheme.colorScheme.primary, CircleShape)
-                    .padding(6.dp)
-                    .background(Color(color), CircleShape)
-                    .pointerInput(color) { detectTapGestures { onColor(color) } },
+                    .clip(CircleShape)
+                    .selectable(selected = selected, role = Role.RadioButton, onClick = { onPick(argb) })
+                    .semantics { contentDescription = name }
+                    .border(if (selected) 2.dp else 0.dp, if (selected) colors.onSurface else Color.Transparent, CircleShape)
+                    .padding(5.dp)
+                    .background(swatch, CircleShape)
+                    .border(1.dp, colors.outline.copy(alpha = 0.5f), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (selected) {
+                    Icon(
+                        Icons.Rounded.Check,
+                        contentDescription = null,
+                        tint = if (swatch.luminance() > 0.5f) Color(0xFF1A1A1A) else Color.White,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Three sizes, each a dot (or, for text, an A) drawn at that size. */
+@Composable
+private fun SizeDots(options: List<Float>, chosen: Float, label: Int, letters: Boolean = false, onPick: (Float) -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val name = stringResource(label)
+    options.forEachIndexed { index, value ->
+        val selected = kotlin.math.abs(value - chosen) < 1e-5f
+        Box(
+            Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(if (selected) colors.primaryContainer else Color.Transparent)
+                .selectable(selected = selected, role = Role.RadioButton, onClick = { onPick(value) })
+                .semantics { contentDescription = "$name ${index + 1}" },
+            contentAlignment = Alignment.Center,
+        ) {
+            val ink = if (selected) colors.onPrimaryContainer else colors.onSurfaceVariant
+            if (letters) {
+                Text("A", color = ink, style = MaterialTheme.typography.labelLarge.copy(fontSize = (11 + index * 5).sp))
+            } else {
+                val dot = (6 + index * 6).dp
+                Box(Modifier.size(dot).clip(CircleShape).background(ink))
+            }
+        }
+    }
+}
+
+/** Solid, dashed or dotted, drawn as a short line. */
+@Composable
+private fun LineStyleChip(style: LineStyle, selected: Boolean, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val name = stringResource(
+        when (style) {
+            LineStyle.Solid -> R.string.document_line_solid
+            LineStyle.Dashed -> R.string.document_line_dashed
+            LineStyle.Dotted -> R.string.document_line_dotted
+        },
+    )
+    Surface(
+        selected = selected,
+        onClick = onClick,
+        shape = MaterialTheme.shapes.medium,
+        color = if (selected) colors.primaryContainer else colors.surfaceContainer,
+        modifier = Modifier.size(width = 56.dp, height = 40.dp).semantics { contentDescription = name },
+    ) {
+        Canvas(Modifier.padding(horizontal = 10.dp)) {
+            val dash = InkPath.pattern(style)
+            val stroke = 3.dp.toPx()
+            drawLine(
+                colors.onSurface,
+                Offset(0f, size.height / 2),
+                Offset(size.width, size.height / 2),
+                strokeWidth = stroke,
+                cap = StrokeCap.Round,
+                pathEffect = dash?.let { PathEffect.dashPathEffect(FloatArray(it.size) { i -> it[i] * stroke }) },
             )
         }
     }
 }
+
+/** "Aa" in the font it picks. */
+@Composable
+private fun FontChip(font: TextFont, selected: Boolean, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val family = when (font) {
+        TextFont.Sans -> FontFamily.SansSerif
+        TextFont.Serif -> FontFamily.Serif
+        TextFont.Mono -> FontFamily.Monospace
+        TextFont.Hand -> FontFamily.Cursive
+    }
+    val name = stringResource(
+        when (font) {
+            TextFont.Sans -> R.string.document_font_sans
+            TextFont.Serif -> R.string.document_font_serif
+            TextFont.Mono -> R.string.document_font_mono
+            TextFont.Hand -> R.string.document_font_hand
+        },
+    )
+    Surface(
+        selected = selected,
+        onClick = onClick,
+        shape = MaterialTheme.shapes.medium,
+        color = if (selected) colors.primaryContainer else colors.surfaceContainer,
+        contentColor = if (selected) colors.onPrimaryContainer else colors.onSurface,
+        modifier = Modifier.size(width = 52.dp, height = 40.dp).semantics { contentDescription = name },
+    ) {
+        Box(contentAlignment = Alignment.Center) { Text("Aa", fontFamily = family, style = MaterialTheme.typography.titleMedium) }
+    }
+}
+
+@Composable
+private fun BoldChip(bold: Boolean, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val name = stringResource(R.string.document_text_bold)
+    Surface(
+        selected = bold,
+        onClick = onClick,
+        shape = MaterialTheme.shapes.medium,
+        color = if (bold) colors.primaryContainer else colors.surfaceContainer,
+        contentColor = if (bold) colors.onPrimaryContainer else colors.onSurface,
+        modifier = Modifier.size(40.dp).semantics { contentDescription = name },
+    ) {
+        Box(contentAlignment = Alignment.Center) { Text("B", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium) }
+    }
+}
+
+/** What's behind text: nothing (a crossed square), or a fill. */
+@Composable
+private fun BackgroundChip(fill: Int?, selected: Boolean, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val name = stringResource(if (fill == null) R.string.document_text_no_background else R.string.document_text_background)
+    Box(
+        Modifier
+            .size(40.dp)
+            .clip(MaterialTheme.shapes.small)
+            .border(if (selected) 2.dp else 1.dp, if (selected) colors.onSurface else colors.outline.copy(alpha = 0.5f), MaterialTheme.shapes.small)
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+            .semantics { contentDescription = name }
+            .padding(6.dp)
+            .background(fill?.let { Color(it) } ?: Color.Transparent, MaterialTheme.shapes.extraSmall),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (fill == null) Icon(Icons.Rounded.FormatColorReset, contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(18.dp))
+    }
+}
+
+/** A spoken name for a swatch. */
+@Composable
+private fun colorName(argb: Int): String = stringResource(
+    when (argb) {
+        PEN_COLORS[0] -> R.string.document_color_black
+        PEN_COLORS[1] -> R.string.document_color_blue
+        PEN_COLORS[2] -> R.string.document_color_red
+        PEN_COLORS[3] -> R.string.document_color_green
+        PEN_COLORS[4] -> R.string.document_color_purple
+        PEN_COLORS[5] -> R.string.document_color_orange
+        PEN_COLORS[6] -> R.string.document_color_brown
+        PEN_COLORS[7] -> R.string.document_color_white
+        HIGHLIGHTER_COLORS[0] -> R.string.document_color_yellow
+        HIGHLIGHTER_COLORS[1] -> R.string.document_color_green
+        HIGHLIGHTER_COLORS[2] -> R.string.document_color_pink
+        HIGHLIGHTER_COLORS[3] -> R.string.document_color_blue
+        else -> R.string.document_color_orange
+    },
+)
 
 @Composable
 private fun ToolChip(icon: androidx.compose.ui.graphics.vector.ImageVector?, label: String, selected: Boolean, onClick: () -> Unit) {
@@ -315,12 +578,13 @@ private fun ToolChip(icon: androidx.compose.ui.graphics.vector.ImageVector?, lab
 }
 
 /** The page with its marks; a finger draws, erases, or drags the signature being placed. */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun MarkupCanvas(
     base: ImageBitmap,
     state: MarkupUiState,
     onStroke: (List<Corner>) -> Unit,
-    onErase: (Corner, Float, Float) -> Unit,
+    onErase: (Corner, Float) -> Unit,
     onMoveSignature: (Float, Float) -> Unit,
     onTextTap: (Corner) -> Unit,
     /** Returns the index of the text under the finger, or -1. */
@@ -351,7 +615,7 @@ private fun MarkupCanvas(
                             if (!placing && tool == MarkupTool.Text) {
                                 movingText = onTextDragStart(toPage(start))
                             } else if (!placing) {
-                                if (tool == MarkupTool.Eraser) onErase(toPage(start), 0.02f, pageAspect) else current.add(toPage(start))
+                                if (tool == MarkupTool.Eraser) onErase(toPage(start), pageAspect) else current.add(toPage(start))
                             }
                         },
                         onDrag = { change, drag ->
@@ -359,8 +623,13 @@ private fun MarkupCanvas(
                             when {
                                 placing -> onMoveSignature(drag.x / shown.width, drag.y / shown.height)
                                 tool == MarkupTool.Text -> if (movingText >= 0) onTextDrag(movingText, drag.x / shown.width, drag.y / shown.height)
-                                tool == MarkupTool.Eraser -> onErase(toPage(change.position), 0.02f, pageAspect)
-                                else -> current.add(toPage(change.position))
+                                tool == MarkupTool.Eraser -> onErase(toPage(change.position), pageAspect)
+                                // Every point the finger passed since the last frame, not just the
+                                // latest: fast strokes stay curves instead of turning into corners.
+                                else -> {
+                                    change.historical.forEach { current.add(toPage(it.position)) }
+                                    current.add(toPage(change.position))
+                                }
                             }
                         },
                         onDragEnd = {
@@ -379,7 +648,7 @@ private fun MarkupCanvas(
                     detectTapGestures { at ->
                         if (placing) return@detectTapGestures
                         if (tool == MarkupTool.Text) return@detectTapGestures onTextTap(toPage(at))
-                        if (tool == MarkupTool.Eraser) onErase(toPage(at), 0.02f, pageAspect) else onStroke(listOf(toPage(at)))
+                        if (tool == MarkupTool.Eraser) onErase(toPage(at), pageAspect) else onStroke(listOf(toPage(at)))
                     }
                 },
         ) {
@@ -393,28 +662,26 @@ private fun MarkupCanvas(
                 native.restore()
             }
             if (state.tool == MarkupTool.Text) {
-                // Dashed frames say "tap to change, drag to move".
-                state.texts.forEach { t ->
+                // Dashed frames say "tap to change, drag to move"; the selected one is solid.
+                state.texts.forEachIndexed { index, t ->
                     val (hw, hh) = PageRenderer.textHalfSize(t, shown.width).let { if (t.angle % 180 != 0) it.second to it.first else it }
                     val pad = 4.dp.toPx()
                     drawRect(
                         color = Color(0xFF7D7369),
                         topLeft = Offset(shown.left + t.x * shown.width - hw - pad, shown.top + t.y * shown.height - hh - pad),
                         size = Size((hw + pad) * 2, (hh + pad) * 2),
-                        style = Stroke(1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 6f))),
+                        style = if (index == state.selectedText) {
+                            Stroke(2.dp.toPx())
+                        } else {
+                            Stroke(1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 6f)))
+                        },
                     )
                 }
             }
-            if (current.isNotEmpty()) {
-                val highlighter = state.tool == MarkupTool.Highlighter
-                drawInk(
-                    InkMark(current.toList(), if (highlighter) HIGHLIGHTER_COLOR else state.color, if (highlighter) 0.03f else 0.004f, highlighter),
-                    shown,
-                )
-            }
+            if (current.isNotEmpty()) drawInk(MarkupViewModel.strokeFor(state, current.toList()), shown)
             state.placement?.let { placement ->
                 val strokes = MarkupViewModel.signatureStrokes(placement, pageAspect)
-                strokes.forEach { drawInk(InkMark(it, state.color, 0.0035f), shown) }
+                strokes.forEach { drawInk(InkMark(it, state.pen.color, 0.0035f), shown) }
                 // A dashed frame says "this can be moved".
                 val xs = strokes.flatten().map { it.x }
                 val ys = strokes.flatten().map { it.y }
@@ -441,14 +708,16 @@ private fun DrawScope.drawInk(mark: InkMark, shown: Rect) {
         drawCircle(color, width / 2, Offset(shown.left + p.x * shown.width, shown.top + p.y * shown.height), blendMode = blend)
         return
     }
+    // The same smoothing and dashes the saved page gets.
     val path = Path().apply {
-        mark.points.forEachIndexed { i, p ->
+        InkPath.smooth(mark.points).forEachIndexed { i, p ->
             val x = shown.left + p.x * shown.width
             val y = shown.top + p.y * shown.height
             if (i == 0) moveTo(x, y) else lineTo(x, y)
         }
     }
-    drawPath(path, color, style = Stroke(width, cap = StrokeCap.Round, join = StrokeJoin.Round), blendMode = blend)
+    val dash = InkPath.pattern(mark.style)?.let { d -> PathEffect.dashPathEffect(FloatArray(d.size) { d[it] * width }) }
+    drawPath(path, color, style = Stroke(width, cap = StrokeCap.Round, join = StrokeJoin.Round, pathEffect = dash), blendMode = blend)
 }
 
 /**
@@ -459,13 +728,12 @@ private fun DrawScope.drawInk(mark: InkMark, shown: Rect) {
 @Composable
 private fun TextDialog(
     initial: TextMark?,
-    onDone: (text: String, size: TextSize, stamp: Boolean) -> Unit,
+    onDone: (text: String, stamp: Boolean) -> Unit,
     onDelete: (() -> Unit)?,
     onDismiss: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     var text by rememberSaveable { mutableStateOf(initial?.text.orEmpty()) }
-    var size by rememberSaveable { mutableStateOf(TextSize.entries.minBy { kotlin.math.abs(it.size - (initial?.size ?: TextSize.Medium.size)) }) }
     var stamp by rememberSaveable { mutableStateOf(initial?.stamp ?: false) }
     val today = remember { java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(java.util.Date()) }
     val words = listOf(
@@ -506,18 +774,6 @@ private fun TextDialog(
                         }
                     }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    TextSize.entries.forEach { option ->
-                        val label = stringResource(
-                            when (option) {
-                                TextSize.Small -> R.string.document_text_small
-                                TextSize.Medium -> R.string.document_text_medium
-                                TextSize.Large -> R.string.document_text_large
-                            },
-                        )
-                        ToolChip(null, label, size == option) { size = option }
-                    }
-                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = stamp, onCheckedChange = { stamp = it }, colors = CheckboxDefaults.colors(checkedColor = colors.primary, checkmarkColor = colors.onPrimary))
                     Text(stringResource(R.string.document_text_stamp), style = MaterialTheme.typography.bodyMedium)
@@ -525,7 +781,7 @@ private fun TextDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onDone(text, size, stamp) }, enabled = text.isNotBlank()) {
+            TextButton(onClick = { onDone(text, stamp) }, enabled = text.isNotBlank()) {
                 Text(stringResource(if (initial == null) R.string.document_text_place else R.string.document_ok))
             }
         },
@@ -591,7 +847,7 @@ private fun SignatureDialog(
                                     Canvas(Modifier.padding(8.dp)) {
                                         val box = fitBox(size, signature.aspect)
                                         signature.strokes.forEach { s ->
-                                            drawInk(InkMark(s, INK_COLORS.first(), 0.025f), box)
+                                            drawInk(InkMark(s, PEN_COLORS.first(), 0.025f), box)
                                         }
                                     }
                                 }
@@ -629,7 +885,7 @@ private fun SignatureDialog(
                     Canvas(Modifier.fillMaxSize()) {
                         (strokes + listOf(current.toList())).filter { it.size > 1 }.forEach { s ->
                             val path = Path().apply { s.forEachIndexed { i, p -> if (i == 0) moveTo(p.x, p.y) else lineTo(p.x, p.y) } }
-                            drawPath(path, Color(INK_COLORS.first()), style = Stroke(3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+                            drawPath(path, Color(PEN_COLORS.first()), style = Stroke(3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
                         }
                         // The line people sign on.
                         drawLine(Color(0xFFB9B2A8), Offset(16.dp.toPx(), size.height * 0.75f), Offset(size.width - 16.dp.toPx(), size.height * 0.75f), 1.dp.toPx())
