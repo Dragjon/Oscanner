@@ -390,7 +390,7 @@ private fun ThemeChoice(selected: ThemeMode, onSelect: (ThemeMode) -> Unit) = Ch
 
 /**
  * A row of mutually exclusive choices, each a plain word. No checkmark: it took a third of a
- * narrow segment and pushed "Match phone" onto two lines. The chosen one is filled and bold.
+ * narrow segment and pushed longer labels onto two lines. The chosen one is filled and bold.
  * Every segment takes the height of the tallest, so a label that does wrap doesn't stand out.
  */
 @Composable

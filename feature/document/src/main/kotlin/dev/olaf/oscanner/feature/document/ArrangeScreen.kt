@@ -22,6 +22,17 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.LazyGridItemInfo
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.unit.toOffset
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
@@ -112,7 +123,8 @@ class ArrangeViewModel(
 
 /**
  * Every page as a tile. Tap tiles to choose them, then move, turn, copy into a new document or
- * delete. Moving is by buttons rather than dragging, so it also works with TalkBack.
+ * delete. Long-press a tile and drag it to move it; the Earlier and Later buttons do the same
+ * for TalkBack and one-handed use.
  */
 @Composable
 fun ArrangeRoute(viewModel: ArrangeViewModel, onBack: () -> Unit, onOpenDocument: (Long) -> Unit) {
@@ -144,6 +156,19 @@ fun ArrangeRoute(viewModel: ArrangeViewModel, onBack: () -> Unit, onOpenDocument
     val picked = chosen.filter { id -> visible.any { it.id == id } }
     val colors = MaterialTheme.colorScheme
 
+    // Dragging reorders a local copy so tiles slide out of the way at once; the new order is
+    // saved when the finger lifts.
+    val gridState = rememberLazyGridState()
+    val haptics = LocalHapticFeedback.current
+    var dragged by remember { mutableStateOf<Long?>(null) }
+    var dragOrder by remember { mutableStateOf<List<Page>?>(null) }
+    var pointer by remember { mutableStateOf(Offset.Zero) }
+    var grab by remember { mutableStateOf(Offset.Zero) }
+    LaunchedEffect(visible) { if (dragged == null) dragOrder = null }
+    val shown = dragOrder ?: visible
+    val currentVisible by rememberUpdatedState(visible)
+    val currentAll by rememberUpdatedState(all)
+
     Box(
         Modifier
             .fillMaxSize()
@@ -174,19 +199,77 @@ fun ArrangeRoute(viewModel: ArrangeViewModel, onBack: () -> Unit, onOpenDocument
             }
 
             LazyVerticalGrid(
+                state = gridState,
                 columns = GridCells.Adaptive(104.dp),
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .pointerInput(Unit) {
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = { start ->
+                                val item = gridState.layoutInfo.visibleItemsInfo.firstOrNull { it.contains(start) } ?: return@detectDragGesturesAfterLongPress
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                dragged = item.key as Long
+                                dragOrder = currentVisible
+                                pointer = start
+                                grab = start - item.offset.toOffset()
+                            },
+                            onDrag = { change, amount ->
+                                change.consume()
+                                pointer += amount
+                                val id = dragged ?: return@detectDragGesturesAfterLongPress
+                                val order = dragOrder ?: return@detectDragGesturesAfterLongPress
+                                val under = gridState.layoutInfo.visibleItemsInfo
+                                    .firstOrNull { it.key != id && it.contains(pointer) } ?: return@detectDragGesturesAfterLongPress
+                                val from = order.indexOfFirst { it.id == id }
+                                val to = order.indexOfFirst { it.id == under.key }
+                                if (from >= 0 && to >= 0) dragOrder = order.toMutableList().apply { add(to, removeAt(from)) }
+                            },
+                            onDragEnd = {
+                                val id = dragged
+                                val order = dragOrder
+                                dragged = null
+                                if (id != null && order != null) {
+                                    // Indices count every page, including any waiting out an Undo.
+                                    val newIndex = order.indexOfFirst { it.id == id }
+                                    val target = currentVisible.getOrNull(newIndex)?.id
+                                    val from = currentAll.indexOfFirst { it.id == id }
+                                    val to = currentAll.indexOfFirst { it.id == target }
+                                    if (from >= 0 && to >= 0 && from != to) viewModel.move(from, to) else dragOrder = null
+                                }
+                            },
+                            onDragCancel = {
+                                dragged = null
+                                dragOrder = null
+                            },
+                        )
+                    },
                 contentPadding = PaddingValues(16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                itemsIndexed(visible, key = { _, page -> page.id }) { index, page ->
+                itemsIndexed(shown, key = { _, page -> page.id }) { index, page ->
+                    val lifted = page.id == dragged
                     PageTile(
                         page = page,
                         number = index + 1,
                         selected = page.id in chosen,
                         onClick = { if (page.id in chosen) chosen.remove(page.id) else chosen.add(page.id) },
-                        modifier = Modifier.animateItem(),
+                        modifier = if (lifted) {
+                            // The lifted tile follows the finger, above the others.
+                            Modifier
+                                .zIndex(1f)
+                                .graphicsLayer {
+                                    val at = gridState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == page.id }?.offset?.toOffset() ?: Offset.Zero
+                                    val move = pointer - grab - at
+                                    translationX = move.x
+                                    translationY = move.y
+                                    scaleX = 1.06f
+                                    scaleY = 1.06f
+                                    shadowElevation = 12f
+                                }
+                        } else {
+                            Modifier.animateItem()
+                        },
                     )
                 }
             }
@@ -290,6 +373,9 @@ private fun PageTile(page: Page, number: Int, selected: Boolean, onClick: () -> 
         }
     }
 }
+
+private fun LazyGridItemInfo.contains(point: Offset): Boolean =
+    point.x >= offset.x && point.x < offset.x + size.width && point.y >= offset.y && point.y < offset.y + size.height
 
 private val idListSaver = androidx.compose.runtime.saveable.listSaver<androidx.compose.runtime.snapshots.SnapshotStateList<Long>, Long>(
     save = { it.toList() },

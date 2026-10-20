@@ -139,6 +139,7 @@ fun OscannerNavHost(
                 onOpenDocument = { navController.navigate(Routes.document(it)) },
                 onOpenSettings = { navController.navigate(Routes.SETTINGS) { launchSingleTop = true } },
                 onOpenTrash = { navController.navigate(Routes.TRASH) { launchSingleTop = true } },
+                versionName = BuildConfig.VERSION_NAME,
             )
         }
         composable(Routes.SETTINGS) {

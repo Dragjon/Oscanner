@@ -18,6 +18,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -41,6 +45,11 @@ import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import dev.olaf.oscanner.core.design.R as DesignR
 import dev.olaf.oscanner.core.design.share
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Row
@@ -106,6 +115,7 @@ fun LibraryRoute(
     onOpenDocument: (Long) -> Unit,
     onOpenSettings: () -> Unit,
     onOpenTrash: () -> Unit,
+    versionName: String,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val selection by viewModel.selection.collectAsStateWithLifecycle()
@@ -160,6 +170,7 @@ fun LibraryRoute(
         onOpenDocument = onOpenDocument,
         onOpenSettings = onOpenSettings,
         onOpenTrash = onOpenTrash,
+        versionName = versionName,
     )
 }
 
@@ -193,6 +204,7 @@ fun LibraryScreen(
     onOpenDocument: (Long) -> Unit,
     onOpenSettings: () -> Unit,
     onOpenTrash: () -> Unit,
+    versionName: String,
 ) {
     var showMore by rememberSaveable { mutableStateOf(false) }
     var showNewFolder by rememberSaveable { mutableStateOf(false) }
@@ -200,13 +212,19 @@ fun LibraryScreen(
     val chosen = selection.chosen
     val statusBar = WindowInsets.statusBars.asPaddingValues()
     val navBar = WindowInsets.navigationBars.asPaddingValues()
+    val focusManager = LocalFocusManager.current
+    val listState = rememberLazyListState()
+    // Scrolling the list or tapping anywhere off the search field ends the search edit.
+    LaunchedEffect(listState.isScrollInProgress) { if (listState.isScrollInProgress) focusManager.clearFocus() }
 
     Box(
         Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(MaterialTheme.colorScheme.background)
+            .pointerInput(Unit) { detectTapGestures { focusManager.clearFocus() } },
     ) {
         LazyColumn(
+            state = listState,
             // On tablets the list stays a readable width, centered.
             modifier = Modifier.align(Alignment.TopCenter).widthIn(max = 720.dp).fillMaxSize(),
             contentPadding = PaddingValues(
@@ -219,12 +237,7 @@ fun LibraryScreen(
         ) {
             item(key = "title") {
                 if (chosen == null) {
-                    Text(
-                        stringResource(R.string.library_title),
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
-                    )
+                    BrandHeader(versionName, Modifier.padding(start = 4.dp, bottom = 8.dp))
                 } else {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
                         IconButton(onClick = selection.stop) {
@@ -319,9 +332,8 @@ fun LibraryScreen(
                 } else {
                     val any = chosen.isNotEmpty()
                     DockAction(Icons.Rounded.DriveFileMove, stringResource(R.string.library_move), { showMoveSelected = true }, enabled = any)
-                    // Share is what a long press is most often for, so it's the one orange action.
-                    PrimaryPill(Icons.Rounded.Share, stringResource(R.string.library_share), { if (any) selection.share() })
                     DockAction(Icons.Rounded.CallMerge, stringResource(R.string.library_merge), selection.merge, enabled = chosen.size >= 2)
+                    DockAction(Icons.Rounded.Share, stringResource(R.string.library_share), selection.share, enabled = any)
                     DockAction(Icons.Rounded.DeleteOutline, stringResource(R.string.library_delete), selection.trash, enabled = any)
                 }
             }
@@ -375,6 +387,28 @@ fun LibraryScreen(
                 onCreateFolder(name)
             },
             onDismiss = { showNewFolder = false },
+        )
+    }
+}
+
+/** The app's mark, name and version: the home screen's title. */
+@Composable
+private fun BrandHeader(versionName: String, modifier: Modifier = Modifier) {
+    Row(modifier.semantics(mergeDescendants = true) { heading() }, verticalAlignment = Alignment.CenterVertically) {
+        Image(painterResource(DesignR.drawable.oscanner_logo), contentDescription = null, modifier = Modifier.size(44.dp))
+        Spacer(Modifier.width(12.dp))
+        Text(
+            stringResource(R.string.library_app_name),
+            style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.alignByBaseline(),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            versionName,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.alignByBaseline(),
         )
     }
 }

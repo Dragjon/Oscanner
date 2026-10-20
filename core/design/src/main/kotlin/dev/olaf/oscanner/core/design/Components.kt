@@ -26,6 +26,15 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
@@ -151,14 +160,25 @@ fun SearchField(
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
+    val focusManager = LocalFocusManager.current
+    var focused by remember { mutableStateOf(false) }
+    // Closing the keyboard (back gesture, or the keyboard's own button) also ends the search
+    // edit, so no cursor is left blinking in the field.
+    val keyboardOpen = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    var keyboardWasOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(keyboardOpen) {
+        if (keyboardWasOpen && !keyboardOpen && focused) focusManager.clearFocus()
+        keyboardWasOpen = keyboardOpen
+    }
     BasicTextField(
         value = value,
         onValueChange = onValueChange,
-        modifier = modifier,
+        modifier = modifier.onFocusChanged { focused = it.isFocused },
         singleLine = true,
         textStyle = MaterialTheme.typography.bodyLarge.copy(color = colors.onSurface),
         cursorBrush = SolidColor(colors.primary),
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+        keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
         decorationBox = { inner ->
             Surface(shape = MaterialTheme.shapes.medium, color = colors.surfaceContainer) {
                 Row(

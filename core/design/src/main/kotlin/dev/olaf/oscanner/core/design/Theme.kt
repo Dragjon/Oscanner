@@ -4,6 +4,7 @@ import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
@@ -61,34 +62,38 @@ private val NightScheme = darkColorScheme(
     scrim = Color(0xFF000000),
 )
 
+/*
+ * Soft Card, Day. Near-white warm paper and a lighter coral, so the light theme feels airy
+ * rather than beige. Ink on the coral stays dark (about 8:1).
+ */
 private val DayScheme = lightColorScheme(
-    primary = Color(0xFFF25A2C),
+    primary = Color(0xFFFF8052),
     onPrimary = Ink,
-    primaryContainer = Color(0xFFFFE3D6),
+    primaryContainer = Color(0xFFFFEBE1),
     onPrimaryContainer = Color(0xFF3B1607),
     secondary = Color(0xFF6F625A),
     onSecondary = Color(0xFFFFFFFF),
-    secondaryContainer = Color(0xFFFFE3D6),
+    secondaryContainer = Color(0xFFFFEBE1),
     onSecondaryContainer = Color(0xFF3B1607),
     tertiary = Color(0xFF2E7D4F),
     onTertiary = Color(0xFFFFFFFF),
-    background = Color(0xFFFFF4E6),
+    background = Color(0xFFFFFAF5),
     onBackground = Color(0xFF2B241F),
-    surface = Color(0xFFFFF4E6),
+    surface = Color(0xFFFFFAF5),
     onSurface = Color(0xFF2B241F),
-    surfaceVariant = Color(0xFFF7EBDD),
+    surfaceVariant = Color(0xFFFBF2E9),
     onSurfaceVariant = Color(0xFF6F625A),
     surfaceContainerLowest = Color(0xFFFFFFFF),
-    surfaceContainerLow = Color(0xFFFFFAF3),
+    surfaceContainerLow = Color(0xFFFFFDFA),
     surfaceContainer = Color(0xFFFFFFFF),
-    surfaceContainerHigh = Color(0xFFF7EBDD),
-    surfaceContainerHighest = Color(0xFFF0E2D2),
+    surfaceContainerHigh = Color(0xFFFBF2E9),
+    surfaceContainerHighest = Color(0xFFF5E9DC),
     surfaceBright = Color(0xFFFFFFFF),
-    surfaceDim = Color(0xFFF0E2D2),
+    surfaceDim = Color(0xFFF5E9DC),
     outline = Color(0xFF9A8C80),
-    outlineVariant = Color(0xFFE7DACB),
+    outlineVariant = Color(0xFFEEE3D7),
     inverseSurface = Color(0xFF2B241F),
-    inverseOnSurface = Color(0xFFFFF4E6),
+    inverseOnSurface = Color(0xFFFFFAF5),
     inversePrimary = Color(0xFFFF6A3D),
     error = Color(0xFFB3261E),
     onError = Color(0xFFFFFFFF),
@@ -158,8 +163,11 @@ fun OscannerTheme(
             colorScheme = scheme,
             typography = OscannerTypography,
             shapes = OscannerShapes,
-            content = content,
-        )
+        ) {
+            // Text and icons drawn straight on a screen's background (not inside a Surface) would
+            // otherwise default to black, which vanishes on the dark theme.
+            CompositionLocalProvider(LocalContentColor provides scheme.onBackground, content = content)
+        }
     }
 }
 

@@ -6,6 +6,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,11 +38,12 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.FolderOff
 import androidx.compose.material.icons.rounded.CleaningServices
+import androidx.compose.material.icons.rounded.Crop
 import androidx.compose.material.icons.rounded.Draw
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Lock
-import androidx.compose.material.icons.rounded.MoreHoriz
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.PictureAsPdf
 import androidx.compose.material.icons.rounded.Print
 import androidx.compose.material.icons.rounded.Rectangle
@@ -59,6 +61,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.Surface
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -78,6 +81,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -93,7 +98,7 @@ import dev.olaf.oscanner.core.model.Folder
 import dev.olaf.oscanner.core.model.Page
 import dev.olaf.oscanner.core.model.ProcessingState
 
-private enum class Sheet { Share, More }
+private enum class Sheet { Edit, Share, Document }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -170,12 +175,25 @@ fun DocumentRoute(
                     Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = stringResource(R.string.document_back))
                 }
                 Column(Modifier.weight(1f)) {
-                    Text(
-                        document.title,
-                        style = MaterialTheme.typography.titleLarge,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    // The name itself is the rename button; the pencil says so.
+                    Row(
+                        Modifier
+                            .clip(MaterialTheme.shapes.small)
+                            .clickable(onClickLabel = stringResource(R.string.document_rename)) { renaming = true }
+                            .padding(end = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            document.title,
+                            style = MaterialTheme.typography.titleLarge,
+                            color = colors.onBackground,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Icon(Icons.Rounded.Edit, contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                    }
                     val size = Formatter.formatShortFileSize(context, document.sizeBytes)
                     val pages = pluralStringResource(dev.olaf.oscanner.core.design.R.plurals.design_pages, document.pageCount, document.pageCount)
                     Text("$pages · $size", style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
@@ -217,10 +235,12 @@ fun DocumentRoute(
             ) {
                 state.busy?.let { BusyLine(it) }
                 Dock(Modifier.widthIn(max = 480.dp).fillMaxWidth()) {
-                    DockAction(Icons.Rounded.Edit, stringResource(R.string.document_edit), { onEdit(document.id, pagerState.currentPage) })
+                    // One button per kind of thing you do with a document: change it, send it out,
+                    // read its words, or look after the document itself.
+                    DockAction(Icons.Rounded.Edit, stringResource(R.string.document_edit), { sheet = Sheet.Edit })
                     PrimaryPill(Icons.Rounded.Share, stringResource(R.string.document_share), { sheet = Sheet.Share })
                     DockAction(Icons.Rounded.TextSnippet, stringResource(R.string.document_text), { onText(document.id, pagerState.currentPage) })
-                    DockAction(Icons.Rounded.MoreHoriz, stringResource(R.string.document_more), { sheet = Sheet.More })
+                    DockAction(Icons.Rounded.Info, stringResource(R.string.document_info), { sheet = Sheet.Document })
                 }
             }
         }
@@ -252,15 +272,13 @@ fun DocumentRoute(
                     block()
                 }
                 when (open) {
-                    Sheet.Share -> {
-                        SheetAction(Icons.Rounded.PictureAsPdf, stringResource(R.string.document_share_pdf), stringResource(R.string.document_share_pdf_description), act { viewModel.sharePdf() })
-                        SheetAction(Icons.Rounded.Lock, stringResource(R.string.document_share_protected), stringResource(R.string.document_share_protected_description), act { protecting = true })
-                        SheetAction(Icons.Rounded.Image, stringResource(R.string.document_share_images), stringResource(R.string.document_share_images_description), act(viewModel::shareImages))
-                    }
-                    Sheet.More -> {
+                    Sheet.Edit -> {
+                        SheetSection(stringResource(R.string.document_section_this_page))
+                        SheetAction(Icons.Rounded.Crop, stringResource(R.string.document_crop), stringResource(R.string.document_crop_description), act { onEdit(document.id, pagerState.currentPage) })
                         SheetAction(Icons.Rounded.CleaningServices, stringResource(R.string.document_cleanup), stringResource(R.string.document_cleanup_description), act { onCleanup(document.id, pagerState.currentPage) })
-                        SheetAction(Icons.Rounded.Rectangle, stringResource(R.string.document_redact), stringResource(R.string.document_redact_description), act { onRedact(document.id, pagerState.currentPage) })
                         SheetAction(Icons.Rounded.Draw, stringResource(R.string.document_markup), stringResource(R.string.document_markup_description), act { onMarkup(document.id, pagerState.currentPage) })
+                        SheetAction(Icons.Rounded.Rectangle, stringResource(R.string.document_redact), stringResource(R.string.document_redact_description), act { onRedact(document.id, pagerState.currentPage) })
+                        SheetSection(stringResource(R.string.document_section_pages))
                         SheetAction(Icons.Rounded.GridView, stringResource(R.string.document_arrange), stringResource(R.string.document_arrange_description), act { onArrange(document.id) })
                         SheetAction(Icons.Rounded.DocumentScanner, stringResource(R.string.document_scan_more), stringResource(R.string.document_scan_more_description), act { onScanMore(document.id) })
                         SheetAction(
@@ -269,6 +287,20 @@ fun DocumentRoute(
                             stringResource(R.string.document_import_more_description),
                             act { pickLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                         )
+                    }
+                    Sheet.Share -> {
+                        SheetSection(stringResource(R.string.document_section_send))
+                        SheetAction(Icons.Rounded.PictureAsPdf, stringResource(R.string.document_share_pdf), stringResource(R.string.document_share_pdf_description), act { viewModel.sharePdf() })
+                        SheetAction(Icons.Rounded.Lock, stringResource(R.string.document_share_protected), stringResource(R.string.document_share_protected_description), act { protecting = true })
+                        SheetAction(Icons.Rounded.Image, stringResource(R.string.document_share_images), stringResource(R.string.document_share_images_description), act(viewModel::shareImages))
+                        SheetSection(stringResource(R.string.document_section_export))
+                        SheetAction(Icons.Rounded.SaveAlt, stringResource(R.string.document_save_pdf), stringResource(R.string.document_save_pdf_description), act { saveLauncher.launch("${document.title}.pdf") })
+                        SheetAction(Icons.Rounded.Print, stringResource(R.string.document_print), stringResource(R.string.document_print_description), act(viewModel::print))
+                    }
+                    Sheet.Document -> {
+                        SheetSection(stringResource(R.string.document_section_about))
+                        DocumentFacts(document, state.folders.firstOrNull { it.id == document.folderId }?.name)
+                        SheetSection(stringResource(R.string.document_section_organize))
                         SheetAction(Icons.Rounded.DriveFileRenameOutline, stringResource(R.string.document_rename), stringResource(R.string.document_rename_description), act { renaming = true })
                         SheetAction(
                             Icons.Rounded.Sell,
@@ -282,8 +314,6 @@ fun DocumentRoute(
                             state.folders.firstOrNull { it.id == document.folderId }?.name ?: stringResource(R.string.document_no_folder),
                             act { moving = true },
                         )
-                        SheetAction(Icons.Rounded.SaveAlt, stringResource(R.string.document_save_pdf), stringResource(R.string.document_save_pdf_description), act { saveLauncher.launch("${document.title}.pdf") })
-                        SheetAction(Icons.Rounded.Print, stringResource(R.string.document_print), stringResource(R.string.document_print_description), act(viewModel::print))
                         SheetAction(Icons.Rounded.DeleteOutline, stringResource(R.string.document_trash), stringResource(R.string.document_trash_description), act(viewModel::moveToTrash))
                     }
                 }
@@ -350,6 +380,43 @@ private fun PageView(page: Page, modifier: Modifier = Modifier) {
         }
         if (page.renderPath == null) {
             StatusChip(ProcessingState.Enhancing, Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp))
+        }
+    }
+}
+
+/** A small heading that splits a sheet into groups of related actions. */
+@Composable
+private fun SheetSection(title: String) {
+    Text(
+        title,
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 2.dp).semantics { heading() },
+    )
+}
+
+/** Plain facts about the document, read-only: pages, size, folder, when it was made and changed. */
+@Composable
+private fun DocumentFacts(document: dev.olaf.oscanner.core.model.Document, folder: String?) {
+    val context = LocalContext.current
+    val colors = MaterialTheme.colorScheme
+    val dateFormat = remember { java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT) }
+    val rows = listOf(
+        stringResource(R.string.document_fact_pages) to
+            pluralStringResource(dev.olaf.oscanner.core.design.R.plurals.design_pages, document.pageCount, document.pageCount),
+        stringResource(R.string.document_fact_size) to Formatter.formatShortFileSize(context, document.sizeBytes),
+        stringResource(R.string.document_fact_folder) to (folder ?: stringResource(R.string.document_no_folder)),
+        stringResource(R.string.document_fact_created) to dateFormat.format(java.util.Date(document.createdAt)),
+        stringResource(R.string.document_fact_changed) to dateFormat.format(java.util.Date(document.updatedAt)),
+    )
+    Surface(shape = MaterialTheme.shapes.large, color = colors.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            rows.forEach { (label, value) ->
+                Row {
+                    Text(label, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant, modifier = Modifier.width(96.dp))
+                    Text(value, style = MaterialTheme.typography.bodyMedium, color = colors.onSurface)
+                }
+            }
         }
     }
 }
