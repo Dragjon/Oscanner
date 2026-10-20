@@ -42,6 +42,7 @@ import androidx.compose.material.icons.rounded.Brush
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Compare
+import androidx.compose.material.icons.rounded.CopyAll
 import androidx.compose.material.icons.rounded.FrontHand
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material3.AlertDialog
@@ -76,6 +77,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
@@ -84,6 +86,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.olaf.oscanner.core.design.ApplyToPagesDialog
 import dev.olaf.oscanner.core.design.Dock
 import dev.olaf.oscanner.core.design.DockAction
 import dev.olaf.oscanner.core.design.LocalOscannerExtras
@@ -100,6 +103,7 @@ fun CleanupRoute(viewModel: CleanupViewModel, onDone: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var comparing by remember { mutableStateOf(false) }
     var confirmDiscard by rememberSaveable { mutableStateOf(false) }
+    var choosingPages by rememberSaveable { mutableStateOf(false) }
     val colors = MaterialTheme.colorScheme
     val edits = state.edits
 
@@ -169,6 +173,25 @@ fun CleanupRoute(viewModel: CleanupViewModel, onDone: () -> Unit) {
                         busy = false,
                         onToggle = { viewModel.setRemoveFingers(!edits.removeFingers) },
                     )
+                    if (state.pages.size > 1 && (edits.removePenInk || edits.removeFingers)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (state.appliedTo > 0) {
+                                Text(
+                                    pluralStringResource(R.plurals.document_cleanup_applied, state.appliedTo, state.appliedTo),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = colors.onSurfaceVariant,
+                                    modifier = Modifier.weight(1f).padding(start = 4.dp),
+                                )
+                            } else {
+                                Spacer(Modifier.weight(1f))
+                            }
+                            TextButton(onClick = { choosingPages = true }) {
+                                Icon(Icons.Rounded.CopyAll, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(stringResource(R.string.document_cleanup_other_pages))
+                            }
+                        }
+                    }
                 }
                 SectionLabel(stringResource(R.string.document_brush))
                 BrushPanel(
@@ -209,6 +232,20 @@ fun CleanupRoute(viewModel: CleanupViewModel, onDone: () -> Unit) {
             DockAction(Icons.Rounded.Close, stringResource(R.string.document_cancel), leave)
             PrimaryPill(Icons.Rounded.Check, stringResource(R.string.document_apply), viewModel::save)
         }
+    }
+
+    if (choosingPages && edits != null) {
+        val current = state.pages.indexOfFirst { it.id == state.page?.id }
+        ApplyToPagesDialog(
+            title = stringResource(R.string.document_cleanup_other_title),
+            thumbs = state.pages.map { it.thumbPath ?: it.renderPath },
+            current = current,
+            onApply = { chosen ->
+                viewModel.applyAutoTo(chosen.mapNotNull { state.pages.getOrNull(it)?.id }.toSet())
+                choosingPages = false
+            },
+            onDismiss = { choosingPages = false },
+        )
     }
 
     if (confirmDiscard) {

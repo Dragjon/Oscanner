@@ -8,4 +8,12 @@
         <item quantity="one">%d page</item>
         <item quantity="other">%d pages</item>
     </plurals>
+    <string name="design_apply_all">All pages</string>
+    <string name="design_apply_none">Only this page</string>
+    <string name="design_page_number">Page %1$d</string>
+    <string name="design_cancel">Cancel</string>
+    <plurals name="design_apply_to">
+        <item quantity="one">Apply to %d more page</item>
+        <item quantity="other">Apply to %d more pages</item>
+    </plurals>
 </resources>

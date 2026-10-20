@@ -24,6 +24,12 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
+/**
+ * What the review screen is for: everything straight after a scan, or only one kind of change when
+ * opened from a document's Edit menu, so the page's shape and its look stay apart.
+ */
+enum class ReviewFocus { All, Shape, Look }
+
 /** Crop mode: the full photo with a draggable outline. */
 data class CropDraft(val pageId: Long, val quad: Quad) {
     val valid: Boolean get() = QuadGeometry.isConvex(quad) && QuadGeometry.area(quad.corners) > 0.01
@@ -68,9 +74,35 @@ class ReviewViewModel(
 
     fun setFilter(page: Page, filter: PageFilter) = update(page) { it.copy(filter = filter) }
 
-    fun applyFilterToAll(filter: PageFilter) {
+    /** Gives [pageIds] the look of [from]: its filter, sliders and screen-pattern setting. */
+    fun applyLook(from: Page, pageIds: Set<Long>) = applyTo(pageIds) {
+        it.copy(
+            filter = from.edits.filter,
+            brightness = from.edits.brightness,
+            contrast = from.edits.contrast,
+            detail = from.edits.detail,
+            descreen = from.edits.descreen,
+        )
+    }
+
+    /**
+     * Turns [pageIds] the way [from] is turned and flattens them if it is. Crops stay their own:
+     * every photo has the page in a different place.
+     */
+    fun applyShape(from: Page, pageIds: Set<Long>) = applyTo(pageIds) { edits ->
+        var turned = edits
+        repeat(((from.edits.rotation - edits.rotation) / 90).mod(4)) { turned = turned.rotatedClockwise() }
+        // Each page's own bend is measured again when it's switched on.
+        if (turned.flatten != from.edits.flatten) turned = turned.copy(flatten = from.edits.flatten, curve = null)
+        turned
+    }
+
+    private fun applyTo(pageIds: Set<Long>, change: (PageEdits) -> PageEdits) {
         viewModelScope.launch {
-            pages.value.orEmpty().filter { it.edits.filter != filter }.forEach { store.setEdits(it.id, it.edits.copy(filter = filter)) }
+            pages.value.orEmpty().filter { it.id in pageIds }.forEach { page ->
+                val changed = change(page.edits)
+                if (changed != page.edits) store.setEdits(page.id, changed)
+            }
         }
     }
 

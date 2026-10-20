@@ -171,6 +171,22 @@ class PageStore(
     }
 
     /**
+     * Turns the automatic clean-ups on for [pageIds] as well: fingers straight away, handwriting
+     * once each page's print is found.
+     */
+    fun autoCleanup(pageIds: List<Long>, handwriting: Boolean, fingers: Boolean) {
+        scope.launch {
+            if (fingers) {
+                for (id in pageIds) {
+                    val edits = db.pages().get(id)?.let { EditsJson.read(it.editsJson) } ?: continue
+                    if (!edits.removeFingers) setEdits(id, edits.copy(removeFingers = true))
+                }
+            }
+            if (handwriting) removeHandwritingLater(pageIds)
+        }
+    }
+
+    /**
      * Turns on handwriting removal for new pages once their print is found (a few seconds a page,
      * in the background). A page edited meanwhile is left as the person has it.
      */

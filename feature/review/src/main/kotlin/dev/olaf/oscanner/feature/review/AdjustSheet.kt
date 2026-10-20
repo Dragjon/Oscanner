@@ -43,7 +43,6 @@ import kotlin.math.roundToInt
 internal fun AdjustSheet(
     page: Page,
     onChange: (page: Page, brightness: Float, contrast: Float, detail: Float) -> Unit,
-    onFlatten: (page: Page, on: Boolean) -> Unit,
     onDescreen: (page: Page, on: Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -66,7 +65,6 @@ internal fun AdjustSheet(
                 .padding(start = 24.dp, end = 24.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            FlattenRow(page, onFlatten)
             SwitchRow(
                 title = stringResource(R.string.review_descreen),
                 description = stringResource(R.string.review_descreen_description),
@@ -98,26 +96,6 @@ internal fun AdjustSheet(
             }
         }
     }
-}
-
-/** Flattening is measured from the page's text, so it says when there wasn't enough to go on. */
-@Composable
-private fun FlattenRow(page: Page, onFlatten: (Page, Boolean) -> Unit) {
-    val on = page.edits.flatten
-    val measuring = on && page.edits.curve == null
-    val nothingFound = on && page.edits.curve?.lines?.isEmpty() == true
-    SwitchRow(
-        title = stringResource(R.string.review_flatten),
-        description = stringResource(
-            when {
-                measuring -> R.string.review_flatten_measuring
-                nothingFound -> R.string.review_flatten_none
-                else -> R.string.review_flatten_description
-            },
-        ),
-        on = on,
-        onChange = { onFlatten(page, it) },
-    )
 }
 
 @Composable

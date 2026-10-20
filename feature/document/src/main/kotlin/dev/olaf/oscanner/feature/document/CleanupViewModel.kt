@@ -41,6 +41,10 @@ data class CleanupUiState(
     /** Reading the page to tell its print from handwriting. */
     val findingPrint: Boolean = false,
     val saved: Boolean = false,
+    /** Every page of the document, to pick others the automatic clean-up should go to. */
+    val pages: List<Page> = emptyList(),
+    /** How many other pages were just given the automatic clean-up. */
+    val appliedTo: Int = 0,
 ) {
     /** Handwriting removal is on but no printed words were found: all writing goes. */
     val noPrintFound: Boolean get() = edits?.removePenInk == true && edits.printed?.isEmpty() == true
@@ -64,7 +68,9 @@ class CleanupViewModel(
 
     init {
         viewModelScope.launch {
-            val page = store.pages(documentId).getOrNull(pageIndex) ?: return@launch
+            val pages = store.pages(documentId)
+            val page = pages.getOrNull(pageIndex) ?: return@launch
+            _state.update { it.copy(pages = pages) }
             val bitmap = withContext(Dispatchers.Default) { PageRenderer.loadUpright(page.originalPath, SOURCE_SIDE) }
             source = bitmap
             val before = withContext(Dispatchers.Default) {
@@ -98,6 +104,14 @@ class CleanupViewModel(
     }
 
     fun setRemoveFingers(on: Boolean) = edit { it.copy(removeFingers = on) }
+
+    /** Gives [pageIds] this page's automatic clean-up: each page finds its own handwriting and fingers. */
+    fun applyAutoTo(pageIds: Set<Long>) {
+        val edits = _state.value.edits ?: return
+        if (pageIds.isEmpty()) return
+        store.autoCleanup(pageIds.toList(), handwriting = edits.removePenInk, fingers = edits.removeFingers)
+        _state.update { it.copy(appliedTo = pageIds.size) }
+    }
 
     fun setBrush(brush: CleanupBrush) = _state.update { it.copy(brush = brush) }
 

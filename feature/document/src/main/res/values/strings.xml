@@ -11,8 +11,10 @@
     <string name="document_section_export">Save a copy</string>
     <string name="document_section_about">About this document</string>
     <string name="document_section_organize">Organize</string>
-    <string name="document_crop">Crop and look</string>
-    <string name="document_crop_description">Fix the edges, turn the page or change its filter</string>
+    <string name="document_crop">Crop and turn</string>
+    <string name="document_crop_description">Fix the edges, turn the page or flatten a curved one</string>
+    <string name="document_look">Filters</string>
+    <string name="document_look_description">Change the look, brightness, contrast and sharpness</string>
     <string name="document_fact_pages">Pages</string>
     <string name="document_fact_size">Size</string>
     <string name="document_fact_folder">Folder</string>
@@ -166,6 +168,12 @@
     <string name="document_hold_to_compare">Hold to see the original</string>
     <string name="document_apply">Apply</string>
     <string name="document_cleanup_discard">Apply the clean-up?</string>
+    <string name="document_cleanup_other_pages">Other pages too…</string>
+    <string name="document_cleanup_other_title">Remove the same things from other pages</string>
+    <plurals name="document_cleanup_applied">
+        <item quantity="one">Cleaning 1 more page</item>
+        <item quantity="other">Cleaning %d more pages</item>
+    </plurals>
     <string name="document_trash">Move to Trash</string>
     <string name="document_trash_description">Kept for 30 days, then deleted</string>
     <string name="document_no_folder">No folder</string>

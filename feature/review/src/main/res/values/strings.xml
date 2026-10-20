@@ -9,7 +9,15 @@
     <string name="review_delete_page">Delete page</string>
     <string name="review_page_deleted">Page deleted</string>
     <string name="review_undo">Undo</string>
-    <string name="review_use_for_all">Use this look for all pages</string>
+    <string name="review_title_shape">Crop and turn</string>
+    <string name="review_title_look">Filters</string>
+    <string name="review_apply_look_button">Apply to…</string>
+    <string name="review_apply_shape_button">Turn and flatten others too…</string>
+    <string name="review_apply_look">Give other pages this look</string>
+    <string name="review_apply_shape">Turn and flatten other pages the same way</string>
+    <string name="review_flatten_short">Flatten</string>
+    <string name="review_unflatten">Unflatten</string>
+    <string name="review_flattened">Curved lines straightened</string>
     <string name="review_crop_hint">Drag the corners to the edges of the page.</string>
     <string name="review_whole_photo">Whole photo</string>
     <string name="review_cancel">Cancel</string>
@@ -27,8 +35,6 @@
     <string name="review_reset">Reset</string>
     <string name="review_descreen">Reduce screen patterns</string>
     <string name="review_descreen_description">For photos of a screen, or of pictures printed in fine dots</string>
-    <string name="review_flatten">Flatten curved page</string>
-    <string name="review_flatten_description">Straightens lines of text that bend, like near a book\'s spine</string>
     <string name="review_flatten_measuring">Measuring how the lines bend…</string>
     <string name="review_flatten_none">No clear lines of text to follow on this page, so it\'s left as it is</string>
     <string name="review_done">Done</string>

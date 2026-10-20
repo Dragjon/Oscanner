@@ -37,6 +37,7 @@ import androidx.compose.material.icons.rounded.DriveFileRenameOutline
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.FolderOff
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CleaningServices
 import androidx.compose.material.icons.rounded.Crop
 import androidx.compose.material.icons.rounded.Draw
@@ -104,7 +105,7 @@ private enum class Sheet { Edit, Share, Document }
 fun DocumentRoute(
     viewModel: DocumentViewModel,
     onBack: () -> Unit,
-    onEdit: (documentId: Long, page: Int) -> Unit,
+    onEdit: (documentId: Long, page: Int, look: Boolean) -> Unit,
     onText: (documentId: Long, page: Int) -> Unit,
     onScanMore: (documentId: Long) -> Unit,
     onArrange: (documentId: Long) -> Unit,
@@ -273,7 +274,8 @@ fun DocumentRoute(
                 when (open) {
                     Sheet.Edit -> {
                         SheetSection(stringResource(R.string.document_section_this_page))
-                        SheetAction(Icons.Rounded.Crop, stringResource(R.string.document_crop), stringResource(R.string.document_crop_description), act { onEdit(document.id, pagerState.currentPage) })
+                        SheetAction(Icons.Rounded.Crop, stringResource(R.string.document_crop), stringResource(R.string.document_crop_description), act { onEdit(document.id, pagerState.currentPage, false) })
+                        SheetAction(Icons.Rounded.AutoAwesome, stringResource(R.string.document_look), stringResource(R.string.document_look_description), act { onEdit(document.id, pagerState.currentPage, true) })
                         SheetAction(Icons.Rounded.CleaningServices, stringResource(R.string.document_cleanup), stringResource(R.string.document_cleanup_description), act { onCleanup(document.id, pagerState.currentPage) })
                         SheetAction(Icons.Rounded.Draw, stringResource(R.string.document_markup), stringResource(R.string.document_markup_description), act { onMarkup(document.id, pagerState.currentPage) })
                         SheetAction(Icons.Rounded.Rectangle, stringResource(R.string.document_redact), stringResource(R.string.document_redact_description), act { onRedact(document.id, pagerState.currentPage) })

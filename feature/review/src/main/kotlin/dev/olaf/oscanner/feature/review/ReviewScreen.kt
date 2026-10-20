@@ -27,11 +27,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.CopyAll
 import androidx.compose.material.icons.rounded.Crop
 import androidx.compose.material.icons.rounded.CropFree
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.RotateRight
+import androidx.compose.material.icons.rounded.Straighten
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.Undo
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -66,6 +69,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.olaf.oscanner.core.design.ApplyToPagesDialog
 import dev.olaf.oscanner.core.design.CropEditor
 import dev.olaf.oscanner.core.design.Dock
 import dev.olaf.oscanner.core.design.DockAction
@@ -78,6 +82,7 @@ import kotlinx.coroutines.launch
 fun ReviewRoute(
     viewModel: ReviewViewModel,
     startPage: Int,
+    focus: ReviewFocus,
     onBack: () -> Unit,
     onSaved: (documentId: Long) -> Unit,
 ) {
@@ -111,8 +116,24 @@ fun ReviewRoute(
     val current = pages[pagerState.currentPage.coerceIn(0, pages.lastIndex)]
     var adjusting by rememberSaveable { mutableStateOf(false) }
     if (adjusting) {
-        AdjustSheet(page = current, onChange = viewModel::setAdjustments, onFlatten = viewModel::setFlatten, onDescreen = viewModel::setDescreen, onDismiss = { adjusting = false })
+        AdjustSheet(page = current, onChange = viewModel::setAdjustments, onDescreen = viewModel::setDescreen, onDismiss = { adjusting = false })
     }
+    var applying by rememberSaveable { mutableStateOf<ReviewFocus?>(null) }
+    applying?.let { what ->
+        ApplyToPagesDialog(
+            title = stringResource(if (what == ReviewFocus.Look) R.string.review_apply_look else R.string.review_apply_shape),
+            thumbs = pages.map { it.thumbPath ?: it.renderPath },
+            current = pages.indexOf(current),
+            onApply = { chosen ->
+                val ids = chosen.mapNotNull { pages.getOrNull(it)?.id }.toSet()
+                if (what == ReviewFocus.Look) viewModel.applyLook(current, ids) else viewModel.applyShape(current, ids)
+                applying = null
+            },
+            onDismiss = { applying = null },
+        )
+    }
+    val showLook = focus != ReviewFocus.Shape
+    val showShape = focus != ReviewFocus.Look
 
     Box(
         Modifier
@@ -131,14 +152,19 @@ fun ReviewRoute(
                     Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = stringResource(R.string.review_back))
                 }
                 Column(Modifier.weight(1f)) {
-                    Text(stringResource(R.string.review_title), style = MaterialTheme.typography.titleLarge)
+                    val title = when (focus) {
+                        ReviewFocus.All -> R.string.review_title
+                        ReviewFocus.Shape -> R.string.review_title_shape
+                        ReviewFocus.Look -> R.string.review_title_look
+                    }
+                    Text(stringResource(title), style = MaterialTheme.typography.titleLarge)
                     Text(
                         stringResource(R.string.review_page_of, pagerState.currentPage + 1, pages.size),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                if (pages.size > 1) {
+                if (pages.size > 1 && focus == ReviewFocus.All) {
                     TextButton(onClick = {
                         val page = current
                         pendingDelete?.let { previous -> loaded.firstOrNull { it.id == previous }?.let(viewModel::deletePage) }
@@ -173,20 +199,34 @@ fun ReviewRoute(
 
             PageTicks(count = pages.size, current = pagerState.currentPage)
             Spacer(Modifier.height(12.dp))
-            FilterStrip(viewModel, current)
-            Row(
-                Modifier.align(Alignment.CenterHorizontally),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                TextButton(onClick = { adjusting = true }) {
-                    Icon(Icons.Rounded.Tune, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(stringResource(R.string.review_adjust))
-                }
-                if (pages.size > 1) {
-                    TextButton(onClick = { viewModel.applyFilterToAll(current.edits.filter) }) {
-                        Text(stringResource(R.string.review_use_for_all))
+            if (showLook) {
+                FilterStrip(viewModel, current)
+                Row(
+                    Modifier.align(Alignment.CenterHorizontally),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    TextButton(onClick = { adjusting = true }) {
+                        Icon(Icons.Rounded.Tune, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.review_adjust))
                     }
+                    if (pages.size > 1) {
+                        TextButton(onClick = { applying = ReviewFocus.Look }) {
+                            Icon(Icons.Rounded.CopyAll, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(stringResource(R.string.review_apply_look_button))
+                        }
+                    }
+                }
+            }
+            if (showShape) {
+                FlattenNote(current)
+            }
+            if (focus == ReviewFocus.Shape && pages.size > 1) {
+                TextButton(onClick = { applying = ReviewFocus.Shape }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                    Icon(Icons.Rounded.CopyAll, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.review_apply_shape_button))
                 }
             }
             Dock(
@@ -197,9 +237,17 @@ fun ReviewRoute(
                     .widthIn(max = 480.dp)
                     .fillMaxWidth(),
             ) {
-                DockAction(Icons.Rounded.Crop, stringResource(R.string.review_crop), { viewModel.startCrop(current) })
-                DockAction(Icons.Rounded.RotateRight, stringResource(R.string.review_rotate), { viewModel.rotate(current) })
-                PrimaryPill(Icons.Rounded.Check, stringResource(R.string.review_save), {
+                if (showShape) {
+                    DockAction(Icons.Rounded.Crop, stringResource(R.string.review_crop), { viewModel.startCrop(current) })
+                    DockAction(Icons.Rounded.RotateRight, stringResource(R.string.review_rotate), { viewModel.rotate(current) })
+                    val flat = current.edits.flatten
+                    DockAction(
+                        if (flat) Icons.Rounded.Undo else Icons.Rounded.Straighten,
+                        stringResource(if (flat) R.string.review_unflatten else R.string.review_flatten_short),
+                        { viewModel.setFlatten(current, !flat) },
+                    )
+                }
+                PrimaryPill(Icons.Rounded.Check, stringResource(if (focus == ReviewFocus.All) R.string.review_save else R.string.review_done), {
                     pendingDelete?.let { id -> loaded.firstOrNull { it.id == id }?.let(viewModel::deletePage) }
                     viewModel.finishEditing()
                     onSaved(viewModel.documentId)
@@ -214,6 +262,27 @@ fun ReviewRoute(
                 .padding(bottom = 96.dp),
         )
     }
+}
+
+/** While a page is being flattened, or when there was nothing to flatten by, it says so. */
+@Composable
+private fun FlattenNote(page: Page) {
+    val edits = page.edits
+    val note = when {
+        !edits.flatten -> return
+        edits.curve == null -> R.string.review_flatten_measuring
+        edits.curve?.lines?.isEmpty() == true -> R.string.review_flatten_none
+        else -> R.string.review_flattened
+    }
+    Text(
+        stringResource(note),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 4.dp),
+    )
 }
 
 @Composable

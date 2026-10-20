@@ -39,6 +39,7 @@ import dev.olaf.oscanner.feature.library.LibraryRoute
 import dev.olaf.oscanner.feature.library.LibraryViewModel
 import dev.olaf.oscanner.feature.library.TrashRoute
 import dev.olaf.oscanner.feature.library.TrashViewModel
+import dev.olaf.oscanner.feature.review.ReviewFocus
 import dev.olaf.oscanner.feature.review.ReviewRoute
 import dev.olaf.oscanner.feature.review.ReviewViewModel
 import dev.olaf.oscanner.feature.settings.LanguagesRoute
@@ -58,7 +59,7 @@ private object Routes {
     const val TRASH = "trash"
     const val LANGUAGES = "languages"
     const val CAPTURE = "capture?documentId={documentId}"
-    const val REVIEW = "review/{documentId}?page={page}"
+    const val REVIEW = "review/{documentId}?page={page}&focus={focus}"
     const val DOCUMENT = "document/{documentId}"
     const val TEXT = "text/{documentId}?page={page}"
     const val ARRANGE = "arrange/{documentId}"
@@ -67,7 +68,7 @@ private object Routes {
     const val REDACT = "redact/{documentId}?page={page}"
 
     fun capture(documentId: Long? = null) = "capture?documentId=${documentId ?: -1}"
-    fun review(documentId: Long, page: Int = 0) = "review/$documentId?page=$page"
+    fun review(documentId: Long, page: Int = 0, focus: ReviewFocus = ReviewFocus.All) = "review/$documentId?page=$page&focus=${focus.name}"
     fun document(documentId: Long) = "document/$documentId"
     fun text(documentId: Long, page: Int = 0) = "text/$documentId?page=$page"
     fun arrange(documentId: Long) = "arrange/$documentId"
@@ -196,16 +197,19 @@ fun OscannerNavHost(
             arguments = listOf(
                 navArgument("documentId") { type = NavType.LongType },
                 navArgument("page") { type = NavType.IntType; defaultValue = 0 },
+                navArgument("focus") { type = NavType.StringType; defaultValue = ReviewFocus.All.name },
             ),
         ) { entry ->
             val documentId = entry.arguments!!.getLong("documentId")
             val page = entry.arguments!!.getInt("page")
+            val focus = ReviewFocus.valueOf(entry.arguments!!.getString("focus") ?: ReviewFocus.All.name)
             val viewModel: ReviewViewModel = viewModel(
                 factory = viewModelFactory { initializer { ReviewViewModel(container.pages, documentId) } },
             )
             ReviewRoute(
                 viewModel = viewModel,
                 startPage = page,
+                focus = focus,
                 onBack = { navController.popBackStack() },
                 onSaved = { navController.showDocument(it) },
             )
@@ -223,7 +227,7 @@ fun OscannerNavHost(
             DocumentRoute(
                 viewModel = viewModel,
                 onBack = { navController.popBackStack() },
-                onEdit = { id, page -> navController.navigate(Routes.review(id, page)) },
+                onEdit = { id, page, look -> navController.navigate(Routes.review(id, page, if (look) ReviewFocus.Look else ReviewFocus.Shape)) },
                 onText = { id, page -> navController.navigate(Routes.text(id, page)) },
                 onScanMore = { navController.navigate(Routes.capture(it)) },
                 onArrange = { navController.navigate(Routes.arrange(it)) },
