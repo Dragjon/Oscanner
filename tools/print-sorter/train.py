@@ -46,18 +46,21 @@ def load(paths):
 
 
 def main():
-    hand = load(['gtrain_hand.npy'])
-    prin = load(['ptrain.npy', 'gtrain_print.npy'])
+    hand = load(['gtrain_hand.npy', 'dtrain.npy'])
+    prin = load(['ptrain.npy', 'gtrain_print.npy', 'pnum_train.npy'])
     X = np.concatenate([prin, hand])
     y = np.concatenate([np.zeros(len(prin)), np.ones(len(hand))]).astype(np.float32)
     w = np.where(y == 1, len(prin) / len(hand), 1.0).astype(np.float32)
     print('train', len(prin), 'print', len(hand), 'hand')
-    tests = {'gnhk hand': (load(['gtest_hand.npy']), 1), 'gnhk print': (load(['gtest_print.npy']), 0), 'font print': (load(['ptest.npy']), 0)}
+    tests = {'gnhk hand': (load(['gtest_hand.npy']), 1), 'gnhk print': (load(['gtest_print.npy']), 0), 'font print': (load(['ptest.npy']), 0), 'hand numbers': (load(['dtest.npy']), 1), 'printed numbers': (load(['pdigits_test.npy']), 0)}
     net = Net()
+    if len(sys.argv) > 2:
+        net.load_state_dict(torch.load(sys.argv[2]))
     print(sum(p.numel() for p in net.parameters()), 'params')
-    opt = torch.optim.AdamW(net.parameters(), 2e-3, weight_decay=1e-4)
+    peak = float(sys.argv[3]) if len(sys.argv) > 3 else 3e-3
+    opt = torch.optim.AdamW(net.parameters(), peak / 1.5, weight_decay=1e-4)
     epochs = int(sys.argv[1]) if len(sys.argv) > 1 else 8
-    sched = torch.optim.lr_scheduler.OneCycleLR(opt, 3e-3, total_steps=epochs * (len(X) // 256 + 1))
+    sched = torch.optim.lr_scheduler.OneCycleLR(opt, peak, total_steps=epochs * (len(X) // 256 + 1))
     lossf = nn.BCEWithLogitsLoss(reduction='none')
     for ep in range(epochs):
         net.train()
@@ -81,7 +84,7 @@ def main():
                 acc = ((p > 0.5) == label).mean()
                 msg.append(f'{name} {acc:.3f}')
         print(f'epoch {ep} loss {tot / len(X):.4f} | ' + ' | '.join(msg), flush=True)
-    torch.save(net.state_dict(), 'sorter.pt')
+    torch.save(net.state_dict(), sys.argv[4] if len(sys.argv) > 4 else 'sorter.pt')
 
 
 if __name__ == '__main__':

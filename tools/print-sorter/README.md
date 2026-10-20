@@ -10,9 +10,16 @@ of text, 32×64, paper 0 and ink 1); `PrintSorter.kt` does the same on the phone
    `python make_gnhk.py <train dir> gtrain 1` and `python make_gnhk.py <test dir> gtest 2`.
 2. Printed text rendered in the system's document typefaces and roughed up like a phone scan:
    `python make_print.py 9000 ptrain.npy 11` and `python make_print.py 1500 ptest.npy 12`.
-3. `python train.py 6` (about 25 minutes on a laptop CPU) writes `sorter.pt`; it prints accuracy
-   on GNHK's test images and on held-out rendered print after every pass.
-4. Export: `torch.onnx.export(net, torch.zeros(2, 1, 32, 64), 'sorter.onnx', input_names=['x'],
+3. Numbers, so a lone handwritten digit isn't taken for print and printed numbers stay print:
+   handwritten ones from EMNIST's digits (NIST Special Database 19), with its `gzip` folder at
+   `emnist/gzip`: `python make_digits.py train 14000 dtrain.npy 21` and
+   `python make_digits.py test 2000 dtest.npy 22`; printed ones with
+   `python make_print_numbers.py 13000 pnum_train.npy 31`.
+4. `python train.py 6` (about 30 minutes on a laptop CPU) writes `sorter.pt`; it prints accuracy
+   on GNHK's test images, held-out rendered print and held-out numbers after every pass. The
+   bundled model was trained 6 passes without the numbers, then 3 more with them:
+   `python train.py 3 sorter.pt 1e-3 sorter.pt`.
+5. Export: `torch.onnx.export(net, torch.zeros(2, 1, 32, 64), 'sorter.onnx', input_names=['x'],
    output_names=['logit'], dynamic_axes={'x': {0: 'n'}, 'logit': {0: 'n'}}, opset_version=13)`.
 
 `python page.py sorter.pt page.png` draws each mark's verdict on a page (green print, red
