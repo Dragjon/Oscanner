@@ -1,0 +1,1 @@
+Much better text reading for English, with misread words corrected. Clean up removes handwriting and fingers properly. Auto-fix new scans and camera hints. Fix pages mid-scan, drag pages to reorder, a mode wheel, clearer document screen, lighter light theme.
