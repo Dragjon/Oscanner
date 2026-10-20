@@ -24,7 +24,7 @@ internal class PageAnalyzer(
 
     // Created on the analysis thread, after OpenCV's native code is loaded.
     private var detector: DocumentDetector? = null
-    private var detectorTolerance = 0.0
+    private var detectorMode: CaptureMode? = null
     private var scaled: Mat? = null
     private val codes by lazy { CodeReader() }
 
@@ -36,13 +36,15 @@ internal class PageAnalyzer(
                 return
             }
             PageRenderer.ensureLoaded()
-            val tolerance = if (current == CaptureMode.Whiteboard) 50.0 else 35.0
-            if (detectorTolerance != tolerance) {
+            if (detectorMode != current) {
                 detector?.release()
                 detector = null
-                detectorTolerance = tolerance
+                detectorMode = current
             }
-            val detector = detector ?: DocumentDetector(tolerance).also { detector = it }
+            val detector = detector ?: DocumentDetector(
+                angleTolerance = if (current == CaptureMode.Whiteboard) 50.0 else 35.0,
+                keepSpreads = current == CaptureMode.Book,
+            ).also { detector = it }
             val plane = image.planes[0]
             val luminance = Mat(image.height, image.width, CvType.CV_8UC1, plane.buffer, plane.rowStride.toLong())
             val longSide = max(image.width, image.height)

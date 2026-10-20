@@ -14,45 +14,102 @@ import org.opencv.core.MatOfPoint2f
 import org.opencv.core.Point
 import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
+import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.hypot
 import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 /** A page outline found in one frame, normalized to that frame, plus how sharp the frame was. */
 data class Detection(val quad: Quad?, val sharpness: Double)
 
 /**
- * Finds the page in a grayscale frame. Our pipeline (PLAN.md §5.4): denoise, two candidate
- * edge maps (auto-threshold Canny, Otsu), outer contours, convex hull, polygon fit to four
- * corners, then score candidates on area and corner angles. Not thread-safe: one per thread.
+ * Finds the page in a grayscale frame (PLAN.md §5.4). The search runs on a small copy of the
+ * frame, where text blurs into gray and a page's outline stays a clean step:
+ *
+ * 1. Candidates: four-corner fits to contours of two edge maps and an Otsu mask, plus quads
+ *    made of pairs of long straight lines, which survive a thumb over a corner or clutter
+ *    touching the page.
+ * 2. Every candidate is checked against the image. Each side has to run along an edge of one
+ *    polarity (paper lighter than the desk, or darker, the same on all four sides), still be
+ *    there once text is filled in, and at least three sides have to be a sharp step: light
+ *    falling off across a wall is a ramp, and a book's gutter is the one soft side allowed.
+ * 3. An outline that is really two things side by side (two sheets, or both pages of a book
+ *    where one runs out of view) loses to the single sheet inside it.
+ * 4. The winner's sides are snapped onto the edge at full resolution.
+ *
+ * Not thread-safe: one per thread.
  */
 class DocumentDetector(
     /** How far from square a corner may look, in degrees. Whiteboards are shot at steeper angles. */
     private val angleTolerance: Double = 35.0,
+    /** Book mode wants an open book as one outline, which it then splits at the gutter. */
+    private val keepSpreads: Boolean = false,
 ) {
 
-    private val blur = Mat()
+    private val small = Mat()
+    private val plain = Mat()
     private val edges = Mat()
-    private val binary = Mat()
+    private val plainEdges = Mat()
+    private val mask = Mat()
+    private val lines = Mat()
     private val laplacian = Mat()
-    private val kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(5.0, 5.0))
+    private val closeText = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(CLOSE_TEXT, CLOSE_TEXT))
+    private val closeGaps = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0))
+
+    /** The small frame as it is, the small frame with text filled in, and the full frame. */
+    private val raw = Field()
+    private val filled = Field()
+    private val full = Field()
 
     /** [gray] is a single-channel 8-bit frame, ideally around 640 px on its long side. */
     fun detect(gray: Mat): Detection {
-        Imgproc.medianBlur(gray, blur, 5)
         val sharpness = sharpness(gray)
+        val scale = SEARCH_SIDE.toDouble() / max(gray.cols(), gray.rows())
+        Imgproc.resize(gray, small, Size(), scale, scale, Imgproc.INTER_AREA)
+        raw.load(small)
+        val width = raw.width
+        val height = raw.height
 
-        val median = median(blur)
-        Imgproc.Canny(blur, edges, max(0.0, 0.66 * median), (1.33 * median).coerceIn(30.0, 255.0))
-        Imgproc.morphologyEx(edges, edges, Imgproc.MORPH_CLOSE, kernel)
-        Imgproc.threshold(blur, binary, 0.0, 255.0, Imgproc.THRESH_BINARY + Imgproc.THRESH_OTSU)
+        Imgproc.Canny(raw.image, edges, LOW, HIGH)
+        // Closing the image fills in text, strokes a pixel or two wide at this size, so lines and
+        // outlines found on it aren't lost among letters. It also fills a faint book gutter,
+        // which is why the outlines of the unfilled frame are kept as candidates too.
+        Imgproc.morphologyEx(raw.image, plain, Imgproc.MORPH_CLOSE, closeText)
+        filled.load(plain)
+        Imgproc.Canny(plain, plainEdges, LOW, HIGH)
 
-        val width = gray.cols()
-        val height = gray.rows()
-        val best = (candidates(edges) + candidates(binary))
-            .mapNotNull { score(it, width, height) }
-            .maxByOrNull { it.second }
-            ?.first
-        return Detection(best, sharpness)
+        val candidates = mutableListOf<List<P>>()
+        Imgproc.morphologyEx(edges, mask, Imgproc.MORPH_CLOSE, closeGaps)
+        candidates += contourCandidates(mask)
+        Imgproc.threshold(raw.image, mask, 0.0, 255.0, Imgproc.THRESH_BINARY + Imgproc.THRESH_OTSU)
+        candidates += contourCandidates(mask)
+        Imgproc.morphologyEx(plainEdges, mask, Imgproc.MORPH_CLOSE, closeGaps)
+        candidates += contourCandidates(mask)
+        candidates += lineCandidates(width, height)
+
+        val valid = candidates.mapNotNull { check(it, width, height) }
+        val best = valid
+            .filter { outer ->
+                keepSpreads || valid.none { inner ->
+                    inner.whole && inner.polarity == outer.polarity &&
+                        inner.area < UNION_SHARE * outer.area && sharesSide(inner.quad, outer.quad)
+                }
+            }
+            .maxByOrNull { it.score }
+            ?: return Detection(null, sharpness)
+
+        full.load(gray)
+        val sx = gray.cols().toDouble() / width
+        val sy = gray.rows().toDouble() / height
+        val refined = refine(best.quad.corners.map { P(it.x * width * sx, it.y * height * sy) })
+        val quad = QuadGeometry.order(refined.map { Corner((it.x / gray.cols()).toFloat(), (it.y / gray.rows()).toFloat()) })
+        return Detection(inset(quad), sharpness)
     }
 
     /** Finds the page in a still photo; returns null when nothing page-shaped is there. */
@@ -68,7 +125,8 @@ class DocumentDetector(
     }
 
     fun release() {
-        listOf(blur, edges, binary, laplacian, kernel).forEach(Mat::release)
+        listOf(small, plain, edges, plainEdges, mask, lines, laplacian, closeText, closeGaps).forEach(Mat::release)
+        listOf(raw, filled, full).forEach(Field::release)
     }
 
     /** Variance of the Laplacian: low when the frame is blurred by motion or focus. */
@@ -83,35 +141,22 @@ class DocumentDetector(
         return sd * sd
     }
 
-    private fun median(gray: Mat): Double {
-        val bytes = ByteArray((gray.total() * gray.channels()).toInt())
-        gray.get(0, 0, bytes)
-        val histogram = IntArray(256)
-        // Every 4th pixel is plenty for a threshold estimate.
-        for (i in bytes.indices step 4) histogram[bytes[i].toInt() and 0xFF]++
-        val half = histogram.sum() / 2
-        var seen = 0
-        for (v in 0..255) {
-            seen += histogram[v]
-            if (seen >= half) return v.toDouble()
-        }
-        return 128.0
-    }
-
-    /** Four-corner polygons fitted to the hulls of the largest outer contours of [mask]. */
-    private fun candidates(mask: Mat): List<List<Point>> {
+    /**
+     * Four-corner fits to the hulls of the largest contours of [mask]. Inner contours count too:
+     * the inside of an edge loop around one page of a book is that page alone.
+     */
+    private fun contourCandidates(mask: Mat): List<List<P>> {
         val contours = mutableListOf<MatOfPoint>()
         val hierarchy = Mat()
-        Imgproc.findContours(mask, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE)
+        Imgproc.findContours(mask, contours, hierarchy, Imgproc.RETR_LIST, Imgproc.CHAIN_APPROX_SIMPLE)
         hierarchy.release()
-        val minArea = mask.total() * MIN_AREA_RATIO
+        val minArea = mask.total() * MIN_AREA_RATIO * 0.7
         val result = contours
-            .asSequence()
-            .filter { Imgproc.contourArea(it) >= minArea * 0.5 }
-            .sortedByDescending { Imgproc.contourArea(it) }
-            .take(5)
-            .mapNotNull { fitFour(hull(it)) }
-            .toList()
+            .map { it to Imgproc.contourArea(it) }
+            .filter { it.second >= minArea }
+            .sortedByDescending { it.second }
+            .take(MAX_CONTOURS)
+            .mapNotNull { fitFour(hull(it.first)) }
         contours.forEach(Mat::release)
         return result
     }
@@ -126,14 +171,14 @@ class DocumentDetector(
     }
 
     /** Douglas–Peucker with a growing tolerance until four vertices remain. */
-    private fun fitFour(hull: MatOfPoint2f): List<Point>? {
+    private fun fitFour(hull: MatOfPoint2f): List<P>? {
         val perimeter = Imgproc.arcLength(hull, true)
         val approx = MatOfPoint2f()
         try {
             for (step in 1..8) {
                 Imgproc.approxPolyDP(hull, approx, perimeter * 0.01 * step, true)
                 val n = approx.total().toInt()
-                if (n == 4) return approx.toArray().toList()
+                if (n == 4) return approx.toArray().map { P(it.x, it.y) }
                 if (n < 4) return null
             }
             return null
@@ -143,20 +188,131 @@ class DocumentDetector(
         }
     }
 
-    /** Normalized quad and a score, or null when the shape can't be a photographed page. */
-    private fun score(points: List<Point>, width: Int, height: Int): Pair<Quad, Double>? {
+    /**
+     * Quads from pairs of long straight edges, one pair running across and one down. Segments
+     * whose edge flips between lighter and darker along them are dropped first: those are
+     * strung through text or wood grain, not along a sheet.
+     */
+    private fun lineCandidates(width: Int, height: Int): List<List<P>> {
+        Imgproc.HoughLinesP(plainEdges, lines, 1.0, PI / 180, 20, min(width, height) * 0.15, 5.0)
+        val merged = mutableListOf<Line>()
+        for (i in 0 until lines.rows()) {
+            val s = lines.get(i, 0)
+            val a = P(s[0], s[1])
+            val b = P(s[2], s[3])
+            if (raw.support(a, b, P(b.y - a.y, a.x - b.x)).share < 0.7) continue
+            var theta = atan2(b.y - a.y, b.x - a.x) % PI
+            if (theta < 0) theta += PI
+            val rho = -a.x * sin(theta) + a.y * cos(theta)
+            val length = hypot(b.x - a.x, b.y - a.y)
+            val same = merged.firstOrNull { l ->
+                val dt = abs(l.theta - theta).let { min(it, PI - it) }
+                dt < MERGE_ANGLE && abs(l.distance(a)) < 3 && abs(l.distance(b)) < 3
+            }
+            if (same != null) same.length += length else merged += Line(theta, rho, length)
+        }
+        merged.sortByDescending { it.length }
+        val across = merged.filter { it.theta < PI / 4 || it.theta > 3 * PI / 4 }.take(MAX_LINES)
+        val down = merged.filter { it.theta >= PI / 4 && it.theta <= 3 * PI / 4 }.take(MAX_LINES)
+
+        val result = mutableListOf<List<P>>()
+        for (i in across.indices) for (j in i + 1 until across.size) {
+            for (k in down.indices) for (m in k + 1 until down.size) {
+                val corners = listOf(
+                    across[i].meet(down[k]), across[i].meet(down[m]),
+                    across[j].meet(down[k]), across[j].meet(down[m]),
+                )
+                if (corners.any { it == null || it.x < -2 || it.x > width + 2 || it.y < -2 || it.y > height + 2 }) continue
+                result += corners.filterNotNull()
+            }
+        }
+        return result
+    }
+
+    /** Scores [points] (small-frame pixels) as a page, or null when it can't be one. */
+    private fun check(points: List<P>, width: Int, height: Int): Candidate? {
         val quad = QuadGeometry.order(points.map { Corner((it.x / width).toFloat(), (it.y / height).toFloat()) })
         if (!QuadGeometry.isConvex(quad)) return null
-        val areaRatio = QuadGeometry.area(quad.corners)
-        if (areaRatio < MIN_AREA_RATIO || areaRatio > 0.995) return null
+        val area = QuadGeometry.area(quad.corners)
+        if (area < MIN_AREA_RATIO || area > 0.98) return null
         // Two corners on the frame edge means the shape runs out of view: a wall, a table, or
         // a page that isn't fully in the picture. None of those can be scanned whole.
         val onBorder = quad.corners.count { it.x < BORDER || it.x > 1 - BORDER || it.y < BORDER || it.y > 1 - BORDER }
         if (onBorder >= 2) return null
         val angles = QuadGeometry.angles(quad)
         if (angles.any { abs(it - 90.0) > angleTolerance }) return null
+
+        val corners = quad.corners.map { P(it.x.toDouble() * width, it.y.toDouble() * height) }
+        val sides = sides(corners)
+        val support = sides.map { (a, b, inward) -> raw.support(a, b, inward) }
+        val shares = support.map { it.share }
+        if (shares.min() < SIDE_MIN || shares.average() < MEAN_MIN) return null
+        if (support.any { it.polarity != support[0].polarity }) return null
+        // With text filled in, a row of text has no edge left while paper still does.
+        val filledMin = sides.minOf { (a, b, inward) -> filled.support(a, b, inward).share }
+        if (filledMin < SIDE_MIN) return null
+        val steps = sides.count { (a, b, inward) -> filled.isStep(a, b, inward) }
+        // One side may be a soft fold, like a book's gutter.
+        if (steps < 3) return null
+
         val skew = angles.sumOf { abs(it - 90.0) } / 4 / angleTolerance
-        return inset(quad) to areaRatio * (1.0 - 0.5 * skew)
+        val mean = shares.average()
+        val score = mean * mean * shares.min() * shares.min() * area * (1.0 - 0.5 * skew) *
+            if (support[0].polarity > 0) 1.0 else DARK_PAGE
+        val whole = steps == 4 && min(shares.min(), filledMin) >= WHOLE
+        return Candidate(quad, area, support[0].polarity, score, whole)
+    }
+
+    /** Each side as (start, end, a vector pointing into the quad). */
+    private fun sides(corners: List<P>): List<Triple<P, P, P>> {
+        val cx = corners.sumOf { it.x } / 4
+        val cy = corners.sumOf { it.y } / 4
+        return List(4) { i ->
+            val a = corners[i]
+            val b = corners[(i + 1) % 4]
+            Triple(a, b, P(cx - (a.x + b.x) / 2, cy - (a.y + b.y) / 2))
+        }
+    }
+
+    /**
+     * Snaps each side onto the strongest edge within a few pixels of it, at full resolution, and
+     * re-intersects the corners. Gives up (keeping [corners]) if that moves anything far.
+     */
+    private fun refine(corners: List<P>): List<P> {
+        val fitted = List(4) { i ->
+            val a = corners[i]
+            val b = corners[(i + 1) % 4]
+            val dx = b.x - a.x
+            val dy = b.y - a.y
+            val length = hypot(dx, dy)
+            val nx = -dy / length
+            val ny = dx / length
+            val n = max(8, (length / 4).toInt())
+            val xs = ArrayList<Double>(n)
+            val ys = ArrayList<Double>(n)
+            for (s in 0 until n) {
+                val t = 0.08 + 0.84 * s / (n - 1)
+                val x0 = a.x + dx * t
+                val y0 = a.y + dy * t
+                var best = 0.0
+                var bestOffset = Int.MIN_VALUE
+                for (o in -REFINE_REACH..REFINE_REACH) {
+                    val g = abs(full.gradient(x0 + nx * o, y0 + ny * o, nx, ny))
+                    if (g > best) {
+                        best = g
+                        bestOffset = o
+                    }
+                }
+                if (bestOffset != Int.MIN_VALUE && best >= GRAD_MIN) {
+                    xs += x0 + nx * bestOffset
+                    ys += y0 + ny * bestOffset
+                }
+            }
+            if (xs.size < 6) Line.through(a, b) else Line.fit(xs, ys)
+        }
+        val out = List(4) { i -> fitted[(i + 3) % 4].meet(fitted[i]) ?: return corners }
+        if (out.indices.any { hypot(out[it].x - corners[it].x, out[it].y - corners[it].y) > MAX_SNAP }) return corners
+        return out
     }
 
     /**
@@ -169,13 +325,218 @@ class DocumentDetector(
         return Quad.of(quad.corners.map { Corner(it.x + (cx - it.x) * INSET, it.y + (cy - it.y) * INSET) })
     }
 
+    private class Candidate(val quad: Quad, val area: Double, val polarity: Int, val score: Double, val whole: Boolean)
+
+    private data class P(val x: Double, val y: Double)
+
+    private class Support(val share: Double, val polarity: Int)
+
+    /** A line as angle and distance from the origin, with how much edge was found along it. */
+    private class Line(val theta: Double, val rho: Double, var length: Double = 0.0) {
+        private val nx = -sin(theta)
+        private val ny = cos(theta)
+
+        fun distance(p: P) = p.x * nx + p.y * ny - rho
+
+        fun meet(other: Line): P? {
+            val det = nx * other.ny - ny * other.nx
+            if (abs(det) < 1e-9) return null
+            return P((rho * other.ny - ny * other.rho) / det, (nx * other.rho - rho * other.nx) / det)
+        }
+
+        companion object {
+            fun through(a: P, b: P): Line {
+                val theta = atan2(b.y - a.y, b.x - a.x)
+                return Line(theta, -a.x * sin(theta) + a.y * cos(theta))
+            }
+
+            /** Total least squares: the line through the mean along the points' main direction. */
+            fun fit(xs: List<Double>, ys: List<Double>): Line {
+                val mx = xs.average()
+                val my = ys.average()
+                var sxx = 0.0
+                var syy = 0.0
+                var sxy = 0.0
+                for (i in xs.indices) {
+                    val dx = xs[i] - mx
+                    val dy = ys[i] - my
+                    sxx += dx * dx
+                    syy += dy * dy
+                    sxy += dx * dy
+                }
+                val theta = 0.5 * atan2(2 * sxy, sxx - syy)
+                return Line(theta, -mx * sin(theta) + my * cos(theta))
+            }
+        }
+    }
+
+    /** A grayscale image, lightly blurred, and its gradients, copied out for per-pixel reads. */
+    private class Field {
+        val image = Mat()
+        private val sobel = Mat()
+        var width = 0
+            private set
+        var height = 0
+            private set
+        private var pixels = ByteArray(0)
+        private var gx = ShortArray(0)
+        private var gy = ShortArray(0)
+
+        fun load(gray: Mat) {
+            Imgproc.GaussianBlur(gray, image, Size(3.0, 3.0), 0.0)
+            width = image.cols()
+            height = image.rows()
+            val n = width * height
+            if (pixels.size != n) {
+                pixels = ByteArray(n)
+                gx = ShortArray(n)
+                gy = ShortArray(n)
+            }
+            image.get(0, 0, pixels)
+            Imgproc.Sobel(image, sobel, CvType.CV_16S, 1, 0, 3)
+            sobel.get(0, 0, gx)
+            Imgproc.Sobel(image, sobel, CvType.CV_16S, 0, 1, 3)
+            sobel.get(0, 0, gy)
+        }
+
+        /** Intensity at the nearest pixel, clamped to the image. */
+        fun at(x: Double, y: Double): Int {
+            val px = x.roundToInt().coerceIn(0, width - 1)
+            val py = y.roundToInt().coerceIn(0, height - 1)
+            return pixels[py * width + px].toInt() and 0xFF
+        }
+
+        /** Gradient along (nx, ny) at the nearest pixel; 0 outside the image. */
+        fun gradient(x: Double, y: Double, nx: Double, ny: Double): Double {
+            val px = x.roundToInt()
+            val py = y.roundToInt()
+            if (px < 0 || py < 0 || px >= width || py >= height) return 0.0
+            val i = py * width + px
+            return gx[i] * nx + gy[i] * ny
+        }
+
+        /**
+         * How much of the segment a→b runs along an edge, counting only the more common polarity
+         * (lighter toward [inward], or darker), and which one that is.
+         */
+        fun support(a: P, b: P, inward: P): Support {
+            val dx = b.x - a.x
+            val dy = b.y - a.y
+            val length = hypot(dx, dy)
+            if (length < 6) return Support(0.0, 0)
+            var nx = -dy / length
+            var ny = dx / length
+            if (nx * inward.x + ny * inward.y < 0) {
+                nx = -nx
+                ny = -ny
+            }
+            val n = max(8, (length / 1.5).toInt())
+            var lighter = 0
+            var darker = 0
+            for (s in 0 until n) {
+                val t = 0.04 + 0.92 * s / (n - 1)
+                val x0 = a.x + dx * t
+                val y0 = a.y + dy * t
+                var best = 0.0
+                for (o in -2..3) {
+                    val g = gradient(x0 + nx * o, y0 + ny * o, nx, ny)
+                    if (abs(g) > abs(best)) best = g
+                }
+                if (best >= GRAD_MIN) lighter++ else if (best <= -GRAD_MIN) darker++
+            }
+            return Support(max(lighter, darker).toDouble() / n, if (lighter >= darker) 1 else -1)
+        }
+
+        /**
+         * Averages the cross-section of side a→b along its length: paper ends in a step, while
+         * light falling off over a wall or carpet makes a ramp.
+         */
+        fun isStep(a: P, b: P, inward: P): Boolean {
+            val dx = b.x - a.x
+            val dy = b.y - a.y
+            val length = hypot(dx, dy)
+            var nx = -dy / length
+            var ny = dx / length
+            if (nx * inward.x + ny * inward.y < 0) {
+                nx = -nx
+                ny = -ny
+            }
+            val n = max(8, (length / 2).toInt())
+            val profile = DoubleArray(2 * STEP_REACH + 1)
+            for (s in 0 until n) {
+                val t = 0.1 + 0.8 * s / (n - 1)
+                val x0 = a.x + dx * t
+                val y0 = a.y + dy * t
+                for (j in profile.indices) {
+                    val o = j - STEP_REACH
+                    profile[j] += at(x0 + nx * o, y0 + ny * o).toDouble()
+                }
+            }
+            for (j in profile.indices) profile[j] /= n
+            val contrast = abs(profile.last() - profile.first())
+            var steepest = 0.0
+            for (j in 0 until profile.size - 2) steepest = max(steepest, abs(profile[j + 2] - profile[j]))
+            return contrast >= MIN_CONTRAST && steepest >= STEEP * contrast
+        }
+
+        fun release() {
+            image.release()
+            sobel.release()
+        }
+    }
+
     companion object {
         /** Pages smaller than this share of the frame are ignored. */
-        const val MIN_AREA_RATIO = 0.12
+        const val MIN_AREA_RATIO = 0.08
         private const val DETECT_SIDE = 640
+        /** The long side of the frame the search runs on. Text at this size is a gray haze. */
+        private const val SEARCH_SIDE = 256.0
+        private const val LOW = 15.0
+        private const val HIGH = 40.0
+        private const val CLOSE_TEXT = 5.0
+        private const val MAX_CONTOURS = 30
+        private const val MAX_LINES = 8
+        private val MERGE_ANGLE = Math.toRadians(4.0)
+        /** Sobel response that counts as an edge: a step of six or so gray levels. */
+        private const val GRAD_MIN = 20.0
+        /** Every side must run along an edge for this share of its length, on average this much. */
+        private const val SIDE_MIN = 0.55
+        private const val MEAN_MIN = 0.72
+        /** The cross-section of a side is read this many pixels either way. */
+        private const val STEP_REACH = 7
+        /** A step changes this share of its contrast within two pixels; a ramp doesn't. */
+        private const val STEEP = 0.4
+        private const val MIN_CONTRAST = 18.0
+        /** An inner sheet this well outlined, at most this share of an outer one, splits it. */
+        private const val WHOLE = 0.9
+        private const val UNION_SHARE = 0.85
+        /** Paper darker than its background is rarer, so it needs the stronger outline. */
+        private const val DARK_PAGE = 0.8
+        private const val REFINE_REACH = 4
+        private const val MAX_SNAP = 8.0
         /** Share of the frame counted as "on the edge". */
         private const val BORDER = 0.015f
         /** How far corners move toward the center, as a share of their distance to it. */
         private const val INSET = 0.012f
+        /** Inner corners near outer ones, both in normalized frame units. */
+        private const val SHARED_CORNER = 0.03
+        private const val OUTSIDE = 0.02
+
+        /** True when [inner] lies inside [outer] and has two adjacent corners on outer's. */
+        private fun sharesSide(inner: Quad, outer: Quad): Boolean {
+            val o = outer.corners
+            val orientation = if (QuadGeometry.signedArea(o) >= 0) 1.0 else -1.0
+            val inside = inner.corners.all { p ->
+                (0 until 4).all { i ->
+                    val a = o[i]
+                    val b = o[(i + 1) % 4]
+                    val cross = (b.x - a.x).toDouble() * (p.y - a.y) - (b.y - a.y).toDouble() * (p.x - a.x)
+                    orientation * cross / hypot((b.x - a.x).toDouble(), (b.y - a.y).toDouble()) >= -OUTSIDE
+                }
+            }
+            if (!inside) return false
+            val near = inner.corners.map { c -> o.any { hypot((c.x - it.x).toDouble(), (c.y - it.y).toDouble()) < SHARED_CORNER } }
+            return (0 until 4).any { near[it] && near[(it + 1) % 4] }
+        }
     }
 }

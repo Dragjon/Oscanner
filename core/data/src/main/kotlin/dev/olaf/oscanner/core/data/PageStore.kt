@@ -381,7 +381,10 @@ class PageStore(
         val preview = runCatching { PageRenderer.loadUpright(original.path, DETECT_SIDE) }.getOrNull()
         val quad = preview?.let { bitmap ->
             runCatching {
-                val detector = DocumentDetector(angleTolerance = if (kind == DocumentKind.Whiteboard) 50.0 else 35.0)
+                val detector = DocumentDetector(
+                    angleTolerance = if (kind == DocumentKind.Whiteboard) 50.0 else 35.0,
+                    keepSpreads = kind == DocumentKind.Book,
+                )
                 detector.detect(bitmap).also { detector.release() }
             }.getOrNull()
         } ?: image.liveQuad ?: Quad.Full
