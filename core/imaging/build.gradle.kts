@@ -13,4 +13,5 @@ dependencies {
     api(libs.opencv)
     implementation(libs.androidx.exifinterface)
     testImplementation(libs.junit)
+    testImplementation("org.openpnp:opencv:4.9.0-0")
 }

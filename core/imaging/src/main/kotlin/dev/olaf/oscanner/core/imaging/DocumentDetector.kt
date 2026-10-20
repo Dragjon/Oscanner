@@ -248,10 +248,17 @@ class DocumentDetector(
         val shares = support.map { it.share }
         if (shares.min() < SIDE_MIN || shares.average() < MEAN_MIN) return null
         if (support.any { it.polarity != support[0].polarity }) return null
-        // With text filled in, a row of text has no edge left while paper still does.
-        val filledMin = sides.minOf { (a, b, inward) -> filled.support(a, b, inward).share }
-        if (filledMin < SIDE_MIN) return null
-        val steps = sides.count { (a, b, inward) -> filled.isStep(a, b, inward) }
+        // With text filled in, a row of text has no edge left while paper still does. But on a
+        // light counter full of dark flecks (terrazzo, granite), filling them in makes the
+        // counter as white as the paper: a side that is a strong, clean step as it is, with the
+        // paper the lighter side, counts.
+        val sure = sides.mapIndexed { i, (a, b, inward) ->
+            shares[i] >= SURE_SIDE && support[i].polarity > 0 && raw.isStep(a, b, inward) && flecked(a, b, inward)
+        }
+        val filledShares = sides.map { (a, b, inward) -> filled.support(a, b, inward).share }
+        if (filledShares.indices.any { filledShares[it] < SIDE_MIN && !sure[it] }) return null
+        val filledMin = filledShares.min()
+        val steps = sides.indices.count { i -> val (a, b, inward) = sides[i]; filled.isStep(a, b, inward) || sure[i] }
         // One side may be a soft fold, like a book's gutter.
         if (steps < 3) return null
 
@@ -261,6 +268,35 @@ class DocumentDetector(
             if (support[0].polarity > 0) 1.0 else DARK_PAGE
         val whole = steps == 4 && min(shares.min(), filledMin) >= WHOLE
         return Candidate(quad, area, support[0].polarity, score, whole)
+    }
+
+    /**
+     * Whether what lies just outside side a→b is flecked with dark bits that filling in text
+     * also fills in: the counter brightens noticeably once they're gone.
+     */
+    private fun flecked(a: P, b: P, inward: P): Boolean {
+        val dx = b.x - a.x
+        val dy = b.y - a.y
+        val length = hypot(dx, dy)
+        var nx = -dy / length
+        var ny = dx / length
+        if (nx * inward.x + ny * inward.y > 0) {
+            nx = -nx
+            ny = -ny
+        }
+        val n = max(8, (length / 2).toInt())
+        var gain = 0.0
+        var count = 0
+        for (s in 0 until n) {
+            val t = 0.1 + 0.8 * s / (n - 1)
+            for (o in 3..STEP_REACH) {
+                val x = a.x + dx * t + nx * o
+                val y = a.y + dy * t + ny * o
+                gain += filled.at(x, y) - raw.at(x, y)
+                count++
+            }
+        }
+        return count > 0 && gain / count >= FLECK_GAIN
     }
 
     /** Each side as (start, end, a vector pointing into the quad). */
@@ -507,6 +543,10 @@ class DocumentDetector(
         /** Every side must run along an edge for this share of its length, on average this much. */
         private const val SIDE_MIN = 0.55
         private const val MEAN_MIN = 0.72
+        /** A side running along an edge for this share of its length is sure of itself. */
+        private const val SURE_SIDE = 0.9
+        /** How much brighter, on average, filling in a counter's flecks makes it, to call it flecked. */
+        private const val FLECK_GAIN = 4.0
         /** The cross-section of a side is read this many pixels either way. */
         private const val STEP_REACH = 7
         /** A step changes this share of its contrast within two pixels; a ramp doesn't. */
