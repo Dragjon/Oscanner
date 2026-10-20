@@ -11,6 +11,10 @@ android {
         versionCode = 1
         versionName = "0.1.0"
     }
+    applicationVariants.all {
+        // Static shortcuts need the real package name, which differs for debug builds.
+        resValue("string", "application_id", applicationId)
+    }
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"

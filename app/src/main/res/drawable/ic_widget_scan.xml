@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Capture corners around a page, as in the launcher icon; dark ink on orange. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:strokeColor="#FF1E0E07"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M3,8 V5 a2,2 0 0 1 2,-2 h3 M16,3 h3 a2,2 0 0 1 2,2 v3 M21,16 v3 a2,2 0 0 1 -2,2 h-3 M8,21 H5 a2,2 0 0 1 -2,-2 v-3" />
+    <path
+        android:fillColor="#FF1E0E07"
+        android:pathData="M8,7 h8 v10 h-8 z" />
+</vector>

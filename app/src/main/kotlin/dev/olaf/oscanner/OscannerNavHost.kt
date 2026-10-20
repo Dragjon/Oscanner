@@ -78,6 +78,8 @@ fun OscannerNavHost(
     /** Images another app shared to us; consumed once they're imported. */
     sharedImages: List<Uri>?,
     onSharedImagesHandled: () -> Unit,
+    scanRequested: Boolean,
+    onScanHandled: () -> Unit,
     appLockAvailable: Boolean,
     confirmLock: (onResult: (Boolean) -> Unit) -> Unit,
 ) {
@@ -103,6 +105,13 @@ fun OscannerNavHost(
     }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { import(it) }
+
+    LaunchedEffect(scanRequested) {
+        if (scanRequested) {
+            onScanHandled()
+            navController.navigate(Routes.capture()) { launchSingleTop = true }
+        }
+    }
 
     LaunchedEffect(sharedImages) {
         sharedImages?.let {

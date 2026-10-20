@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_scan"
+        android:shortcutId="scan"
+        android:shortcutShortLabel="@string/app_scan">
+        <!-- The package differs between debug and release builds, so it comes from Gradle. -->
+        <intent
+            android:action="dev.olaf.oscanner.action.SCAN"
+            android:targetClass="dev.olaf.oscanner.MainActivity"
+            android:targetPackage="@string/application_id" />
+    </shortcut>
+</shortcuts>

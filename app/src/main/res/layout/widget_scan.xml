@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The widget is one pill: the same orange Scan action as in the app. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="8dp">
+
+    <TextView
+        android:id="@+id/widget_scan"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:layout_gravity="center"
+        android:background="@drawable/widget_pill"
+        android:drawableStart="@drawable/ic_widget_scan"
+        android:drawablePadding="10dp"
+        android:gravity="center"
+        android:paddingStart="24dp"
+        android:paddingEnd="24dp"
+        android:text="@string/app_scan"
+        android:textColor="#FF1E0E07"
+        android:textSize="16sp"
+        android:textStyle="bold" />
+</FrameLayout>

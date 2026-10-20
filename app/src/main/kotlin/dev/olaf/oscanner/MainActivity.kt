@@ -28,6 +28,8 @@ class MainActivity : FragmentActivity() {
 
     /** Images shared into the app, waiting for the nav host to import them. */
     private val sharedImages = mutableStateOf<List<Uri>?>(null)
+    /** Set when opened from the Scan shortcut, tile or widget. */
+    private val scanRequested = mutableStateOf(false)
     private val appLock by lazy { AppLock(this) }
     /** True until the person unlocks, when App lock is on. Starts locked so nothing shows first. */
     private val locked = mutableStateOf(true)
@@ -36,7 +38,10 @@ class MainActivity : FragmentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         val container = (application as OscannerApplication).container
-        if (savedInstanceState == null) sharedImages.value = intent.sharedImages()
+        if (savedInstanceState == null) {
+            sharedImages.value = intent.sharedImages()
+            scanRequested.value = intent.action == ACTION_SCAN
+        }
 
         setContent {
             // Null until the stored settings are read, so a locked app never flashes its content.
@@ -71,6 +76,8 @@ class MainActivity : FragmentActivity() {
                         container = container,
                         sharedImages = sharedImages.value,
                         onSharedImagesHandled = { sharedImages.value = null },
+                        scanRequested = scanRequested.value,
+                        onScanHandled = { scanRequested.value = false },
                         appLockAvailable = appLock.available(),
                         confirmLock = appLock::prompt,
                     )
@@ -92,6 +99,7 @@ class MainActivity : FragmentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         intent.sharedImages()?.let { sharedImages.value = it }
+        if (intent.action == ACTION_SCAN) scanRequested.value = true
     }
 }
 
