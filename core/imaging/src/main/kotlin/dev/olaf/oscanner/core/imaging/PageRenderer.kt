@@ -335,11 +335,12 @@ object PageRenderer {
         Imgproc.warpPerspective(rgb, out, transform, Size(dstW, dstH), Imgproc.INTER_CUBIC, Core.BORDER_REPLICATE)
         listOf(rgb, src, dst, transform).forEach(Mat::release)
         val curve = edits.curve
-        val warped = if (edits.flatten && curve != null && curve.lines.isNotEmpty()) {
+        val flat = if (edits.flatten && curve != null && curve.lines.isNotEmpty()) {
             CurveDetector.flatten(out, curve).also { out.release() }
         } else {
             out
         }
+        val warped = if (edits.descreen) Descreen.apply(flat).also { flat.release() } else flat
         val turn = when (((edits.rotation % 360) + 360) % 360) {
             90 -> Core.ROTATE_90_CLOCKWISE
             180 -> Core.ROTATE_180

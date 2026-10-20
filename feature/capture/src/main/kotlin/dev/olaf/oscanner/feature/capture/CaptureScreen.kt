@@ -241,7 +241,7 @@ private fun CameraLayer(viewModel: CaptureViewModel, state: CaptureUiState, titl
         val analyzer = PageAnalyzer(
             mode = { viewModel.state.value.mode },
             onCode = viewModel::onCode,
-            onResult = { quad, sharpness, aspect -> viewModel.onFrame(quad, sharpness, aspect) },
+            onResult = { quad, sharpness, aspect, glare -> viewModel.onFrame(quad, sharpness, aspect, glare) },
         )
         controller.setImageAnalysisAnalyzer(executor, analyzer)
         controller.bindToLifecycle(lifecycleOwner)
@@ -336,6 +336,7 @@ private fun CameraLayer(viewModel: CaptureViewModel, state: CaptureUiState, titl
 private fun statusText(state: CaptureUiState): String = when {
     state.mode == CaptureMode.Code -> stringResource(R.string.capture_status_code)
     state.status == CaptureStatus.Captured -> stringResource(R.string.capture_status_captured)
+    state.glare -> stringResource(R.string.capture_status_glare)
     state.status == CaptureStatus.HoldSteady -> stringResource(R.string.capture_status_hold)
     state.mode == CaptureMode.IdCard && state.captures.isEmpty() -> stringResource(R.string.capture_status_card_front)
     state.mode == CaptureMode.IdCard -> stringResource(R.string.capture_status_card_back)

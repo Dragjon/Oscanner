@@ -34,6 +34,7 @@ internal object EditsJson {
         .apply { if (edits.removePenInk) put("removePenInk", true) }
         .apply { if (edits.removeFingers) put("removeFingers", true) }
         .apply { if (edits.flatten) put("flatten", true) }
+        .apply { if (edits.descreen) put("descreen", true) }
         .apply {
             edits.curve?.let { curve ->
                 put("curve", JSONArray().apply { curve.lines.forEach { put(writeLine(it)) } })
@@ -126,6 +127,7 @@ internal object EditsJson {
             removePenInk = obj.optBoolean("removePenInk"),
             removeFingers = obj.optBoolean("removeFingers"),
             flatten = obj.optBoolean("flatten"),
+            descreen = obj.optBoolean("descreen"),
             curve = obj.optJSONArray("curve")?.let { a ->
                 // All lines or none: a partial bend would distort the page.
                 val lines = (0 until a.length()).map { readLine(a.optJSONArray(it)) }

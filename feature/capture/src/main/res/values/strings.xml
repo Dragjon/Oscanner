@@ -3,6 +3,7 @@
     <string name="capture_close">Close</string>
     <string name="capture_status_searching">Looking for a page…</string>
     <string name="capture_status_hold">Hold steady</string>
+    <string name="capture_status_glare">Glare on the page: tilt the phone a little</string>
     <string name="capture_status_captured">Captured</string>
     <string name="capture_status_card_front">Show the front of the card</string>
     <string name="capture_status_card_back">Now turn it over: the back</string>

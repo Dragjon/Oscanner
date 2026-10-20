@@ -130,6 +130,8 @@ data class PageEdits(
      * box drawn on the page, uses the same map. Null until measured; reset when re-cropped.
      */
     val curve: PageCurve? = null,
+    /** Take out the wavy bands and fine grids of a photographed screen or dot-printed picture. */
+    val descreen: Boolean = false,
 ) {
     val adjusted: Boolean get() = brightness != 0f || contrast != 0f || detail != 0f
 

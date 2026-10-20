@@ -25,6 +25,8 @@
     <string name="review_contrast">Contrast</string>
     <string name="review_detail">Sharpness</string>
     <string name="review_reset">Reset</string>
+    <string name="review_descreen">Reduce screen patterns</string>
+    <string name="review_descreen_description">For photos of a screen, or of pictures printed in fine dots</string>
     <string name="review_flatten">Flatten curved page</string>
     <string name="review_flatten_description">Straightens lines of text that bend, like near a book\'s spine</string>
     <string name="review_flatten_measuring">Measuring how the lines bend…</string>

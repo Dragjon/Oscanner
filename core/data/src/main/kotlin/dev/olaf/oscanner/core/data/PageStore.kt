@@ -258,7 +258,7 @@ class PageStore(
                 before.erase != edits.erase || before.keep != edits.keep ||
                 before.removePenInk != edits.removePenInk || before.removeFingers != edits.removeFingers ||
                 before.redactions != edits.redactions ||
-                before.flatten != edits.flatten || before.curve != edits.curve
+                before.flatten != edits.flatten || before.curve != edits.curve || before.descreen != edits.descreen
             )
         if (reread) {
             text.forget(pageId)

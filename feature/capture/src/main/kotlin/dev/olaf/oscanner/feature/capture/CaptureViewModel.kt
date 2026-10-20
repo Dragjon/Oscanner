@@ -53,6 +53,8 @@ data class CaptureUiState(
     /** A photo is being taken; the shutter ignores taps until it lands. */
     val busy: Boolean = false,
     val saving: Boolean = false,
+    /** A reflection on the page in most recent frames: the screen suggests tilting. */
+    val glare: Boolean = false,
 )
 
 /** Where to go once captures are saved: the document and the index of its first new page. */
@@ -78,6 +80,8 @@ class CaptureViewModel(
     val savedScans: Flow<SavedScan> = saved.receiveAsFlow()
 
     private var capturedAt = 0L
+    /** Glare in each of the last few frames, newest last, so the hint doesn't flicker. */
+    private val glareFrames = ArrayDeque<Boolean>()
 
     init {
         if (documentId != null) {
@@ -102,7 +106,12 @@ class CaptureViewModel(
     fun dismissCode() = _state.update { it.copy(code = null) }
 
     /** Called on the analysis thread for every frame. */
-    fun onFrame(quad: Quad?, sharpness: Double, frameAspect: Float, now: Long = System.currentTimeMillis()) {
+    fun onFrame(quad: Quad?, sharpness: Double, frameAspect: Float, glare: Boolean = false, now: Long = System.currentTimeMillis()) {
+        val steadyGlare = synchronized(glareFrames) {
+            glareFrames.addLast(glare)
+            if (glareFrames.size > GLARE_WINDOW) glareFrames.removeFirst()
+            glareFrames.count { it } >= GLARE_NEEDED
+        }
         val result = synchronized(tracker) { tracker.onFrame(quad, sharpness, now, _state.value.autoCapture) }
         if (result.fire && !_state.value.busy) shutter.trySend(Unit)
         val status = when {
@@ -110,7 +119,7 @@ class CaptureViewModel(
             result.quad == null -> CaptureStatus.Searching
             else -> CaptureStatus.HoldSteady
         }
-        _state.update { it.copy(quad = result.quad, progress = result.progress, frameAspect = frameAspect, status = status) }
+        _state.update { it.copy(quad = result.quad, progress = result.progress, frameAspect = frameAspect, status = status, glare = steadyGlare && result.quad != null) }
     }
 
     /** A new file for the camera to write into. */
@@ -188,5 +197,7 @@ class CaptureViewModel(
 
     private companion object {
         const val CAPTURED_HOLD_MS = 900L
+        const val GLARE_WINDOW = 6
+        const val GLARE_NEEDED = 4
     }
 }

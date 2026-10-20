@@ -19,7 +19,7 @@ import kotlin.math.max
 internal class PageAnalyzer(
     private val mode: () -> CaptureMode,
     private val onCode: (ScannedCode) -> Unit,
-    private val onResult: (quad: Quad?, sharpness: Double, frameAspect: Float) -> Unit,
+    private val onResult: (quad: Quad?, sharpness: Double, frameAspect: Float, glare: Boolean) -> Unit,
 ) : ImageAnalysis.Analyzer {
 
     // Created on the analysis thread, after OpenCV's native code is loaded.
@@ -55,6 +55,7 @@ internal class PageAnalyzer(
                 luminance
             }
             val detection = detector.detect(frame)
+            val glare = detection.quad?.let { Glare.onPage(frame, it) } ?: false
             luminance.release()
             val rotation = image.imageInfo.rotationDegrees
             val upright = detection.quad?.let { QuadGeometry.rotate(it, rotation) }
@@ -63,7 +64,7 @@ internal class PageAnalyzer(
             } else {
                 image.height.toFloat() / image.width
             }
-            onResult(upright, detection.sharpness, aspect)
+            onResult(upright, detection.sharpness, aspect, glare)
         }
     }
 
