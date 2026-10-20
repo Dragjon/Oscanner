@@ -2,7 +2,7 @@
 
 A private, on-device Android document scanner that works like CamScanner day to day (capture, auto-crop, enhance, save, share, OCR, AI clean-up), but has no ads, accounts, watermarks or paywall, and has a quiet dark interface.
 
-> Status: planning. No code yet. Product facts live in `PRODUCT.md`. Visual direction chosen: **Soft Card, Night** (§7).
+> Status (2026-10-20): Phases 0–7 built, with gaps listed in README.md ("Not done yet"). Product facts live in `PRODUCT.md`; the design system as built is in `DESIGN.md`. Visual direction: **Soft Card, Night** (§7).
 
 ---
 
