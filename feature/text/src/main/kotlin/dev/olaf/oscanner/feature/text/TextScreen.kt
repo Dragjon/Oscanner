@@ -27,10 +27,16 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.TextSnippet
 import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.LibraryBooks
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -60,6 +66,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.olaf.oscanner.core.design.Dock
 import dev.olaf.oscanner.core.design.DockAction
 import dev.olaf.oscanner.core.design.PrimaryPill
+import dev.olaf.oscanner.core.design.SheetAction
 import dev.olaf.oscanner.core.design.rememberPageImage
 import dev.olaf.oscanner.core.design.share
 import dev.olaf.oscanner.core.model.Page
@@ -76,9 +83,10 @@ fun TextRoute(viewModel: TextViewModel, startPage: Int, onBack: () -> Unit) {
     val copied = stringResource(R.string.text_copied)
     val noApp = stringResource(R.string.text_no_app)
     var editingId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var exporting by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(viewModel) {
-        viewModel.exportedFiles.collect { if (!context.share(listOf(it), "text/plain")) snackbar.showSnackbar(noApp) }
+        viewModel.exportedFiles.collect { (file, type) -> if (!context.share(listOf(file), type)) snackbar.showSnackbar(noApp) }
     }
 
     val pages = state.pages
@@ -160,10 +168,45 @@ fun TextRoute(viewModel: TextViewModel, startPage: Int, onBack: () -> Unit) {
             ) {
                 DockAction(Icons.Rounded.LibraryBooks, stringResource(R.string.text_copy_all), { copy(viewModel.allText()) })
                 PrimaryPill(Icons.Rounded.ContentCopy, stringResource(R.string.text_copy), { copy(current.text.orEmpty()) })
-                DockAction(Icons.Rounded.FileDownload, stringResource(R.string.text_export), viewModel::exportText)
+                DockAction(Icons.Rounded.FileDownload, stringResource(R.string.text_export), { exporting = true })
             }
         }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 104.dp))
+    }
+
+    if (exporting) {
+        ExportSheet(
+            onWord = {
+                exporting = false
+                viewModel.exportWord()
+            },
+            onPlain = {
+                exporting = false
+                viewModel.exportText()
+            },
+            onDismiss = { exporting = false },
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ExportSheet(onWord: () -> Unit, onPlain: () -> Unit, onDismiss: () -> Unit) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(start = 16.dp, end = 16.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            SheetAction(Icons.Rounded.Description, stringResource(R.string.text_export_word), stringResource(R.string.text_export_word_description), onWord)
+            SheetAction(Icons.Rounded.TextSnippet, stringResource(R.string.text_export_plain), stringResource(R.string.text_export_plain_description), onPlain)
+        }
     }
 }
 

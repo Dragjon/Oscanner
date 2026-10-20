@@ -34,8 +34,9 @@ class TextViewModel(
     ) { document, pages -> TextUiState(loading = false, document = document, pages = pages) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TextUiState())
 
-    private val exports = Channel<File>(Channel.BUFFERED)
-    val exportedFiles: Flow<File> = exports.receiveAsFlow()
+    /** A finished export and the MIME type to share it as. */
+    private val exports = Channel<Pair<File, String>>(Channel.BUFFERED)
+    val exportedFiles: Flow<Pair<File, String>> = exports.receiveAsFlow()
 
     /** Every page's text, pages separated by a blank line. */
     fun allText(): String = state.value.pages.mapNotNull { it.text?.takeIf(String::isNotBlank) }.joinToString("\n\n")
@@ -47,6 +48,14 @@ class TextViewModel(
     }
 
     fun exportText() {
-        viewModelScope.launch { runCatching { store.exportText(documentId) }.onSuccess { exports.send(it) } }
+        viewModelScope.launch { runCatching { store.exportText(documentId) }.onSuccess { exports.send(it to "text/plain") } }
+    }
+
+    fun exportWord() {
+        viewModelScope.launch { runCatching { store.exportDocx(documentId) }.onSuccess { exports.send(it to DOCX) } }
+    }
+
+    private companion object {
+        const val DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     }
 }

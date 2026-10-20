@@ -17,6 +17,7 @@ import dev.olaf.oscanner.core.model.PageEdits
 import dev.olaf.oscanner.core.model.PageFilter
 import dev.olaf.oscanner.core.model.ProcessingState
 import dev.olaf.oscanner.core.model.Quad
+import dev.olaf.oscanner.core.pdf.DocxWriter
 import dev.olaf.oscanner.core.pdf.JpegPdfWriter
 import dev.olaf.oscanner.core.pdf.PdfPage
 import dev.olaf.oscanner.core.pdf.PdfPageSize
@@ -426,6 +427,17 @@ class PageStore(
             .joinToString("\n\n")
         return withContext(Dispatchers.IO) {
             File(exportsDir.apply { mkdirs() }, "$title.txt").apply { writeText(body) }
+        }
+    }
+
+    /** The recognized text as a Word document in the share cache: title, then one section per page. */
+    suspend fun exportDocx(documentId: Long): File {
+        val title = db.documents().getRow(documentId)?.title ?: "Scan"
+        val pages = db.pages().forDocument(documentId).mapNotNull { it.ocrText?.takeIf(String::isNotBlank) }
+        return withContext(Dispatchers.IO) {
+            File(exportsDir.apply { mkdirs() }, "${safeName(title)}.docx").apply {
+                outputStream().buffered().use { DocxWriter.write(title, pages, it) }
+            }
         }
     }
 
