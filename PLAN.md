@@ -2,14 +2,14 @@
 
 A private, on-device Android document scanner that works like CamScanner day to day (capture, auto-crop, enhance, save, share, OCR, AI clean-up), but has no ads, accounts, watermarks or paywall, and has a quiet dark interface.
 
-> Status (2026-10-20): Phases 0–7 built, with gaps listed in README.md ("Not done yet"). Product facts live in `PRODUCT.md`; the design system as built is in `DESIGN.md`. Visual direction: **Soft Card, Night** (§7).
+> Status (2026-10-21): Phases 0–7 built, with gaps listed in README.md ("Not done yet"). What comes next, measured against CamScanner 7.27: `ROADMAP.md`. Product facts live in `PRODUCT.md`; the design system as built is in `DESIGN.md`. Visual direction: **Soft Card, Night** (§7).
 
 ---
 
 ## 1. Clean-room rules (read before contributing)
 
 1. **Sources allowed:** public store listings, the vendor's marketing site and blog, published user manuals, press releases, third-party reviews, academic papers, and open-source code under compatible licenses. Every source used is listed in §12.
-2. **Sources forbidden:** CamScanner APKs or IPAs, decompiled or disassembled code, network captures of its APIs, its bundled models or assets, and its screenshots as layout references. No contributor installs CamScanner to "see how it does it".
+2. **Sources forbidden:** decompiled or disassembled CamScanner code, network captures of its APIs, its bundled models or assets, and its screenshots as layout references. Using the official app as a user to see *which* features it offers was allowed by the owner on 2026-10-21 (see `ROADMAP.md`); looking at *how* it does anything is not.
 3. **Two roles.** A *spec writer* turns public descriptions into functional requirements (§3, §4) using only what a feature *does*, never how it is built. *Implementers* work only from this document and the public algorithm literature.
 4. **No borrowed trade dress or names.** We don't use these names: *CamScanner, CS, Magic Color, Smart Erase, Mega Scan, CountCam, Scrollshot,* or "Scanned by …". Our names are plain descriptive words (§4.3). Our icons, colors and layout come from our own design system (§7).
 5. **Record everything.** Design decisions are recorded in git with the date and the public source that motivated them, so independent development can be shown later.
