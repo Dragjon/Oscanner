@@ -89,7 +89,8 @@ class CleanupViewModel(
         val s = _state.value
         val page = s.page ?: return
         val edits = s.edits ?: return
-        if (!on || edits.printed != null) {
+        // Print found the older way (words the reader was sure of) is found again by its look.
+        if (!on || (edits.printed != null && edits.printByLook)) {
             edit { it.copy(removePenInk = on) }
             return
         }
@@ -99,7 +100,7 @@ class CleanupViewModel(
             val printed = runCatching { store.printedAreas(page, edits) }.getOrNull()
             _state.update { it.copy(findingPrint = false) }
             // Unreadable (no language data, say): colored pen is still found.
-            edit { it.copy(removePenInk = true, printed = printed) }
+            edit { it.copy(removePenInk = true, printed = printed, printByLook = printed != null) }
         }
     }
 

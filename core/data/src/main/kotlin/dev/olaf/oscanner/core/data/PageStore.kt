@@ -200,7 +200,7 @@ class PageStore(
                     .onFailure { Log.w(TAG, "Finding print on page $id failed", it) }
                     .getOrNull() ?: continue
                 if (db.pages().get(id)?.editsJson != entity.editsJson) continue
-                setEdits(id, edits.copy(removePenInk = true, printed = printed))
+                setEdits(id, edits.copy(removePenInk = true, printed = printed, printByLook = true))
             }
         }
     }

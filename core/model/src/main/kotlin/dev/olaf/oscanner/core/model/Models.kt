@@ -119,11 +119,16 @@ data class PageEdits(
      */
     val removePenInk: Boolean = false,
     /**
-     * Where printed words were read with confidence when handwriting removal was turned on,
-     * normalized to the page as shown. Ink inside them is print and stays. Null on pages from
-     * before this existed: those remove colored pen only.
+     * Where the print is, found when handwriting removal was turned on, normalized to the page
+     * as shown. Ink inside it is print and stays. Null on pages from before this existed: those
+     * remove colored pen only.
      */
     val printed: List<Area>? = null,
+    /**
+     * [printed] was found by how the marks look (each stretch of printed marks, exactly), not
+     * from the words the reader was sure of (which can include neat handwriting).
+     */
+    val printByLook: Boolean = false,
     /** Clean-up: remove skin-colored shapes reaching in from the page edge, like holding fingers. */
     val removeFingers: Boolean = false,
     /**

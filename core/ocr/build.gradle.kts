@@ -12,6 +12,7 @@ android {
 }
 
 dependencies {
+    implementation(project(":core:model"))
     // Apache-2.0: Tesseract 5 + Leptonica, built for Android.
     implementation(libs.tesseract4android)
     // MIT: runs the PP-OCR text models (Apache-2.0, in assets/paddle). Prebuilt AAR for now,

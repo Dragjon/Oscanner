@@ -20,6 +20,7 @@ import dev.olaf.oscanner.core.ocr.Languages
 import dev.olaf.oscanner.core.ocr.OcrResult
 import dev.olaf.oscanner.core.ocr.PaddleReader
 import dev.olaf.oscanner.core.ocr.PageReader
+import dev.olaf.oscanner.core.ocr.PrintSorter
 import dev.olaf.oscanner.core.ocr.TextRecognizer
 import dev.olaf.oscanner.core.pdf.PdfWord
 import kotlinx.coroutines.Dispatchers
@@ -136,28 +137,23 @@ class TextReader(
     }
 
     /**
-     * Where the printed words are on a page as [edits] shape it, for telling print from
-     * handwriting. Tesseract reads print with high confidence and handwriting with low, and
-     * print on one page is all about the same height, so only confident words of the common
-     * height count. Takes a few seconds.
+     * Where the print is on a page as [edits] shape it, for telling print from handwriting: each
+     * stretch of marks that look printed ([PrintSorter]), in any language. Takes a second or so.
      */
     suspend fun printedAreas(originalPath: String, edits: PageEdits): List<Area> = withContext(Dispatchers.Default) {
-        val codes = settings.settings.first().textLanguages
         val source = PageRenderer.loadUpright(originalPath, SOURCE_SIDE)
-        // Handwriting must still be on the page to be told apart.
-        val image = PageRenderer.renderForOcr(source, edits.copy(removePenInk = false, printed = null, erase = emptyList(), keep = emptyList()))
+        // Handwriting must still be on the page to be told apart; in its own gray, as photographed.
+        val image = PageRenderer.renderForOcr(
+            source,
+            edits.copy(removePenInk = false, printed = null, printByLook = false, erase = emptyList(), keep = emptyList()),
+            PageFilter.Original,
+        )
         source.recycle()
-        val words = try {
-            TextRecognizer(languages, codes).use { it.read(image).words }
+        try {
+            PrintSorter(context).use { it.printAreas(image) }
         } finally {
             image.recycle()
         }
-        val sure = words.filter { it.confidence >= PRINT_CONFIDENCE && it.text.any(Char::isLetterOrDigit) }
-        if (sure.isEmpty()) return@withContext emptyList()
-        val heights = sure.map { it.bottom - it.top }.sorted()
-        val typical = heights[heights.size / 2]
-        sure.filter { (it.bottom - it.top) in typical * 0.5f..typical * 2.2f }
-            .map { Area(it.left, it.top, it.right, it.bottom) }
     }
 
     /** Words with boxes for a page's PDF text layer; empty if it hasn't been read. */

@@ -53,15 +53,16 @@ internal object Cleanup {
         var mend: Pair<Mat, Scalar>? = null
         if (edits.removePenInk) {
             penInk(rgb).also { Core.bitwise_or(mask, it, mask); it.release() }
-            edits.printed?.let { sure ->
-                val printed = confidentPrint(rgb, sure)
+            edits.printed?.let { found ->
+                // Print found by its look is exact; words the reader was sure of need checking.
+                val printed = if (edits.printByLook) found else confidentPrint(rgb, found)
                 // Pen of another color than the print goes by its color; black and gray writing,
                 // the print's own color, by where it is: outside the lines of print.
                 val sorted = runCatching { InkSorter.handwriting(rgb, printed) }.getOrNull()
                 val writing = Mat.zeros(h, w, CvType.CV_8UC1)
                 sorted?.remove?.let { Core.bitwise_or(writing, it, writing); it.release() }
                 if (sorted?.blank != true) {
-                    darkHandwriting(rgb, printed).also { Core.bitwise_or(writing, it, writing); it.release() }
+                    darkHandwriting(rgb, printed, exact = edits.printByLook).also { Core.bitwise_or(writing, it, writing); it.release() }
                 }
                 sorted?.let { s ->
                     // Rules stay, and are drawn on through the gaps the writing leaves.
@@ -241,7 +242,7 @@ internal object Cleanup {
      * Some ink is neither and stays: long straight rules and table lines, and solid shapes like
      * logos and photos.
      */
-    private fun darkHandwriting(rgb: Mat, printed: List<Area>): Mat {
+    private fun darkHandwriting(rgb: Mat, printed: List<Area>, exact: Boolean): Mat {
         val w = rgb.cols()
         val h = rgb.rows()
         val side = max(w, h)
@@ -273,8 +274,16 @@ internal object Cleanup {
         // the confident ones while its neighbors don't. Notes in the margin beside a line are
         // further out than a word gap and still go.
         val zero = Scalar(0.0)
-        for (line in printedLines(printed, w, h)) {
-            Imgproc.rectangle(ink, Point(line[0], line[1]), Point(line[2], line[3]), zero, -1)
+        if (exact) {
+            // Each stretch of printed marks, with a pixel or two for the strokes' soft edges.
+            val pad = max(2.0, side * 0.002)
+            for (a in printed) {
+                Imgproc.rectangle(ink, Point(a.left * w - pad, a.top * h - pad), Point(a.right * w + pad, a.bottom * h + pad), zero, -1)
+            }
+        } else {
+            for (line in printedLines(printed, w, h)) {
+                Imgproc.rectangle(ink, Point(line[0], line[1]), Point(line[2], line[3]), zero, -1)
+            }
         }
 
         val labels = Mat()
@@ -291,11 +300,26 @@ internal object Cleanup {
         val heights = (1 until count).filter { stats.get(it, Imgproc.CC_STAT_AREA)[0] >= minArea }
             .map { stats.get(it, Imgproc.CC_STAT_HEIGHT)[0] }.sorted()
         val tall = max(side * 0.04, 3.0 * (heights.getOrNull(heights.size / 2) ?: 0.0))
+        // A crest or a drawing: big both ways, or big and solid. What's inside one is part of it,
+        // however small its pieces.
+        val pictures = (1 until count).filter { label ->
+            val area = stats.get(label, Imgproc.CC_STAT_AREA)[0]
+            val bw = stats.get(label, Imgproc.CC_STAT_WIDTH)[0]
+            val bh = stats.get(label, Imgproc.CC_STAT_HEIGHT)[0]
+            (bh > tall && bw > tall) || (bw * bh > bigBlob && area / (bw * bh) > 0.45)
+        }.map { label ->
+            val x = stats.get(label, Imgproc.CC_STAT_LEFT)[0]
+            val y = stats.get(label, Imgproc.CC_STAT_TOP)[0]
+            doubleArrayOf(x, y, x + stats.get(label, Imgproc.CC_STAT_WIDTH)[0], y + stats.get(label, Imgproc.CC_STAT_HEIGHT)[0])
+        }
         for (label in 1 until count) {
             val area = stats.get(label, Imgproc.CC_STAT_AREA)[0]
             if (area < minArea) continue
             val bw = stats.get(label, Imgproc.CC_STAT_WIDTH)[0]
             val bh = stats.get(label, Imgproc.CC_STAT_HEIGHT)[0]
+            val x = stats.get(label, Imgproc.CC_STAT_LEFT)[0]
+            val y = stats.get(label, Imgproc.CC_STAT_TOP)[0]
+            if (pictures.any { p -> x >= p[0] && y >= p[1] && x + bw <= p[2] && y + bh <= p[3] }) continue
             // Ruled lines and table borders: long and thin.
             if (max(bw, bh) > longLine && min(bw, bh) < thin) continue
             // Logos, photos, black boxes: big and mostly solid; crests and drawings: tall.
