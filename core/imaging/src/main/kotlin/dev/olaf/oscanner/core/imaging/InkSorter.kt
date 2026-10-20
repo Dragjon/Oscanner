@@ -1,0 +1,275 @@
+package dev.olaf.oscanner.core.imaging
+
+import dev.olaf.oscanner.core.model.Area
+import org.opencv.core.Core
+import org.opencv.core.CvType
+import org.opencv.core.Mat
+import org.opencv.core.Point
+import org.opencv.core.Scalar
+import org.opencv.core.Size
+import org.opencv.imgproc.Imgproc
+import kotlin.math.hypot
+import kotlin.math.max
+
+/**
+ * Tells handwriting from print by the ink itself. Ballpoint and gel pens are a different color
+ * from printer toner even when both look black: on a scan the difference is a few units of
+ * chroma, but it holds across a page. The print's color is learned from what is surely print
+ * (ruled lines and words the text reader is sure of); the pen's from the marks farthest from it.
+ * Each mark is then judged by the ink around it, since writing comes in words and lines and a
+ * dot or a letter's tail alone has too few pixels to tell, and a line or region of writing that is
+ * mostly pen is taken as pen throughout. Ruled lines stay, mended where writing crossed them.
+ */
+internal object InkSorter {
+
+    /** What to remove, and where to redraw ruled lines that writing crossed. */
+    class Result(val remove: Mat, val mend: Mat, val lineColor: Scalar)
+
+    /**
+     * Null when the page's inks can't be told apart by color (black pen on black print): the
+     * caller falls back to telling them apart by layout.
+     */
+    fun handwriting(rgb: Mat, printed: List<Area>): Result? {
+        val w = rgb.cols()
+        val h = rgb.rows()
+        val side = max(w, h)
+        val gray = Mat()
+        Imgproc.cvtColor(rgb, gray, Imgproc.COLOR_RGB2GRAY)
+        val labImage = Mat()
+        Imgproc.cvtColor(rgb, labImage, Imgproc.COLOR_RGB2Lab)
+        val lab = ByteArray(w * h * 3).also { labImage.get(0, 0, it) }
+        labImage.release()
+        fun l(i: Int) = lab[i * 3].toInt() and 0xFF
+        fun a(i: Int) = (lab[i * 3 + 1].toInt() and 0xFF) - 128
+        fun b(i: Int) = (lab[i * 3 + 2].toInt() and 0xFF) - 128
+
+        val block = max(15.0, (side / 40).toDouble()).toInt() or 1
+        val ink = Mat()
+        Imgproc.adaptiveThreshold(gray, ink, 255.0, Imgproc.ADAPTIVE_THRESH_MEAN_C, Imgproc.THRESH_BINARY_INV, block, 12.0)
+        // Rules found on a more sensitive threshold: a faint rule is still one, and must not be
+        // wiped where writing touches it.
+        val faint = Mat()
+        Imgproc.adaptiveThreshold(gray, faint, 255.0, Imgproc.ADAPTIVE_THRESH_MEAN_C, Imgproc.THRESH_BINARY_INV, block, 5.0)
+        // Dense writing darkens the neighborhood a local threshold compares against, until a thin
+        // rule through it no longer stands out; a threshold for the whole page still sees it.
+        val dark = Mat()
+        Imgproc.threshold(gray, dark, 0.0, 255.0, Imgproc.THRESH_BINARY_INV + Imgproc.THRESH_OTSU)
+        Core.bitwise_or(faint, dark, faint)
+        dark.release()
+        gray.release()
+        // A scanned rule is rarely level: it drifts a pixel or two over a hand's width. Thickening
+        // the ink a little across before looking for long runs lets a slanted rule count; the
+        // rule is then the ink inside those runs.
+        val run = max(15.0, side * 0.06)
+        val rules = Mat()
+        val down = Mat()
+        val thick = Mat()
+        Imgproc.dilate(faint, thick, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(1.0, 3.0)))
+        Imgproc.morphologyEx(thick, rules, Imgproc.MORPH_OPEN, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(run, 1.0)))
+        Imgproc.dilate(faint, thick, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 1.0)))
+        Imgproc.morphologyEx(thick, down, Imgproc.MORPH_OPEN, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(1.0, run)))
+        Core.bitwise_or(rules, down, rules)
+        // That band also holds the stubs of strokes that cross the rule. The rule itself is just
+        // the thin level (or upright) pieces of ink along it; the stubs are marks like any other.
+        val zone = Mat()
+        Imgproc.dilate(rules, zone, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0)))
+        val piece = max(9.0, side * 0.02)
+        Imgproc.morphologyEx(faint, rules, Imgproc.MORPH_OPEN, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(piece, 1.0)))
+        Imgproc.morphologyEx(faint, down, Imgproc.MORPH_OPEN, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(1.0, piece)))
+        Core.bitwise_or(rules, down, rules)
+        Core.bitwise_and(rules, zone, rules)
+        // Where the rule ran under writing: bridged along its length, inside its band.
+        val bridged = Mat()
+        val across = Mat()
+        Imgproc.morphologyEx(rules, bridged, Imgproc.MORPH_CLOSE, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(side * 0.04, 1.0)))
+        Imgproc.morphologyEx(rules, across, Imgproc.MORPH_CLOSE, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(1.0, side * 0.04)))
+        Core.bitwise_or(bridged, across, bridged)
+        Core.bitwise_and(bridged, zone, bridged)
+        listOf(down, thick, faint, zone, across).forEach(Mat::release)
+        val marks = Mat()
+        val rulesWide = Mat()
+        Imgproc.dilate(rules, rulesWide, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0)))
+        Core.subtract(ink, rulesWide, marks)
+        ink.release()
+
+        // Print's color: the darker half of the rules' pixels, and ink inside sure printed words.
+        val rulePx = ByteArray(w * h).also { rules.get(0, 0, it) }
+        val markPx = ByteArray(w * h).also { marks.get(0, 0, it) }
+        val inWord = BooleanArray(w * h)
+        for (area in printed) {
+            val x0 = (area.left * w).toInt().coerceIn(0, w - 1)
+            val x1 = (area.right * w).toInt().coerceIn(0, w - 1)
+            val y0 = (area.top * h).toInt().coerceIn(0, h - 1)
+            val y1 = (area.bottom * h).toInt().coerceIn(0, h - 1)
+            for (y in y0..y1) for (x in x0..x1) inWord[y * w + x] = true
+        }
+        val ruleL = (0 until w * h).filter { rulePx[it] != 0.toByte() }.map { l(it) }.sorted()
+        val darkRule = ruleL.getOrNull(ruleL.size / 2) ?: 0
+        val refA = ArrayList<Int>()
+        val refB = ArrayList<Int>()
+        for (i in 0 until w * h) {
+            val isRef = (rulePx[i] != 0.toByte() && l(i) <= darkRule) || (inWord[i] && markPx[i] != 0.toByte())
+            if (isRef) {
+                refA += a(i)
+                refB += b(i)
+            }
+        }
+        if (refA.size < MIN_REFERENCE) {
+            listOf(rules, rulesWide, marks).forEach(Mat::release)
+            return null
+        }
+        val printA = refA.sorted()[refA.size / 2].toDouble()
+        val printB = refB.sorted()[refB.size / 2].toDouble()
+
+        // Each mark's color is the average of the ink around it.
+        val win = (max(9.0, side * 0.025).toInt() or 1).toDouble()
+        val m = Mat()
+        marks.convertTo(m, CvType.CV_32F, 1.0 / 255)
+        val aMat = Mat(h, w, CvType.CV_32F)
+        val bMat = Mat(h, w, CvType.CV_32F)
+        aMat.put(0, 0, FloatArray(w * h) { a(it).toFloat() * (markPx[it].toInt() and 1) })
+        bMat.put(0, 0, FloatArray(w * h) { b(it).toFloat() * (markPx[it].toInt() and 1) })
+        val wSum = Mat()
+        Imgproc.boxFilter(m, wSum, -1, Size(win, win), Point(-1.0, -1.0), false)
+        Imgproc.boxFilter(aMat, aMat, -1, Size(win, win), Point(-1.0, -1.0), false)
+        Imgproc.boxFilter(bMat, bMat, -1, Size(win, win), Point(-1.0, -1.0), false)
+        val ws = FloatArray(w * h).also { wSum.get(0, 0, it) }
+        val la = FloatArray(w * h).also { aMat.get(0, 0, it) }
+        val lb = FloatArray(w * h).also { bMat.get(0, 0, it) }
+        listOf(aMat, bMat, wSum).forEach(Mat::release)
+
+        val labelMat = Mat()
+        val stats = Mat()
+        val centroids = Mat()
+        val count = Imgproc.connectedComponentsWithStats(marks, labelMat, stats, centroids, 8, CvType.CV_32S)
+        centroids.release()
+        val labels = IntArray(w * h).also { labelMat.get(0, 0, it) }
+        labelMat.release()
+        val sumA = DoubleArray(count)
+        val sumB = DoubleArray(count)
+        val size = IntArray(count)
+        val inPrint = BooleanArray(count)
+        for (i in 0 until w * h) {
+            val k = labels[i]
+            if (k == 0) continue
+            val n = max(ws[i], 1f)
+            sumA[k] += la[i] / n
+            sumB[k] += lb[i] / n
+            size[k]++
+            if (inWord[i]) inPrint[k] = true
+        }
+        val ca = DoubleArray(count) { if (size[it] > 0) sumA[it] / size[it] else 0.0 }
+        val cb = DoubleArray(count) { if (size[it] > 0) sumB[it] / size[it] else 0.0 }
+        val considered = (1 until count).filter { size[it] >= MIN_MARK }
+        val consideredSet = considered.toHashSet()
+
+        // The pen: start at the mark farthest from print, settle on the marks nearer it than to
+        // print. Print stays where the reference put it; a page of writing would pull it over.
+        val far = considered.maxByOrNull { hypot(ca[it] - printA, cb[it] - printB) * if (size[it] >= 20) 1 else 0 }
+        if (far == null) {
+            listOf(rules, rulesWide, marks).forEach(Mat::release)
+            return null
+        }
+        var penA = ca[far]
+        var penB = cb[far]
+        var pen = BooleanArray(count)
+        repeat(10) {
+            pen = BooleanArray(count) { k -> k in consideredSet && hypot(ca[k] - penA, cb[k] - penB) < hypot(ca[k] - printA, cb[k] - printB) }
+            val penMarks = considered.filter { pen[it] }
+            if (penMarks.isEmpty()) return@repeat
+            val total = penMarks.sumOf { size[it] }.toDouble()
+            penA = penMarks.sumOf { ca[it] * size[it] } / total
+            penB = penMarks.sumOf { cb[it] * size[it] } / total
+        }
+        val gap = hypot(penA - printA, penB - printB)
+        // Next to no ink besides the rules: a blank form, nothing written on it.
+        if (considered.sumOf { size[it] } < w * h * BLANK_SHARE) {
+            listOf(rulesWide, marks).forEach(Mat::release)
+            return Result(Mat.zeros(h, w, CvType.CV_8UC1), Mat.zeros(h, w, CvType.CV_8UC1), Core.mean(rgb, rules).also { rules.release() })
+        }
+        if (gap < MIN_GAP) {
+            listOf(rules, rulesWide, marks).forEach(Mat::release)
+            return null
+        }
+
+        // Lines of writing: marks smeared sideways, one blob per line.
+        val rows = Mat()
+        Imgproc.dilate(marks, rows, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(max(15.0, side * 0.05), 3.0)))
+        val rowMat = Mat()
+        val rowCount = Imgproc.connectedComponents(rows, rowMat, 8, CvType.CV_32S)
+        rows.release()
+        val rowOf = IntArray(w * h).also { rowMat.get(0, 0, it) }
+        rowMat.release()
+        val rowPen = DoubleArray(rowCount)
+        val rowAll = DoubleArray(rowCount)
+        val markRow = IntArray(count)
+        for (i in 0 until w * h) {
+            val k = labels[i]
+            if (k == 0) continue
+            markRow[k] = rowOf[i]
+            rowAll[rowOf[i]]++
+            if (pen[k]) rowPen[rowOf[i]]++
+        }
+        // And the region around: a mark amid writing is writing.
+        val penPx = Mat(h, w, CvType.CV_32F)
+        penPx.put(0, 0, FloatArray(w * h) { if (labels[it] != 0 && pen[labels[it]]) 1f else 0f })
+        val area = (side * 0.12).toInt() or 1
+        val regionPen = Mat()
+        val regionAll = Mat()
+        Imgproc.boxFilter(penPx, regionPen, -1, Size(area.toDouble(), area.toDouble()), Point(-1.0, -1.0), false)
+        Imgproc.boxFilter(m, regionAll, -1, Size(area.toDouble(), area.toDouble()), Point(-1.0, -1.0), false)
+        val rp = FloatArray(w * h).also { regionPen.get(0, 0, it) }
+        val ra = FloatArray(w * h).also { regionAll.get(0, 0, it) }
+        listOf(penPx, regionPen, regionAll, m).forEach(Mat::release)
+
+        // Marks too small to judge by their own color go with their line and area.
+        val isPen = BooleanArray(count)
+        for (k in 1 until count) {
+            val x = stats.get(k, Imgproc.CC_STAT_LEFT)[0].toInt() + stats.get(k, Imgproc.CC_STAT_WIDTH)[0].toInt() / 2
+            val y = stats.get(k, Imgproc.CC_STAT_TOP)[0].toInt() + stats.get(k, Imgproc.CC_STAT_HEIGHT)[0].toInt() / 2
+            val c = y.coerceIn(0, h - 1) * w + x.coerceIn(0, w - 1)
+            val around = rp[c] / max(ra[c], 1f)
+            val rowShare = rowPen[markRow[k]] / max(rowAll[markRow[k]], 1.0)
+            // Ink inside a word the reader is sure is print stays, whatever is around it, unless
+            // its own color is the pen's: neat handwriting can read as print, but it's still pen.
+            isPen[k] = pen[k] || (!inPrint[k] && (rowShare > ROW_SHARE || around > REGION_SHARE))
+        }
+        stats.release()
+
+        val remove = Mat(h, w, CvType.CV_8UC1)
+        val keep = Mat(h, w, CvType.CV_8UC1)
+        remove.put(0, 0, ByteArray(w * h) { if (labels[it] != 0 && isPen[labels[it]]) -1 else 0 })
+        keep.put(0, 0, ByteArray(w * h) { if (labels[it] != 0 && !isPen[labels[it]] && size[labels[it]] >= MIN_MARK) -1 else 0 })
+        val grow = (max(5, side / 300) or 1).toDouble()
+        Imgproc.dilate(remove, remove, Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(grow, grow)), Point(-1.0, -1.0), 2)
+        // Print and rules stay, with a pixel of margin.
+        Imgproc.dilate(keep, keep, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0)))
+        Core.bitwise_or(keep, rules, keep)
+        Core.bitwise_not(keep, keep)
+        Core.bitwise_and(remove, keep, remove)
+        listOf(keep, rulesWide, marks).forEach(Mat::release)
+
+        // Mend rules through the gaps writing left: redraw the bridged rule where something on it
+        // is being removed.
+        val mend = Mat()
+        Core.subtract(bridged, rules, mend)
+        val removedHere = Mat()
+        Imgproc.dilate(remove, removedHere, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0)))
+        Core.bitwise_and(mend, removedHere, mend)
+        listOf(removedHere, bridged).forEach(Mat::release)
+        val lineColor = Core.mean(rgb, rules)
+        rules.release()
+        return Result(remove, mend, lineColor)
+    }
+
+    /** Fewer surely-print pixels than this and the print's color isn't known well enough. */
+    private const val MIN_REFERENCE = 200
+    /** Marks smaller than this (pixels) are too small to judge by their own color. */
+    private const val MIN_MARK = 6
+    /** Print and pen closer than this in chroma can't be told apart by color. */
+    private const val MIN_GAP = 2.0
+    /** Less ink than this share of the page, rules aside, is a blank page. */
+    private const val BLANK_SHARE = 0.002
+    private const val ROW_SHARE = 0.35
+    private const val REGION_SHARE = 0.5
+}

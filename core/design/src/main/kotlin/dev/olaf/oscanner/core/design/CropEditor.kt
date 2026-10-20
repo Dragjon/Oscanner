@@ -48,6 +48,9 @@ fun CropEditor(
     val grabRadius = with(density) { 48.dp.toPx() }
     val loupeRadius = with(density) { 56.dp.toPx() }
     val currentQuad by rememberUpdatedState(quad)
+    // The drag handler below is set up once; it must call the latest callback, or a caller that
+    // works from the outline it was given would move earlier corners back.
+    val currentOnMoveCorner by rememberUpdatedState(onMoveCorner)
     var active by remember { mutableStateOf<Int?>(null) }
 
     BoxWithConstraints(modifier) {
@@ -79,7 +82,7 @@ fun CropEditor(
                             change.consume()
                             val c = currentQuad.corners[index]
                             val p = toScreen(c.x, c.y) + drag
-                            onMoveCorner(index, (p.x - shown.left) / shown.width, (p.y - shown.top) / shown.height)
+                            currentOnMoveCorner(index, (p.x - shown.left) / shown.width, (p.y - shown.top) / shown.height)
                         },
                     )
                 },

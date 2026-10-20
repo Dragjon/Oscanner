@@ -14,6 +14,7 @@ import androidx.exifinterface.media.ExifInterface
 import dev.olaf.oscanner.core.model.PageCurve
 import dev.olaf.oscanner.core.model.PageEdits
 import dev.olaf.oscanner.core.model.PageFilter
+import dev.olaf.oscanner.core.model.TextFont
 import dev.olaf.oscanner.core.model.TextMark
 import org.opencv.android.OpenCVLoader
 import org.opencv.android.Utils
@@ -151,6 +152,12 @@ object PageRenderer {
             val cy = mark.y * height
             canvas.save()
             canvas.rotate(mark.angle.toFloat(), cx, cy)
+            mark.background?.let { fill ->
+                val half = textHalfSize(mark, width)
+                val box = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = fill }
+                val r = paint.textSize * 0.2f
+                canvas.drawRoundRect(cx - half.first, cy - half.second, cx + half.first, cy + half.second, r, r, box)
+            }
             val lines = mark.text.lines()
             val lineHeight = paint.fontSpacing
             val firstBaseline = cy - lineHeight * (lines.size - 1) / 2 - (paint.ascent() + paint.descent()) / 2
@@ -178,7 +185,7 @@ object PageRenderer {
         val lines = mark.text.lines()
         val textWidth = lines.maxOf { paint.measureText(it) }
         val textHeight = paint.fontSpacing * (lines.size - 1) + (paint.descent() - paint.ascent())
-        val pad = if (mark.stamp) paint.textSize * 0.4f else paint.textSize * 0.1f
+        val pad = if (mark.stamp || mark.background != null) paint.textSize * 0.4f else paint.textSize * 0.1f
         return (textWidth / 2 + pad) to (textHeight / 2 + pad)
     }
 
@@ -186,9 +193,16 @@ object PageRenderer {
         color = mark.color
         textAlign = Paint.Align.CENTER
         textSize = (mark.size * width).coerceAtLeast(4f)
+        val family = when (mark.font) {
+            TextFont.Sans -> android.graphics.Typeface.SANS_SERIF
+            TextFont.Serif -> android.graphics.Typeface.SERIF
+            TextFont.Mono -> android.graphics.Typeface.MONOSPACE
+            // Every phone ships a casual handwriting-like face under this name.
+            TextFont.Hand -> android.graphics.Typeface.create("cursive", android.graphics.Typeface.NORMAL)
+        }
         typeface = android.graphics.Typeface.create(
-            android.graphics.Typeface.SANS_SERIF,
-            if (mark.stamp) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL,
+            family,
+            if (mark.stamp || mark.bold) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL,
         )
         // Stamps are spaced out a little, like the rubber kind.
         if (mark.stamp) letterSpacing = 0.06f
@@ -215,8 +229,11 @@ object PageRenderer {
                 canvas.drawCircle(mark.points[0].x * w, mark.points[0].y * h, paint.strokeWidth / 2, paint)
                 continue
             }
+            InkPath.pattern(mark.style)?.let { dash ->
+                paint.pathEffect = android.graphics.DashPathEffect(FloatArray(dash.size) { dash[it] * paint.strokeWidth }, 0f)
+            }
             val path = Path()
-            mark.points.forEachIndexed { i, p -> if (i == 0) path.moveTo(p.x * w, p.y * h) else path.lineTo(p.x * w, p.y * h) }
+            InkPath.smooth(mark.points).forEachIndexed { i, p -> if (i == 0) path.moveTo(p.x * w, p.y * h) else path.lineTo(p.x * w, p.y * h) }
             canvas.drawPath(path, paint)
         }
     }

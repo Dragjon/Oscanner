@@ -22,25 +22,49 @@ import kotlin.math.min
  */
 internal object Cleanup {
 
-    /** Fills what [edits] removes, in place. */
+    /** Fills what [edits] removes, in place, and mends ruled lines writing crossed. */
     fun apply(rgb: Mat, edits: PageEdits) {
-        val mask = mask(rgb, edits) ?: return
-        val paper = Filters.backgroundOf(rgb)
-        fillFromAround(paper, mask)
-        paper.copyTo(rgb, mask)
-        paper.release()
-        mask.release()
+        val (mask, mend) = plan(rgb, edits)
+        if (mask != null) {
+            val paper = Filters.backgroundOf(rgb)
+            fillFromAround(paper, mask)
+            paper.copyTo(rgb, mask)
+            paper.release()
+            mask.release()
+        }
+        mend?.let { (where, color) ->
+            rgb.setTo(color, where)
+            where.release()
+        }
     }
 
     /** 255 where something will be removed, or null when nothing will. */
     fun mask(rgb: Mat, edits: PageEdits): Mat? {
-        if (!edits.cleaned) return null
+        val (mask, mend) = plan(rgb, edits)
+        mend?.first?.release()
+        return mask
+    }
+
+    /** What to remove, and where to redraw ruled lines in which color. */
+    private fun plan(rgb: Mat, edits: PageEdits): Pair<Mat?, Pair<Mat, Scalar>?> {
+        if (!edits.cleaned) return null to null
         val w = rgb.cols()
         val h = rgb.rows()
         val mask = Mat.zeros(h, w, CvType.CV_8UC1)
+        var mend: Pair<Mat, Scalar>? = null
         if (edits.removePenInk) {
             penInk(rgb).also { Core.bitwise_or(mask, it, mask); it.release() }
-            edits.printed?.let { printed -> darkHandwriting(rgb, printed).also { Core.bitwise_or(mask, it, mask); it.release() } }
+            edits.printed?.let { printed ->
+                // By ink color first; where pen and print are one color, by layout.
+                val sorted = runCatching { InkSorter.handwriting(rgb, printed) }.getOrNull()
+                if (sorted != null) {
+                    Core.bitwise_or(mask, sorted.remove, mask)
+                    sorted.remove.release()
+                    mend = sorted.mend to sorted.lineColor
+                } else {
+                    darkHandwriting(rgb, printed).also { Core.bitwise_or(mask, it, mask); it.release() }
+                }
+            }
         }
         if (edits.removeFingers) fingers(rgb).also { Core.bitwise_or(mask, it, mask); it.release() }
         // "Keep" protects from the automatic removals; painting "erase" always wins.
@@ -48,9 +72,9 @@ internal object Cleanup {
         draw(mask, edits.erase, 255.0)
         if (Core.countNonZero(mask) == 0) {
             mask.release()
-            return null
+            return null to mend
         }
-        return mask
+        return mask to mend
     }
 
     /**

@@ -186,7 +186,17 @@ data class TextMark(
     val angle: Int = 0,
     /** A frame around it, like a rubber stamp. */
     val stamp: Boolean = false,
+    val font: TextFont = TextFont.Sans,
+    val bold: Boolean = false,
+    /** ARGB filled behind the text, like a label; null for none. */
+    val background: Int? = null,
 )
+
+/** Typefaces every Android phone has. */
+enum class TextFont { Sans, Serif, Mono, Hand }
+
+/** How a pen stroke is drawn along its length. */
+enum class LineStyle { Solid, Dashed, Dotted }
 
 /** A rectangle normalized to the page as shown, edges 0…1. */
 data class Area(val left: Float, val top: Float, val right: Float, val bottom: Float)
@@ -202,6 +212,7 @@ data class InkMark(
     val width: Float,
     /** Translucent and multiplied, so text under it stays readable. */
     val highlighter: Boolean = false,
+    val style: LineStyle = LineStyle.Solid,
 )
 
 enum class SortOrder { Newest, Oldest, Name }

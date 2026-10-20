@@ -263,6 +263,7 @@ fun CaptureRoute(
             CapturedPages(
                 captures = state.captures,
                 onOutline = viewModel::setOutline,
+                onMoveCorner = viewModel::moveCorner,
                 onDelete = viewModel::deleteCapture,
                 onClose = viewModel::closePages,
             )

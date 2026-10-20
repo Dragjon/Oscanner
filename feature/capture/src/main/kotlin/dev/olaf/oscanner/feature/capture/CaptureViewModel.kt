@@ -8,6 +8,7 @@ import dev.olaf.oscanner.core.data.SettingsRepository
 import dev.olaf.oscanner.core.model.ScanFixes
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import dev.olaf.oscanner.core.model.Corner
 import dev.olaf.oscanner.core.model.DocumentKind
 import dev.olaf.oscanner.core.model.Quad
 import kotlinx.coroutines.Dispatchers
@@ -199,6 +200,17 @@ class CaptureViewModel(
     /** Sets a captured page's outline by hand. */
     fun setOutline(file: File, quad: Quad) =
         _state.update { s -> s.copy(captures = s.captures.map { if (it.file == file) it.copy(quad = quad) else it }) }
+
+    /** Moves one corner of a captured page's outline, keeping the corners moved before. */
+    fun moveCorner(file: File, corner: Int, x: Float, y: Float) = _state.update { s ->
+        s.copy(
+            captures = s.captures.map { capture ->
+                if (capture.file != file) return@map capture
+                val quad = capture.quad ?: capture.liveQuad ?: Quad.Full
+                capture.copy(quad = Quad.of(quad.corners.mapIndexed { i, c -> if (i == corner) Corner(x.coerceIn(0f, 1f), y.coerceIn(0f, 1f)) else c }))
+            },
+        )
+    }
 
     /** Drops one captured page; with none left, back to the camera. */
     fun deleteCapture(file: File) {

@@ -5,6 +5,8 @@ import dev.olaf.oscanner.core.model.Corner
 import dev.olaf.oscanner.core.model.CurveLine
 import dev.olaf.oscanner.core.model.PageCurve
 import dev.olaf.oscanner.core.model.InkMark
+import dev.olaf.oscanner.core.model.LineStyle
+import dev.olaf.oscanner.core.model.TextFont
 import dev.olaf.oscanner.core.model.PageEdits
 import dev.olaf.oscanner.core.model.PageFilter
 import dev.olaf.oscanner.core.model.Quad
@@ -61,6 +63,9 @@ internal object EditsJson {
         .put("color", mark.color)
         .put("angle", mark.angle)
         .put("stamp", mark.stamp)
+        .apply { if (mark.font != TextFont.Sans) put("font", mark.font.name) }
+        .apply { if (mark.bold) put("bold", true) }
+        .apply { mark.background?.let { put("background", it) } }
 
     private fun readText(obj: JSONObject): TextMark? {
         val text = obj.optString("text").takeIf { it.isNotBlank() } ?: return null
@@ -69,7 +74,12 @@ internal object EditsJson {
         val size = obj.optDouble("size", Double.NaN).toFloat()
         if (!x.isFinite() || !y.isFinite() || !size.isFinite() || size <= 0f) return null
         val angle = obj.optInt("angle", 0).let { ((it % 360) + 360) % 360 / 90 * 90 }
-        return TextMark(text, x, y, size, obj.optInt("color", 0xFF000000.toInt()), angle, obj.optBoolean("stamp"))
+        return TextMark(
+            text, x, y, size, obj.optInt("color", 0xFF000000.toInt()), angle, obj.optBoolean("stamp"),
+            font = TextFont.entries.firstOrNull { it.name == obj.optString("font") } ?: TextFont.Sans,
+            bold = obj.optBoolean("bold"),
+            background = if (obj.has("background")) obj.optInt("background") else null,
+        )
     }
 
     private fun writeLine(line: CurveLine) = JSONArray().apply {
@@ -99,6 +109,7 @@ internal object EditsJson {
         .put("color", mark.color)
         .put("width", mark.width.toDouble())
         .put("highlighter", mark.highlighter)
+        .apply { if (mark.style != LineStyle.Solid) put("style", mark.style.name) }
         .put("points", JSONArray().apply { mark.points.forEach { put(it.x.toDouble()); put(it.y.toDouble()) } })
 
     private fun readMark(obj: JSONObject): InkMark? {
@@ -106,7 +117,10 @@ internal object EditsJson {
         val points = List(raw.length() / 2) { Corner(raw.optDouble(it * 2).toFloat(), raw.optDouble(it * 2 + 1).toFloat()) }
             .filter { !it.x.isNaN() && !it.y.isNaN() }
         if (points.isEmpty()) return null
-        return InkMark(points, obj.optInt("color", 0xFF000000.toInt()), obj.optDouble("width", 0.004).toFloat(), obj.optBoolean("highlighter"))
+        return InkMark(
+            points, obj.optInt("color", 0xFF000000.toInt()), obj.optDouble("width", 0.004).toFloat(), obj.optBoolean("highlighter"),
+            style = LineStyle.entries.firstOrNull { it.name == obj.optString("style") } ?: LineStyle.Solid,
+        )
     }
 
     fun read(json: String): PageEdits {

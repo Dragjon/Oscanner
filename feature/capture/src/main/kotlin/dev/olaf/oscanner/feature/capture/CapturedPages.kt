@@ -25,6 +25,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -37,7 +40,6 @@ import dev.olaf.oscanner.core.design.Dock
 import dev.olaf.oscanner.core.design.DockAction
 import dev.olaf.oscanner.core.design.PrimaryPill
 import dev.olaf.oscanner.core.design.rememberPageImage
-import dev.olaf.oscanner.core.model.Corner
 import dev.olaf.oscanner.core.model.Quad
 import java.io.File
 
@@ -50,6 +52,7 @@ import java.io.File
 internal fun CapturedPages(
     captures: List<CapturedImage>,
     onOutline: (File, Quad) -> Unit,
+    onMoveCorner: (File, Int, Float, Float) -> Unit,
     onDelete: (File) -> Unit,
     onClose: () -> Unit,
 ) {
@@ -83,6 +86,12 @@ internal fun CapturedPages(
                     color = colors.onSurfaceVariant,
                 )
             }
+            // Up here rather than in the dock, which only has room for two.
+            TextButton(onClick = { captures.getOrNull(pager.currentPage)?.let { onDelete(it.file) } }) {
+                Icon(Icons.Rounded.DeleteOutline, contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(stringResource(R.string.capture_pages_delete), color = colors.onSurfaceVariant)
+            }
         }
 
         HorizontalPager(
@@ -95,13 +104,7 @@ internal fun CapturedPages(
             pageSpacing = 16.dp,
         ) { index ->
             val capture = captures[index]
-            Page(capture, onMoveCorner = { corner, x, y ->
-                val quad = capture.quad ?: capture.liveQuad ?: Quad.Full
-                onOutline(
-                    capture.file,
-                    Quad.of(quad.corners.mapIndexed { i, c -> if (i == corner) Corner(x.coerceIn(0f, 1f), y.coerceIn(0f, 1f)) else c }),
-                )
-            })
+            Page(capture, onMoveCorner = { corner, x, y -> onMoveCorner(capture.file, corner, x, y) })
         }
 
         Dock(
@@ -117,9 +120,6 @@ internal fun CapturedPages(
                 current?.let { onOutline(it.file, Quad.Full) }
             })
             PrimaryPill(Icons.Rounded.CameraAlt, stringResource(R.string.capture_pages_keep_scanning), onClose)
-            DockAction(Icons.Rounded.DeleteOutline, stringResource(R.string.capture_pages_delete), {
-                current?.let { onDelete(it.file) }
-            })
         }
     }
 }
