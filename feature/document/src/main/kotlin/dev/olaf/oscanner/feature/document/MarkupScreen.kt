@@ -5,12 +5,15 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,7 +26,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
@@ -32,28 +35,10 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Draw
 import androidx.compose.material.icons.rounded.Edit
-import androidx.compose.material.icons.rounded.Highlight
 import androidx.compose.material.icons.rounded.FormatClear
-import androidx.compose.material.icons.rounded.TextFields
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
-import androidx.compose.ui.graphics.nativeCanvas
-import dev.olaf.oscanner.core.imaging.PageRenderer
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.rounded.FormatColorReset
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
-import dev.olaf.oscanner.core.imaging.InkPath
-import dev.olaf.oscanner.core.model.LineStyle
-import dev.olaf.oscanner.core.model.TextFont
-import dev.olaf.oscanner.core.model.TextMark
+import androidx.compose.material.icons.rounded.Highlight
+import androidx.compose.material.icons.rounded.TextFields
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
@@ -61,11 +46,14 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -78,6 +66,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -91,6 +80,9 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -98,17 +90,29 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.olaf.oscanner.core.data.Signature
-import dev.olaf.oscanner.core.design.ZoomBox
 import dev.olaf.oscanner.core.design.Dock
 import dev.olaf.oscanner.core.design.DockAction
+import dev.olaf.oscanner.core.design.EditorToolbar
+import dev.olaf.oscanner.core.design.EditorTopBar
 import dev.olaf.oscanner.core.design.PrimaryPill
+import dev.olaf.oscanner.core.design.ToolbarButton
+import dev.olaf.oscanner.core.design.ZoomBox
+import dev.olaf.oscanner.core.design.detectDragsFromTouch
+import dev.olaf.oscanner.core.imaging.InkPath
+import dev.olaf.oscanner.core.imaging.PageRenderer
 import dev.olaf.oscanner.core.model.Corner
 import dev.olaf.oscanner.core.model.InkMark
+import dev.olaf.oscanner.core.model.LineStyle
+import dev.olaf.oscanner.core.model.TextFont
+import dev.olaf.oscanner.core.model.TextMark
 import kotlin.math.max
 import kotlin.math.min
 
@@ -134,21 +138,16 @@ fun MarkupRoute(viewModel: MarkupViewModel, onDone: () -> Unit) {
             .fillMaxSize()
             .background(colors.background),
     ) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        EditorTopBar(
+            title = stringResource(R.string.document_markup),
+            closeLabel = stringResource(R.string.document_cancel),
+            onClose = leave,
+            doneLabel = stringResource(R.string.document_ok),
+            onDone = viewModel::save,
+            doneEnabled = state.placement == null,
         ) {
-            IconButton(onClick = leave) {
-                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = stringResource(R.string.document_back))
-            }
-            Text(stringResource(R.string.document_markup), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-            TextButton(onClick = viewModel::undo, enabled = viewModel.canUndo && state.placement == null) {
-                Icon(Icons.AutoMirrored.Rounded.Undo, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(stringResource(R.string.document_undo))
+            IconButton(onClick = viewModel::undo, enabled = viewModel.canUndo && state.placement == null) {
+                Icon(Icons.AutoMirrored.Rounded.Undo, contentDescription = stringResource(R.string.document_undo))
             }
         }
 
@@ -156,7 +155,7 @@ fun MarkupRoute(viewModel: MarkupViewModel, onDone: () -> Unit) {
             Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(8.dp),
             contentAlignment = Alignment.Center,
         ) {
             val base = state.base
@@ -188,30 +187,49 @@ fun MarkupRoute(viewModel: MarkupViewModel, onDone: () -> Unit) {
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
+                if (state.tool == MarkupTool.Text && state.placement == null) {
+                    Surface(
+                        color = colors.inverseSurface.copy(alpha = 0.9f),
+                        contentColor = colors.inverseOnSurface,
+                        shape = MaterialTheme.shapes.large,
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
+                    ) {
+                        Text(
+                            stringResource(if (state.selectedText >= 0) R.string.document_text_selected_hint else R.string.document_text_tool_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        )
+                    }
+                }
             }
         }
 
         val placement = state.placement
         if (placement != null) {
             // Positioning a signature: size, then put it down.
-            Column(Modifier.padding(horizontal = 24.dp)) {
-                Text(stringResource(R.string.document_signature_place_hint), style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(stringResource(R.string.document_option_size), style = MaterialTheme.typography.labelLarge, color = colors.onSurfaceVariant)
                 Slider(
                     value = placement.width,
                     onValueChange = viewModel::resizeSignature,
                     valueRange = 0.1f..0.9f,
                     colors = SliderDefaults.colors(thumbColor = colors.primary, activeTrackColor = colors.primary, inactiveTrackColor = colors.surfaceContainerHighest),
+                    modifier = Modifier.weight(1f).padding(start = 12.dp),
                 )
             }
-            Dock(Modifier.align(Alignment.CenterHorizontally).navigationBarsPadding().padding(16.dp).widthIn(max = 480.dp).fillMaxWidth()) {
-                DockAction(Icons.Rounded.Close, stringResource(R.string.document_cancel), viewModel::cancelPlacement)
-                PrimaryPill(Icons.Rounded.Check, stringResource(R.string.document_signature_place), {
-                    val b = state.base ?: return@PrimaryPill
+            EditorToolbar(Modifier.navigationBarsPadding()) {
+                ToolbarButton(Icons.Rounded.Close, stringResource(R.string.document_cancel), selected = null, onClick = viewModel::cancelPlacement)
+                ToolbarButton(Icons.Rounded.Check, stringResource(R.string.document_signature_place), selected = null, onClick = {
+                    val b = state.base ?: return@ToolbarButton
                     viewModel.confirmPlacement(b.width.toFloat() / b.height)
                 })
             }
         } else {
-            ToolRow(state, onTool = viewModel::setTool)
             ToolOptions(
                 state = state,
                 onPen = viewModel::setPen,
@@ -219,9 +237,12 @@ fun MarkupRoute(viewModel: MarkupViewModel, onDone: () -> Unit) {
                 onText = viewModel::setTextStyle,
                 onEraser = viewModel::setEraserSize,
             )
-            Dock(Modifier.align(Alignment.CenterHorizontally).navigationBarsPadding().padding(16.dp).widthIn(max = 480.dp).fillMaxWidth()) {
-                DockAction(Icons.Rounded.Draw, stringResource(R.string.document_sign), { signing = true })
-                PrimaryPill(Icons.Rounded.Check, stringResource(R.string.document_ok), viewModel::save)
+            EditorToolbar(Modifier.navigationBarsPadding()) {
+                ToolbarButton(Icons.Rounded.Edit, stringResource(R.string.document_tool_pen), state.tool == MarkupTool.Pen, { viewModel.setTool(MarkupTool.Pen) })
+                ToolbarButton(Icons.Rounded.Highlight, stringResource(R.string.document_tool_highlighter), state.tool == MarkupTool.Highlighter, { viewModel.setTool(MarkupTool.Highlighter) })
+                ToolbarButton(Icons.Rounded.TextFields, stringResource(R.string.document_tool_text), state.tool == MarkupTool.Text, { viewModel.setTool(MarkupTool.Text) })
+                ToolbarButton(Icons.Rounded.FormatClear, stringResource(R.string.document_tool_eraser), state.tool == MarkupTool.Eraser, { viewModel.setTool(MarkupTool.Eraser) })
+                ToolbarButton(Icons.Rounded.Draw, stringResource(R.string.document_sign), selected = null, onClick = { signing = true })
             }
         }
     }
@@ -282,27 +303,9 @@ fun MarkupRoute(viewModel: MarkupViewModel, onDone: () -> Unit) {
     }
 }
 
-/** Which tool: pen, highlighter, text or eraser. Its own options sit in a panel underneath. */
-@Composable
-private fun ToolRow(state: MarkupUiState, onTool: (MarkupTool) -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        ToolChip(Icons.Rounded.Edit, stringResource(R.string.document_tool_pen), state.tool == MarkupTool.Pen) { onTool(MarkupTool.Pen) }
-        ToolChip(Icons.Rounded.Highlight, stringResource(R.string.document_tool_highlighter), state.tool == MarkupTool.Highlighter) { onTool(MarkupTool.Highlighter) }
-        ToolChip(Icons.Rounded.TextFields, stringResource(R.string.document_tool_text), state.tool == MarkupTool.Text) { onTool(MarkupTool.Text) }
-        ToolChip(Icons.Rounded.FormatClear, stringResource(R.string.document_tool_eraser), state.tool == MarkupTool.Eraser) { onTool(MarkupTool.Eraser) }
-    }
-}
-
 /**
- * The chosen tool's own settings, in a panel of their own: colors as swatches, sizes as dots of
- * that size, line types and fonts as small previews of themselves.
+ * The chosen tool's own settings in one row over the tools: colors as swatches, sizes as dots of
+ * that size, line types and fonts as small previews of themselves. Scrolls sideways when long.
  */
 @Composable
 private fun ToolOptions(
@@ -313,55 +316,44 @@ private fun ToolOptions(
     onEraser: (Float) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
-    Surface(
-        shape = MaterialTheme.shapes.large,
-        color = colors.surfaceContainerHigh,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 16.dp, end = 16.dp, top = 8.dp),
-    ) {
-        Column(Modifier.padding(vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Surface(color = colors.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
+        OptionRow {
             when (state.tool) {
                 MarkupTool.Pen -> {
                     val pen = state.pen
                     Swatches(PEN_COLORS, pen.color) { onPen(pen.copy(color = it)) }
-                    OptionRow {
-                        SizeDots(PEN_WIDTHS, pen.width, R.string.document_option_width) { onPen(pen.copy(width = it)) }
-                        Spacer(Modifier.width(12.dp))
-                        LineStyle.entries.forEach { style ->
-                            LineStyleChip(style, pen.style == style) { onPen(pen.copy(style = style)) }
-                        }
-                    }
+                    Gap()
+                    SizeDots(PEN_WIDTHS, pen.width, R.string.document_option_width) { onPen(pen.copy(width = it)) }
+                    Gap()
+                    LineStyle.entries.forEach { style -> LineStyleChip(style, pen.style == style) { onPen(pen.copy(style = style)) } }
                 }
                 MarkupTool.Highlighter -> {
                     val h = state.highlighter
                     Swatches(HIGHLIGHTER_COLORS, h.color) { onHighlighter(h.copy(color = it)) }
-                    OptionRow { SizeDots(HIGHLIGHTER_WIDTHS, h.width, R.string.document_option_width) { onHighlighter(h.copy(width = it)) } }
+                    Gap()
+                    SizeDots(HIGHLIGHTER_WIDTHS, h.width, R.string.document_option_width) { onHighlighter(h.copy(width = it)) }
                 }
                 MarkupTool.Text -> {
                     val t = state.text
-                    Text(
-                        stringResource(if (state.selectedText >= 0) R.string.document_text_selected_hint else R.string.document_text_tool_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                    )
                     Swatches(PEN_COLORS, t.color) { onText(t.copy(color = it)) }
-                    OptionRow {
-                        TextFont.entries.forEach { font -> FontChip(font, t.font == font) { onText(t.copy(font = font)) } }
-                        Spacer(Modifier.width(4.dp))
-                        BoldChip(t.bold) { onText(t.copy(bold = !t.bold)) }
-                    }
-                    OptionRow {
-                        SizeDots(TEXT_SIZES, t.size, R.string.document_option_size, letters = true) { onText(t.copy(size = it)) }
-                        Spacer(Modifier.width(12.dp))
-                        TEXT_BACKGROUNDS.forEach { fill -> BackgroundChip(fill, t.background == fill) { onText(t.copy(background = fill)) } }
-                    }
+                    Gap()
+                    SizeDots(TEXT_SIZES, t.size, R.string.document_option_size, letters = true) { onText(t.copy(size = it)) }
+                    Gap()
+                    TextFont.entries.forEach { font -> FontChip(font, t.font == font) { onText(t.copy(font = font)) } }
+                    BoldChip(t.bold) { onText(t.copy(bold = !t.bold)) }
+                    Gap()
+                    TEXT_BACKGROUNDS.forEach { fill -> BackgroundChip(fill, t.background == fill) { onText(t.copy(background = fill)) } }
                 }
-                MarkupTool.Eraser -> OptionRow { SizeDots(ERASER_SIZES, state.eraserSize, R.string.document_option_size) { onEraser(it) } }
+                MarkupTool.Eraser -> SizeDots(ERASER_SIZES, state.eraserSize, R.string.document_option_size) { onEraser(it) }
             }
         }
     }
+}
+
+/** A thin line between groups of options. */
+@Composable
+private fun Gap() {
+    VerticalDivider(Modifier.height(28.dp).padding(horizontal = 6.dp), color = MaterialTheme.colorScheme.outlineVariant)
 }
 
 @Composable
@@ -370,9 +362,9 @@ private fun OptionRow(content: @Composable () -> Unit) {
         Modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 12.dp),
+            .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) { content() }
 }
 
@@ -380,14 +372,14 @@ private fun OptionRow(content: @Composable () -> Unit) {
 @Composable
 private fun Swatches(options: List<Int>, chosen: Int, onPick: (Int) -> Unit) {
     val colors = MaterialTheme.colorScheme
-    OptionRow {
+    run {
         options.forEach { argb ->
             val selected = argb == chosen
             val swatch = Color(argb)
             val name = colorName(argb)
             Box(
                 Modifier
-                    .size(40.dp)
+                    .size(36.dp)
                     .clip(CircleShape)
                     .selectable(selected = selected, role = Role.RadioButton, onClick = { onPick(argb) })
                     .semantics { contentDescription = name }
@@ -556,31 +548,6 @@ private fun colorName(argb: Int): String = stringResource(
     },
 )
 
-@Composable
-private fun ToolChip(icon: androidx.compose.ui.graphics.vector.ImageVector?, label: String, selected: Boolean, onClick: () -> Unit) {
-    val colors = MaterialTheme.colorScheme
-    Surface(
-        onClick = onClick,
-        shape = MaterialTheme.shapes.medium,
-        color = if (selected) colors.primary else colors.surfaceContainer,
-        contentColor = if (selected) colors.onPrimary else colors.onSurfaceVariant,
-        modifier = Modifier
-            .height(40.dp)
-            .semantics {
-                role = Role.RadioButton
-                this.selected = selected
-            },
-    ) {
-        Row(Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (icon != null) {
-                Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-            }
-            Text(label, style = MaterialTheme.typography.labelLarge)
-        }
-    }
-}
-
 /** The page with its marks; a finger draws, erases, or drags the signature being placed. */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -613,7 +580,7 @@ private fun MarkupCanvas(
             Modifier
                 .fillMaxSize()
                 .pointerInput(shown) {
-                    detectDragGestures(
+                    detectDragsFromTouch(
                         onDragStart = { start ->
                             current.clear()
                             if (!placing && tool == MarkupTool.Text) {
@@ -870,7 +837,7 @@ private fun SignatureDialog(
                         .background(Color.White, MaterialTheme.shapes.small)
                         .border(1.dp, colors.outlineVariant, MaterialTheme.shapes.small)
                         .pointerInput(Unit) {
-                            detectDragGestures(
+                            detectDragsFromTouch(
                                 onDragStart = {
                                     current.clear()
                                     current.add(it)

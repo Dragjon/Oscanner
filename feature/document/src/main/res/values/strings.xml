@@ -168,6 +168,7 @@
     <string name="document_hold_to_compare">Hold to see the original</string>
     <string name="document_apply">Apply</string>
     <string name="document_cleanup_discard">Apply the clean-up?</string>
+    <string name="document_cleanup_other_pages_short">Other pages</string>
     <string name="document_cleanup_other_pages">Other pages too…</string>
     <string name="document_cleanup_other_title">Remove the same things from other pages</string>
     <plurals name="document_cleanup_applied">

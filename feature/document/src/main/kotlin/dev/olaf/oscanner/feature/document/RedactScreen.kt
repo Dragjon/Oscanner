@@ -3,7 +3,7 @@ package dev.olaf.oscanner.feature.document
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
+import dev.olaf.oscanner.core.design.detectDragsFromTouch
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -298,7 +298,7 @@ private fun RedactCanvas(state: RedactUiState, onBox: (Corner, Corner) -> Unit, 
             Modifier
                 .fillMaxSize()
                 .pointerInput(shown) {
-                    detectDragGestures(
+                    detectDragsFromTouch(
                         onDragStart = {
                             start = toPage(it)
                             end = start
