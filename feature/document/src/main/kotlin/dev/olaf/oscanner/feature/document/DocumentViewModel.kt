@@ -70,6 +70,8 @@ class DocumentViewModel(
 
     fun shareImages() = work(Busy.PreparingImages) { DocumentEvent.ShareImages(store.exportJpegs(documentId)) }
 
+    fun shareLongImage() = work(Busy.PreparingImages) { DocumentEvent.ShareImages(listOf(store.exportLongImage(documentId))) }
+
     fun print() = work(Busy.PreparingPdf) {
         DocumentEvent.Print(store.exportPdf(documentId), state.value.document?.title ?: "Scan")
     }

@@ -44,6 +44,7 @@ import androidx.compose.material.icons.rounded.Draw
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.FileOpen
 import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.ViewDay
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.PictureAsPdf
@@ -304,6 +305,9 @@ fun DocumentRoute(
                         SheetAction(Icons.Rounded.PictureAsPdf, stringResource(R.string.document_share_pdf), stringResource(R.string.document_share_pdf_description), act { viewModel.sharePdf() })
                         SheetAction(Icons.Rounded.Lock, stringResource(R.string.document_share_protected), stringResource(R.string.document_share_protected_description), act { protecting = true })
                         SheetAction(Icons.Rounded.Image, stringResource(R.string.document_share_images), stringResource(R.string.document_share_images_description), act(viewModel::shareImages))
+                        if (document.pageCount > 1) {
+                            SheetAction(Icons.Rounded.ViewDay, stringResource(R.string.document_share_long), stringResource(R.string.document_share_long_description), act(viewModel::shareLongImage))
+                        }
                         SheetSection(stringResource(R.string.document_section_export))
                         SheetAction(Icons.Rounded.SaveAlt, stringResource(R.string.document_save_pdf), stringResource(R.string.document_save_pdf_description), act { saveLauncher.launch("${document.title}.pdf") })
                         SheetAction(Icons.Rounded.Print, stringResource(R.string.document_print), stringResource(R.string.document_print_description), act(viewModel::print))

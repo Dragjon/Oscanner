@@ -656,6 +656,47 @@ class PageStore(
         }
     }
 
+    /**
+     * Every page, one under the next, as a single tall JPEG: easy to scroll through in a chat.
+     * Pages share the narrowest page's width (at most [LONG_WIDTH]) with a thin gap between.
+     */
+    suspend fun exportLongImage(documentId: Long): File {
+        val pages = exportJpegs(documentId)
+        require(pages.isNotEmpty()) { "Nothing to export" }
+        val title = safeName(db.documents().getRow(documentId)?.title ?: "Scan")
+        return withContext(Dispatchers.IO) {
+            val sizes = pages.map { f ->
+                android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }.also {
+                    android.graphics.BitmapFactory.decodeFile(f.path, it)
+                }
+            }
+            val width = minOf(LONG_WIDTH, sizes.minOf { it.outWidth })
+            val heights = sizes.map { (it.outHeight.toLong() * width / it.outWidth).toInt() }
+            // Very long documents are scaled down rather than made too tall to open.
+            val total = heights.sum() + LONG_GAP * (pages.size - 1)
+            val fit = minOf(1.0, LONG_MAX_HEIGHT.toDouble() / total)
+            val w = (width * fit).toInt().coerceAtLeast(1)
+            val gap = (LONG_GAP * fit).toInt()
+            val hs = heights.map { (it * fit).toInt().coerceAtLeast(1) }
+            val out = android.graphics.Bitmap.createBitmap(w, hs.sum() + gap * (pages.size - 1), android.graphics.Bitmap.Config.RGB_565)
+            val canvas = android.graphics.Canvas(out)
+            canvas.drawColor(LONG_GAP_COLOR)
+            val paint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG)
+            var y = 0
+            pages.forEachIndexed { i, f ->
+                val page = android.graphics.BitmapFactory.decodeFile(f.path) ?: return@forEachIndexed
+                canvas.drawBitmap(page, null, android.graphics.Rect(0, y, w, y + hs[i]), paint)
+                page.recycle()
+                y += hs[i] + gap
+            }
+            val file = File(pages.first().parentFile, "$title (long).jpg")
+            file.outputStream().use { out.compress(android.graphics.Bitmap.CompressFormat.JPEG, 88, it) }
+            out.recycle()
+            pages.forEach(File::delete)
+            file
+        }
+    }
+
     /** Clears old share files; nothing in the export cache outlives a launch. */
     fun clearExports() {
         scope.launch(Dispatchers.IO) { exportsDir.deleteRecursively() }
@@ -687,6 +728,11 @@ class PageStore(
         /** Originals are read at this size before warping, so the crop still has detail. */
         private const val SOURCE_SIDE = 4000
         private const val DETECT_SIDE = 640
+        private const val LONG_WIDTH = 1240
+        private const val LONG_GAP = 24
+        private const val LONG_GAP_COLOR = 0xFFD9D9D9.toInt()
+        /** Taller than this and some apps refuse to show a picture. */
+        private const val LONG_MAX_HEIGHT = 30000
         private const val MEASURE_SIDE = 2000
     }
 }
