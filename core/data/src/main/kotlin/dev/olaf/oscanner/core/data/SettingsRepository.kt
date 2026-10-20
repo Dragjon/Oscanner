@@ -35,7 +35,7 @@ class SettingsRepository(context: Context) {
             scanFixes = ScanFixes(
                 removeHandwriting = prefs[FIX_HANDWRITING] ?: false,
                 removeFingers = prefs[FIX_FINGERS] ?: false,
-                flatten = prefs[FIX_FLATTEN] ?: false,
+                flatten = prefs[FIX_FLATTEN] ?: true,
                 descreen = prefs[FIX_DESCREEN] ?: false,
                 look = prefs[FIX_LOOK]?.let { name -> PageFilter.entries.firstOrNull { it.name == name } },
             ),
@@ -106,7 +106,8 @@ class SettingsRepository(context: Context) {
         val APP_LOCK = booleanPreferencesKey("app_lock")
         val FIX_HANDWRITING = booleanPreferencesKey("fix_handwriting")
         val FIX_FINGERS = booleanPreferencesKey("fix_fingers")
-        val FIX_FLATTEN = booleanPreferencesKey("fix_flatten")
+        // A new name, so everyone starts with flattening on now that it leaves flat pages alone.
+        val FIX_FLATTEN = booleanPreferencesKey("fix_flatten_on")
         val FIX_DESCREEN = booleanPreferencesKey("fix_descreen")
         val FIX_LOOK = stringPreferencesKey("fix_look")
         val CAMERA_ORIENTATION = stringPreferencesKey("camera_orientation")

@@ -34,7 +34,6 @@ import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.RotateRight
 import androidx.compose.material.icons.rounded.Straighten
 import androidx.compose.material.icons.rounded.Tune
-import androidx.compose.material.icons.rounded.Undo
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -241,11 +240,7 @@ fun ReviewRoute(
                     DockAction(Icons.Rounded.Crop, stringResource(R.string.review_crop), { viewModel.startCrop(current) })
                     DockAction(Icons.Rounded.RotateRight, stringResource(R.string.review_rotate), { viewModel.rotate(current) })
                     val flat = current.edits.flatten
-                    DockAction(
-                        if (flat) Icons.Rounded.Undo else Icons.Rounded.Straighten,
-                        stringResource(if (flat) R.string.review_unflatten else R.string.review_flatten_short),
-                        { viewModel.setFlatten(current, !flat) },
-                    )
+                    DockAction(Icons.Rounded.Straighten, stringResource(R.string.review_flatten_short), { viewModel.setFlatten(current, !flat) }, on = flat)
                 }
                 PrimaryPill(Icons.Rounded.Check, stringResource(if (focus == ReviewFocus.All) R.string.review_save else R.string.review_done), {
                     pendingDelete?.let { id -> loaded.firstOrNull { it.id == id }?.let(viewModel::deletePage) }

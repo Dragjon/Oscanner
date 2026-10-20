@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -38,14 +37,21 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlin.math.max
+import kotlin.math.min
 
 /**
  * The floating action deck that sits at thumb height on every main screen.
@@ -54,7 +60,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun Dock(
     modifier: Modifier = Modifier,
-    content: @Composable RowScope.() -> Unit,
+    content: @Composable () -> Unit,
 ) {
     val shape = MaterialTheme.shapes.extraLarge
     val shadow = if (LocalOscannerExtras.current.dockShadow) Modifier.shadow(1.dp, shape) else Modifier
@@ -63,14 +69,49 @@ fun Dock(
         shape = shape,
         color = MaterialTheme.colorScheme.surfaceContainer,
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
+        // Spread out like a row, but no word is cut short while there's room for all of them:
+        // the [PrimaryPill] keeps its whole word, and the other actions get what their words
+        // need, sharing any shortfall in proportion rather than equally.
+        Layout(
             content = content,
-        )
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+        ) { measurables, constraints ->
+            val width = constraints.maxWidth
+            val loose = constraints.copy(minWidth = 0, minHeight = 0)
+            val isPill = measurables.map { it.layoutId == PRIMARY }
+            val needs = measurables.mapIndexed { i, m -> if (isPill[i]) 0 else m.maxIntrinsicWidth(constraints.maxHeight) }
+            val pills = isPill.count { it }
+            val pillRoom = if (pills == 0) 0 else (width - needs.sum()) / pills
+            val pill = measurables.indices.filter { isPill[it] }.associateWith { i ->
+                val m = measurables[i]
+                val most = max(pillRoom, m.minIntrinsicWidth(constraints.maxHeight)).coerceAtMost(width)
+                // Roomy when there's space; down to a snug fit around its word when there isn't.
+                m.measure(loose.copy(minWidth = min(PILL_WIDTH.roundToPx(), most), maxWidth = most))
+            }
+            val left = (width - pill.values.sumOf { it.width }).coerceAtLeast(0)
+            val scale = if (needs.sum() > left) left.toFloat() / needs.sum() else 1f
+            val placeables = measurables.mapIndexed { i, m -> pill[i] ?: m.measure(loose.copy(maxWidth = (needs[i] * scale).toInt())) }
+            val height = placeables.maxOfOrNull { it.height } ?: 0
+            val free = (width - placeables.sumOf { it.width }).coerceAtLeast(0)
+            layout(width, height) {
+                if (placeables.size == 1) {
+                    placeables[0].place((width - placeables[0].width) / 2, (height - placeables[0].height) / 2)
+                    return@layout
+                }
+                var x = 0
+                placeables.forEachIndexed { i, p ->
+                    p.place(x, (height - p.height) / 2)
+                    x += p.width + if (i < placeables.lastIndex) free / placeables.lastIndex else 0
+                }
+            }
+        }
     }
 }
+
+private const val PRIMARY = "primary"
+
+private val PILL_WIDTH = 140.dp
+
 
 /**
  * The dock's one-word labels grow with the system font size up to [MAX_DOCK_SCALE], then stop,
@@ -95,21 +136,25 @@ fun DockAction(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    /** For a switch: lit while it's on, so its word can stay the same. */
+    on: Boolean? = null,
 ) {
     val interaction = remember { MutableInteractionSource() }
+    val colors = MaterialTheme.colorScheme
     Surface(
         onClick = onClick,
         enabled = enabled,
         modifier = modifier
-            .defaultMinSize(minWidth = 72.dp, minHeight = 56.dp)
-            .pressScale(interaction),
+            .defaultMinSize(minWidth = 64.dp, minHeight = 56.dp)
+            .pressScale(interaction)
+            .then(if (on != null) Modifier.semantics { toggleableState = ToggleableState(on) } else Modifier),
         shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        contentColor = MaterialTheme.colorScheme.onSurface,
+        color = if (on == true) colors.secondaryContainer else colors.surfaceContainer,
+        contentColor = if (on == true) colors.onSecondaryContainer else colors.onSurface,
         interactionSource = interaction,
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
@@ -132,6 +177,7 @@ fun PrimaryPill(
     Surface(
         onClick = onClick,
         modifier = modifier
+            .layoutId(PRIMARY)
             .height(56.dp)
             .pressScale(interaction),
         shape = CircleShape,
@@ -140,7 +186,7 @@ fun PrimaryPill(
         interactionSource = interaction,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 28.dp),
+            modifier = Modifier.padding(horizontal = 18.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {

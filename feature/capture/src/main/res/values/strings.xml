@@ -36,7 +36,7 @@
     <string name="capture_done">Done</string>
     <string name="capture_fixes">Auto-fix</string>
     <string name="capture_fixes_title">Auto-fix new scans</string>
-    <string name="capture_fixes_body">Done to every page as it is saved, so it comes out ready. Each fix can be undone on a page later, in Clean up or Crop and look.</string>
+    <string name="capture_fixes_body">Done to every page as it is saved, so it comes out ready. Each fix can be undone on a page later, in Clean up, Crop and turn, or Filters.</string>
     <string name="capture_fix_handwriting">Remove handwriting</string>
     <string name="capture_fix_handwriting_description">Pen and pencil, not print. Finishes a few seconds after saving.</string>
     <string name="capture_fix_fingers">Remove fingers</string>

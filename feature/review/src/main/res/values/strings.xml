@@ -16,7 +16,6 @@
     <string name="review_apply_look">Give other pages this look</string>
     <string name="review_apply_shape">Turn and flatten other pages the same way</string>
     <string name="review_flatten_short">Flatten</string>
-    <string name="review_unflatten">Unflatten</string>
     <string name="review_flattened">Curved lines straightened</string>
     <string name="review_crop_hint">Drag the corners to the edges of the page.</string>
     <string name="review_whole_photo">Whole photo</string>

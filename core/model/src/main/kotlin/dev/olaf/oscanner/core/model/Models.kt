@@ -255,7 +255,7 @@ data class ScanFixes(
     val removeHandwriting: Boolean = false,
     val removeFingers: Boolean = false,
     /** Straighten text lines that bend toward a book's spine. */
-    val flatten: Boolean = false,
+    val flatten: Boolean = true,
     /** Take out the bands and grids of a photographed screen or dot-printed picture. */
     val descreen: Boolean = false,
     /** The look every new page gets; null keeps each mode's own (Auto, Board, Original for cards). */
