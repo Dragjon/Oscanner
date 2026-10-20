@@ -27,6 +27,10 @@ import androidx.compose.material.icons.rounded.AddPhotoAlternate
 import androidx.compose.material.icons.rounded.CallMerge
 import androidx.compose.material.icons.rounded.Checklist
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Code
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.rounded.CreateNewFolder
 import androidx.compose.material.icons.rounded.DriveFileMove
 import androidx.compose.material.icons.rounded.Folder
@@ -83,6 +87,9 @@ import dev.olaf.oscanner.core.design.SheetAction
 import dev.olaf.oscanner.core.model.Folder
 import dev.olaf.oscanner.core.model.SortOrder
 import dev.olaf.oscanner.core.model.Tag
+
+/** Where Oscanner's source code lives. */
+private const val SOURCE_URL = "https://github.com/Dragjon/Oscanner"
 
 /** Space the list leaves under its last card so the floating dock never covers it. */
 private val DockClearance = 112.dp
@@ -460,6 +467,16 @@ private fun MoreSheet(
             title = stringResource(R.string.library_settings),
             description = stringResource(R.string.library_settings_description),
             onClick = onOpenSettings,
+        )
+        val context = LocalContext.current
+        SheetAction(
+            icon = Icons.Rounded.Code,
+            title = stringResource(R.string.library_source),
+            description = stringResource(R.string.library_source_description),
+            onClick = {
+                // Opens in the browser; the app itself never goes online for this.
+                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SOURCE_URL))) }
+            },
         )
         Spacer(Modifier.height(8.dp))
         Text(

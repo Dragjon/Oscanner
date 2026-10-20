@@ -10,6 +10,8 @@
     <string name="library_cancel">Cancel</string>
     <string name="library_settings">Settings</string>
     <string name="library_settings_description">Theme, colors and about this app</string>
+    <string name="library_source">Open source</string>
+    <string name="library_source_description">Free software under the GPL. See the code on GitHub</string>
     <string name="library_sort_by">Sort by</string>
     <string name="library_sort_newest">Newest</string>
     <string name="library_sort_oldest">Oldest</string>
