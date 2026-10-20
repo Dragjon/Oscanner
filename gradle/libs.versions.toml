@@ -18,6 +18,8 @@ tesseract4android = "4.9.0"
 work = "2.10.0"
 zxing = "3.5.3"
 biometric = "1.1.0"
+# Biometric 1.1.0 brings Fragment 1.2, whose 16-bit request codes break the activity-result API.
+fragment = "1.8.5"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -48,6 +50,7 @@ tesseract4android = { module = "com.github.adaptech-cz.Tesseract4Android:tessera
 androidx-work-runtime = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 androidx-biometric = { module = "androidx.biometric:biometric", version.ref = "biometric" }
+androidx-fragment = { module = "androidx.fragment:fragment-ktx", version.ref = "fragment" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

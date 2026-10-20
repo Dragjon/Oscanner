@@ -113,6 +113,9 @@ internal object Filters {
         return out
     }
 
+    /** The page's blank-paper estimate, also what clean-up fills removed areas with. */
+    fun backgroundOf(src: Mat): Mat = background(src)
+
     /**
      * Downscale, morphological close (dark text is smaller than the kernel, so it's filled with
      * the surrounding paper), median to smooth, upscale.

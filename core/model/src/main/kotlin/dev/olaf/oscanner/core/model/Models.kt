@@ -95,14 +95,24 @@ data class PageEdits(
     val aspect: Float? = null,
     /** Pen, highlighter and signature strokes, drawn over the finished page. */
     val marks: List<InkMark> = emptyList(),
+    /** Clean-up: brush strokes painted over things to remove; filled from the paper around them. */
+    val erase: List<InkMark> = emptyList(),
+    /** Clean-up: brush strokes protecting areas from the automatic removals below. */
+    val keep: List<InkMark> = emptyList(),
+    /** Clean-up: remove blue, red and green pen strokes, keeping black print. */
+    val removePenInk: Boolean = false,
+    /** Clean-up: remove skin-colored shapes reaching in from the page edge, like holding fingers. */
+    val removeFingers: Boolean = false,
 ) {
     val adjusted: Boolean get() = brightness != 0f || contrast != 0f || detail != 0f
 
-    /** A quarter turn clockwise, with marks turned along so they stay where they were drawn. */
-    fun rotatedClockwise(): PageEdits = copy(
-        rotation = (rotation + 90) % 360,
-        marks = marks.map { mark -> mark.copy(points = mark.points.map { Corner(1f - it.y, it.x) }) },
-    )
+    val cleaned: Boolean get() = erase.isNotEmpty() || removePenInk || removeFingers
+
+    /** A quarter turn clockwise, with everything drawn on the page turned along. */
+    fun rotatedClockwise(): PageEdits {
+        fun List<InkMark>.turned() = map { mark -> mark.copy(points = mark.points.map { Corner(1f - it.y, it.x) }) }
+        return copy(rotation = (rotation + 90) % 360, marks = marks.turned(), erase = erase.turned(), keep = keep.turned())
+    }
 }
 
 /**

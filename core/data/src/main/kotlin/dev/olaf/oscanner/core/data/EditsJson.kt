@@ -25,6 +25,10 @@ internal object EditsJson {
         .put("detail", edits.detail.toDouble())
         .apply { edits.aspect?.let { put("aspect", it.toDouble()) } }
         .apply { if (edits.marks.isNotEmpty()) put("marks", JSONArray().apply { edits.marks.forEach { put(writeMark(it)) } }) }
+        .apply { if (edits.erase.isNotEmpty()) put("erase", JSONArray().apply { edits.erase.forEach { put(writeMark(it)) } }) }
+        .apply { if (edits.keep.isNotEmpty()) put("keep", JSONArray().apply { edits.keep.forEach { put(writeMark(it)) } }) }
+        .apply { if (edits.removePenInk) put("removePenInk", true) }
+        .apply { if (edits.removeFingers) put("removeFingers", true) }
         .toString()
 
     private fun writeMark(mark: InkMark) = JSONObject()
@@ -52,7 +56,21 @@ internal object EditsJson {
         val rotation = obj.optInt("rotation", 0).let { ((it % 360) + 360) % 360 / 90 * 90 }
         fun unit(name: String, min: Float) = obj.optDouble(name, 0.0).toFloat().takeUnless { it.isNaN() }?.coerceIn(min, 1f) ?: 0f
         val aspect = obj.optDouble("aspect", Double.NaN).toFloat().takeIf { it.isFinite() && it > 0f }
-        val marks = obj.optJSONArray("marks")?.let { a -> (0 until a.length()).mapNotNull { i -> a.optJSONObject(i)?.let(::readMark) } }.orEmpty()
-        return PageEdits(quad, filter, rotation, unit("brightness", -1f), unit("contrast", -1f), unit("detail", 0f), aspect, marks)
+        fun strokes(name: String) =
+            obj.optJSONArray(name)?.let { a -> (0 until a.length()).mapNotNull { i -> a.optJSONObject(i)?.let(::readMark) } }.orEmpty()
+        return PageEdits(
+            quad = quad,
+            filter = filter,
+            rotation = rotation,
+            brightness = unit("brightness", -1f),
+            contrast = unit("contrast", -1f),
+            detail = unit("detail", 0f),
+            aspect = aspect,
+            marks = strokes("marks"),
+            erase = strokes("erase"),
+            keep = strokes("keep"),
+            removePenInk = obj.optBoolean("removePenInk"),
+            removeFingers = obj.optBoolean("removeFingers"),
+        )
     }
 }

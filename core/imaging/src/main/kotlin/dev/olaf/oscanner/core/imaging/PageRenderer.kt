@@ -71,6 +71,7 @@ object PageRenderer {
     fun render(source: Bitmap, edits: PageEdits, maxSide: Int = RENDER_SIDE): Bitmap {
         ensureLoaded()
         val warped = warp(source, edits, maxSide)
+        Cleanup.apply(warped, edits)
         val filtered = Filters.apply(warped, edits.filter)
         warped.release()
         val adjusted = Filters.adjust(filtered, edits.filter, edits.brightness, edits.contrast, edits.detail)
@@ -139,6 +140,27 @@ object PageRenderer {
      */
     fun renderForOcr(source: Bitmap, edits: PageEdits): Bitmap =
         render(source, edits.copy(filter = PageFilter.Ink, marks = emptyList()), OCR_SIDE)
+
+    /**
+     * What clean-up will remove, as an 8-bit alpha image the size of the straightened page
+     * at [maxSide]: opaque where removed. Null when nothing will be.
+     */
+    fun cleanupMask(source: Bitmap, edits: PageEdits, maxSide: Int): Bitmap? {
+        ensureLoaded()
+        val warped = warp(source, edits, maxSide)
+        val mask = Cleanup.mask(warped, edits)
+        warped.release()
+        mask ?: return null
+        val rgba = Mat()
+        // White where removed, transparent elsewhere: the screen draws it as a hatch.
+        val channels = listOf(mask, mask, mask, mask)
+        Core.merge(channels, rgba)
+        mask.release()
+        val bitmap = Bitmap.createBitmap(rgba.cols(), rgba.rows(), Bitmap.Config.ARGB_8888)
+        Utils.matToBitmap(rgba, bitmap)
+        rgba.release()
+        return bitmap
+    }
 
     /** Crop + straighten + rotate only; the input to [applyFilter] for filter previews. */
     fun straighten(source: Bitmap, edits: PageEdits, maxSide: Int): Bitmap {

@@ -36,6 +36,7 @@ import androidx.compose.material.icons.rounded.DriveFileRenameOutline
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.FolderOff
+import androidx.compose.material.icons.rounded.CleaningServices
 import androidx.compose.material.icons.rounded.Draw
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Image
@@ -102,6 +103,7 @@ fun DocumentRoute(
     onScanMore: (documentId: Long) -> Unit,
     onArrange: (documentId: Long) -> Unit,
     onMarkup: (documentId: Long, page: Int) -> Unit,
+    onCleanup: (documentId: Long, page: Int) -> Unit,
     onTrashed: (documentId: Long) -> Unit,
 ) {
     val context = LocalContext.current
@@ -252,6 +254,7 @@ fun DocumentRoute(
                         SheetAction(Icons.Rounded.Image, stringResource(R.string.document_share_images), stringResource(R.string.document_share_images_description), act(viewModel::shareImages))
                     }
                     Sheet.More -> {
+                        SheetAction(Icons.Rounded.CleaningServices, stringResource(R.string.document_cleanup), stringResource(R.string.document_cleanup_description), act { onCleanup(document.id, pagerState.currentPage) })
                         SheetAction(Icons.Rounded.Draw, stringResource(R.string.document_markup), stringResource(R.string.document_markup_description), act { onMarkup(document.id, pagerState.currentPage) })
                         SheetAction(Icons.Rounded.GridView, stringResource(R.string.document_arrange), stringResource(R.string.document_arrange_description), act { onArrange(document.id) })
                         SheetAction(Icons.Rounded.DocumentScanner, stringResource(R.string.document_scan_more), stringResource(R.string.document_scan_more_description), act { onScanMore(document.id) })

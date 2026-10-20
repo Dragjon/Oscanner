@@ -66,6 +66,7 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     // Apache-2.0; uses the platform's biometric and screen-lock prompt, no Play services.
     implementation(libs.androidx.biometric)
+    implementation(libs.androidx.fragment)
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.compose.material3)

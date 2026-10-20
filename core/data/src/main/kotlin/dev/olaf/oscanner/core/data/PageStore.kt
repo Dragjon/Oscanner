@@ -223,8 +223,14 @@ class PageStore(
     suspend fun setEdits(pageId: Long, edits: PageEdits) {
         val before = db.pages().get(pageId)?.let { EditsJson.read(it.editsJson) }
         db.pages().setEdits(pageId, EditsJson.write(edits))
-        // Word boxes follow the crop and rotation; the look and sliders don't change what's read.
-        if (before != null && (before.quad != edits.quad || before.rotation != edits.rotation)) {
+        // Word boxes follow the crop and rotation, and clean-up removes text; the look, sliders
+        // and drawn marks don't change what's read.
+        val reread = before != null && (
+            before.quad != edits.quad || before.rotation != edits.rotation ||
+                before.erase != edits.erase || before.keep != edits.keep ||
+                before.removePenInk != edits.removePenInk || before.removeFingers != edits.removeFingers
+            )
+        if (reread) {
             text.forget(pageId)
             db.pages().get(pageId)?.let { text.scheduleIfWanted(it.documentId) }
         }
