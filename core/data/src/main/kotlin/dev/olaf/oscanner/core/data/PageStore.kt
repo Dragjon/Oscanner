@@ -14,6 +14,7 @@ import dev.olaf.oscanner.core.imaging.QuadGeometry
 import dev.olaf.oscanner.core.model.Corner
 import dev.olaf.oscanner.core.model.DocumentKind
 import dev.olaf.oscanner.core.model.Page
+import dev.olaf.oscanner.core.model.PageCurve
 import dev.olaf.oscanner.core.model.PageEdits
 import dev.olaf.oscanner.core.model.PageFilter
 import dev.olaf.oscanner.core.model.ProcessingState
@@ -245,8 +246,10 @@ class PageStore(
         }
     }
 
-    suspend fun setEdits(pageId: Long, edits: PageEdits) {
-        val before = db.pages().get(pageId)?.let { EditsJson.read(it.editsJson) }
+    suspend fun setEdits(pageId: Long, requested: PageEdits) {
+        val entity = db.pages().get(pageId)
+        val before = entity?.let { EditsJson.read(it.editsJson) }
+        val edits = entity?.let { withCurve(it.originalPath, requested, before) } ?: requested
         db.pages().setEdits(pageId, EditsJson.write(edits))
         // Word boxes follow the crop and rotation, and clean-up removes text; the look, sliders
         // and drawn marks don't change what's read.
@@ -254,7 +257,8 @@ class PageStore(
             before.quad != edits.quad || before.rotation != edits.rotation ||
                 before.erase != edits.erase || before.keep != edits.keep ||
                 before.removePenInk != edits.removePenInk || before.removeFingers != edits.removeFingers ||
-                before.redactions != edits.redactions
+                before.redactions != edits.redactions ||
+                before.flatten != edits.flatten || before.curve != edits.curve
             )
         if (reread) {
             text.forget(pageId)
@@ -346,6 +350,24 @@ class PageStore(
     }
 
     /**
+     * Measures the page's bend when flattening is on and it hasn't been measured for this crop;
+     * a new crop or shape needs a new measurement. Flattening off forgets it.
+     */
+    private suspend fun withCurve(originalPath: String, edits: PageEdits, before: PageEdits?): PageEdits {
+        if (!edits.flatten) return edits.copy(curve = null)
+        val recropped = before != null && (before.quad != edits.quad || before.aspect != edits.aspect)
+        if (edits.curve != null && !recropped) return edits
+        val curve = withContext(Dispatchers.Default) { measureCurve(originalPath, edits) }
+        return edits.copy(curve = curve)
+    }
+
+    private fun measureCurve(originalPath: String, edits: PageEdits): PageCurve =
+        runCatching {
+            val source = PageRenderer.loadUpright(originalPath, MEASURE_SIDE)
+            PageRenderer.measureCurve(source, edits).also { source.recycle() }
+        }.onFailure { Log.w(TAG, "Couldn't measure the page's bend", it) }.getOrDefault(PageCurve(emptyList()))
+
+    /**
      * Moves the capture into the document folder and works out where the page is in it. A book
      * spread becomes two pages, each pointing at its own copy of the photo.
      */
@@ -374,7 +396,11 @@ class PageStore(
                     ?: QuadGeometry.splitInHalf(quad)
                 val copy = newOriginal(documentId)
                 original.copyTo(copy, overwrite = true)
-                listOf(original to PageEdits(quad = left), copy to PageEdits(quad = right))
+                // Book pages curl toward the spine, so they're flattened from the start.
+                listOf(original to left, copy to right).map { (file, half) ->
+                    val edits = PageEdits(quad = half, flatten = true)
+                    file to edits.copy(curve = measureCurve(file.path, edits))
+                }
             }
         }.also { preview?.recycle() }
     }
@@ -524,6 +550,7 @@ class PageStore(
         /** Originals are read at this size before warping, so the crop still has detail. */
         private const val SOURCE_SIDE = 4000
         private const val DETECT_SIDE = 640
+        private const val MEASURE_SIDE = 2000
     }
 }
 

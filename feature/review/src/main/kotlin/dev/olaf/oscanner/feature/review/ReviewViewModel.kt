@@ -54,7 +54,7 @@ class ReviewViewModel(
 
     /** Small previews of every look, made from this very page. */
     suspend fun filterPreviews(page: Page): Map<PageFilter, Bitmap> {
-        val straightKey = "s:${page.id}:${page.edits.quad}:${page.edits.rotation}"
+        val straightKey = "s:${page.id}:${page.edits.quad}:${page.edits.rotation}:${page.edits.flatten}:${page.edits.curve}"
         val straight = cachedOrMake(straightKey) {
             PageRenderer.straighten(source(page.originalPath), page.edits, FILTER_THUMB_SIDE)
         }
@@ -78,6 +78,8 @@ class ReviewViewModel(
 
     fun setAdjustments(page: Page, brightness: Float, contrast: Float, detail: Float) =
         update(page) { it.copy(brightness = brightness, contrast = contrast, detail = detail) }
+
+    fun setFlatten(page: Page, on: Boolean) = update(page) { it.copy(flatten = on) }
 
     fun startCrop(page: Page) {
         _crop.value = CropDraft(page.id, page.edits.quad)

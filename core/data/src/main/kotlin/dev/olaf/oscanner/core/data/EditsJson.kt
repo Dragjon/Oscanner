@@ -1,6 +1,8 @@
 package dev.olaf.oscanner.core.data
 
 import dev.olaf.oscanner.core.model.Corner
+import dev.olaf.oscanner.core.model.CurveLine
+import dev.olaf.oscanner.core.model.PageCurve
 import dev.olaf.oscanner.core.model.InkMark
 import dev.olaf.oscanner.core.model.PageEdits
 import dev.olaf.oscanner.core.model.PageFilter
@@ -29,19 +31,41 @@ internal object EditsJson {
         .apply { if (edits.keep.isNotEmpty()) put("keep", JSONArray().apply { edits.keep.forEach { put(writeMark(it)) } }) }
         .apply { if (edits.removePenInk) put("removePenInk", true) }
         .apply { if (edits.removeFingers) put("removeFingers", true) }
+        .apply { if (edits.flatten) put("flatten", true) }
+        .apply {
+            edits.curve?.let { curve ->
+                put("curve", JSONArray().apply { curve.lines.forEach { put(writeLine(it)) } })
+            }
+        }
         .apply {
             if (edits.redactions.isNotEmpty()) {
-                put("redact", JSONArray().apply { edits.redactions.forEach { put(writeQuad(it)) } })
+                put("redact", JSONArray().apply { edits.redactions.forEach { put(writePoints(it)) } })
             }
         }
         .toString()
 
-    private fun writeQuad(quad: Quad) = JSONArray().apply { quad.corners.forEach { put(it.x.toDouble()); put(it.y.toDouble()) } }
+    private fun writeLine(line: CurveLine) = JSONArray().apply {
+        line.coefficients.forEach { put(it.toDouble()) }
+        put(line.from.toDouble())
+        put(line.to.toDouble())
+    }
 
-    private fun readQuad(a: JSONArray?): Quad? = a
-        ?.takeIf { it.length() == 8 }
-        ?.let { Quad.of(List(4) { i -> Corner(a.optDouble(i * 2).toFloat(), a.optDouble(i * 2 + 1).toFloat()) }) }
-        ?.takeIf { q -> q.corners.all { !it.x.isNaN() && !it.y.isNaN() } }
+    private fun readLine(a: JSONArray?): CurveLine? {
+        if (a == null || a.length() != 6) return null
+        val values = List(6) { a.optDouble(it).toFloat() }
+        if (values.any { !it.isFinite() }) return null
+        return CurveLine(values.take(4), values[4], values[5])
+    }
+
+    private fun writePoints(points: List<Corner>) = JSONArray().apply { points.forEach { put(it.x.toDouble()); put(it.y.toDouble()) } }
+
+    /** x0, y0, x1, y1, …; null unless there are at least [min] points, all numbers. */
+    private fun readPoints(a: JSONArray?, min: Int): List<Corner>? = a
+        ?.takeIf { it.length() >= min * 2 && it.length() % 2 == 0 }
+        ?.let { List(it.length() / 2) { i -> Corner(a.optDouble(i * 2).toFloat(), a.optDouble(i * 2 + 1).toFloat()) } }
+        ?.takeIf { points -> points.all { !it.x.isNaN() && !it.y.isNaN() } }
+
+    private fun readQuad(a: JSONArray?): Quad? = readPoints(a, 4)?.takeIf { it.size == 4 }?.let(Quad::of)
 
     private fun writeMark(mark: InkMark) = JSONObject()
         .put("color", mark.color)
@@ -79,7 +103,13 @@ internal object EditsJson {
             keep = strokes("keep"),
             removePenInk = obj.optBoolean("removePenInk"),
             removeFingers = obj.optBoolean("removeFingers"),
-            redactions = obj.optJSONArray("redact")?.let { a -> (0 until a.length()).mapNotNull { readQuad(a.optJSONArray(it)) } }.orEmpty(),
+            flatten = obj.optBoolean("flatten"),
+            curve = obj.optJSONArray("curve")?.let { a ->
+                // All lines or none: a partial bend would distort the page.
+                val lines = (0 until a.length()).map { readLine(a.optJSONArray(it)) }
+                PageCurve(if (lines.all { it != null }) lines.filterNotNull() else emptyList())
+            },
+            redactions = obj.optJSONArray("redact")?.let { a -> (0 until a.length()).mapNotNull { readPoints(a.optJSONArray(it), 3) } }.orEmpty(),
         )
     }
 }

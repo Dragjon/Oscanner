@@ -180,9 +180,29 @@ object QuadGeometry {
         else -> c
     }
 
+    /**
+     * [pageToSource] for a whole recipe: also undoes flattening when [PageEdits.flatten] is on,
+     * so a point on the page people see lands exactly where the renderer took it from.
+     */
+    fun pageToSource(edits: PageEdits, point: Corner): Corner {
+        val curve = edits.curve?.takeIf { edits.flatten && it.lines.isNotEmpty() }
+            ?: return pageToSource(edits.quad, edits.rotation, point)
+        val (u, v) = unturn(point, edits.rotation)
+        val bent = Bend.unflatten(curve, u.toFloat(), v.toFloat())
+        return Homography.squareTo(edits.quad).map(u, bent.toDouble())
+    }
+
+    /** The inverse of [pageToSource] for a whole recipe. */
+    fun sourceToPage(edits: PageEdits, point: Corner): Corner {
+        val curve = edits.curve?.takeIf { edits.flatten && it.lines.isNotEmpty() }
+            ?: return sourceToPage(edits.quad, edits.rotation, point)
+        val p = Homography.squareTo(edits.quad).inverse().map(point.x.toDouble(), point.y.toDouble())
+        return turn(Corner(p.x, Bend.flatten(curve, p.x, p.y)), edits.rotation)
+    }
+
     /** Each blacked-out area of [edits] as a polygon on the page as shown. */
     fun redactionsOnPage(edits: PageEdits): List<List<Corner>> =
-        edits.redactions.map { area -> area.corners.map { sourceToPage(edits.quad, edits.rotation, it) } }
+        edits.redactions.map { area -> area.map { sourceToPage(edits, it) } }
 
     /** Even-odd test; works for any simple polygon. */
     fun contains(polygon: List<Corner>, p: Corner): Boolean {

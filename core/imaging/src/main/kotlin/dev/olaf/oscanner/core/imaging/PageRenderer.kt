@@ -11,6 +11,7 @@ import android.graphics.PorterDuffXfermode
 import dev.olaf.oscanner.core.model.InkMark
 import android.os.Build
 import androidx.exifinterface.media.ExifInterface
+import dev.olaf.oscanner.core.model.PageCurve
 import dev.olaf.oscanner.core.model.PageEdits
 import dev.olaf.oscanner.core.model.PageFilter
 import org.opencv.android.OpenCVLoader
@@ -35,6 +36,8 @@ object PageRenderer {
     const val THUMB_SIDE = 360
     /** Roughly 300 dpi on an A4 page: what Tesseract reads best. */
     const val OCR_SIDE = 3400
+    /** Plenty to trace text lines; the detector works at 1200 wide anyway. */
+    private const val MEASURE_SIDE = 2000
 
     @Volatile private var loaded = false
 
@@ -238,6 +241,16 @@ object PageRenderer {
         outlines.forEach(Mat::release)
     }
 
+    /**
+     * How text lines bend on this page as cropped: what [PageEdits.curve] holds once
+     * flattening is turned on. Empty when there aren't enough clear lines to tell.
+     */
+    fun measureCurve(source: Bitmap, edits: PageEdits): PageCurve {
+        ensureLoaded()
+        val straight = warp(source, edits.copy(flatten = false, rotation = 0), MEASURE_SIDE)
+        return CurveDetector.detect(straight).also { straight.release() }
+    }
+
     private fun warp(source: Bitmap, edits: PageEdits, maxSide: Int): Mat {
         val rgb = toRgb(source)
         val w = source.width
@@ -245,7 +258,7 @@ object PageRenderer {
         // Blacked-out areas leave the photo first, so nothing downstream (looks, clean-up,
         // text reading, previews) ever sees what was under them.
         for (area in edits.redactions) {
-            val outline = MatOfPoint(*area.corners.map { Point(it.x.toDouble() * w, it.y.toDouble() * h) }.toTypedArray())
+            val outline = MatOfPoint(*area.map { Point(it.x.toDouble() * w, it.y.toDouble() * h) }.toTypedArray())
             Imgproc.fillPoly(rgb, listOf(outline), Scalar(0.0, 0.0, 0.0))
             outline.release()
         }
@@ -265,14 +278,20 @@ object PageRenderer {
         val out = Mat()
         Imgproc.warpPerspective(rgb, out, transform, Size(dstW, dstH), Imgproc.INTER_CUBIC, Core.BORDER_REPLICATE)
         listOf(rgb, src, dst, transform).forEach(Mat::release)
+        val curve = edits.curve
+        val warped = if (edits.flatten && curve != null && curve.lines.isNotEmpty()) {
+            CurveDetector.flatten(out, curve).also { out.release() }
+        } else {
+            out
+        }
         val turn = when (((edits.rotation % 360) + 360) % 360) {
             90 -> Core.ROTATE_90_CLOCKWISE
             180 -> Core.ROTATE_180
             270 -> Core.ROTATE_90_COUNTERCLOCKWISE
             else -> null
         }
-        if (turn != null) Core.rotate(out, out, turn)
-        return out
+        if (turn != null) Core.rotate(warped, warped, turn)
+        return warped
     }
 
     private fun toRgb(bitmap: Bitmap): Mat {

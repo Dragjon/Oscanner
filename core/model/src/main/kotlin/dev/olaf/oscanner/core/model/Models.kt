@@ -117,10 +117,17 @@ data class PageEdits(
     val removeFingers: Boolean = false,
     /**
      * Areas blacked out, as outlines in the original photo (normalized upright-image
-     * coordinates, like [quad]), so they stay over the same words when the page is re-cropped
-     * or turned. Painted black before anything else reads the photo.
+     * coordinates, like [quad]), so they stay over the same words when the page is re-cropped,
+     * turned or flattened. Painted black before anything else reads the photo.
      */
-    val redactions: List<Quad> = emptyList(),
+    val redactions: List<List<Corner>> = emptyList(),
+    /** Straighten text lines that bend with a curved page, like a book near its spine. */
+    val flatten: Boolean = false,
+    /**
+     * The bend measured on this page when [flatten] was turned on, so every render, and every
+     * box drawn on the page, uses the same map. Null until measured; reset when re-cropped.
+     */
+    val curve: PageCurve? = null,
 ) {
     val adjusted: Boolean get() = brightness != 0f || contrast != 0f || detail != 0f
 
@@ -132,6 +139,15 @@ data class PageEdits(
         return copy(rotation = (rotation + 90) % 360, marks = marks.turned(), erase = erase.turned(), keep = keep.turned())
     }
 }
+
+/**
+ * How text lines bend on a straightened page (before it's turned). Each line is
+ * y = c0 + c1·x + c2·x² + c3·x³ in normalized page coordinates, measured between [CurveLine.from]
+ * and [CurveLine.to] and held level beyond. Lines are top to bottom and never cross.
+ */
+data class PageCurve(val lines: List<CurveLine>)
+
+data class CurveLine(val coefficients: List<Float>, val from: Float, val to: Float)
 
 /**
  * One stroke on a finished page. Points are normalized to the page as shown (after crop and

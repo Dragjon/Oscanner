@@ -110,7 +110,7 @@ fun ReviewRoute(
     val current = pages[pagerState.currentPage.coerceIn(0, pages.lastIndex)]
     var adjusting by rememberSaveable { mutableStateOf(false) }
     if (adjusting) {
-        AdjustSheet(page = current, onChange = viewModel::setAdjustments, onDismiss = { adjusting = false })
+        AdjustSheet(page = current, onChange = viewModel::setAdjustments, onFlatten = viewModel::setFlatten, onDismiss = { adjusting = false })
     }
 
     Box(

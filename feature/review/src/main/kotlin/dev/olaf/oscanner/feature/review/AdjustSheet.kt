@@ -13,6 +13,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -25,6 +27,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.ui.unit.dp
 import dev.olaf.oscanner.core.model.Page
 import dev.olaf.oscanner.core.model.PageFilter
@@ -39,6 +43,7 @@ import kotlin.math.roundToInt
 internal fun AdjustSheet(
     page: Page,
     onChange: (page: Page, brightness: Float, contrast: Float, detail: Float) -> Unit,
+    onFlatten: (page: Page, on: Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var brightness by remember(page.id) { mutableFloatStateOf(page.edits.brightness) }
@@ -60,6 +65,7 @@ internal fun AdjustSheet(
                 .padding(start = 24.dp, end = 24.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
+            FlattenRow(page, onFlatten)
             if (page.edits.filter == PageFilter.Ink) {
                 Text(
                     stringResource(R.string.review_adjust_ink),
@@ -84,6 +90,43 @@ internal fun AdjustSheet(
                 TextButton(onClick = onDismiss) { Text(stringResource(R.string.review_done)) }
             }
         }
+    }
+}
+
+/** Flattening is measured from the page's text, so it says when there wasn't enough to go on. */
+@Composable
+private fun FlattenRow(page: Page, onFlatten: (Page, Boolean) -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val on = page.edits.flatten
+    val measuring = on && page.edits.curve == null
+    val nothingFound = on && page.edits.curve?.lines?.isEmpty() == true
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .toggleable(value = on, role = Role.Switch, onValueChange = { onFlatten(page, it) })
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(stringResource(R.string.review_flatten), style = MaterialTheme.typography.titleSmall, color = colors.onSurface)
+            Text(
+                stringResource(
+                    when {
+                        measuring -> R.string.review_flatten_measuring
+                        nothingFound -> R.string.review_flatten_none
+                        else -> R.string.review_flatten_description
+                    },
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.onSurfaceVariant,
+            )
+        }
+        Switch(
+            checked = on,
+            onCheckedChange = null,
+            colors = SwitchDefaults.colors(checkedTrackColor = colors.primary, checkedThumbColor = colors.onPrimary),
+            modifier = Modifier.padding(start = 16.dp),
+        )
     }
 }
 

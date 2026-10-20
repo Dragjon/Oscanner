@@ -8,7 +8,6 @@ import dev.olaf.oscanner.core.imaging.PageRenderer
 import dev.olaf.oscanner.core.imaging.QuadGeometry
 import dev.olaf.oscanner.core.model.Corner
 import dev.olaf.oscanner.core.model.Page
-import dev.olaf.oscanner.core.model.Quad
 import dev.olaf.oscanner.core.model.WordBox
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,7 +22,7 @@ data class RedactUiState(
     /** The page with nothing blacked out, so boxes can be added and taken away live. */
     val base: Bitmap? = null,
     /** Blacked-out areas, in photo coordinates like [dev.olaf.oscanner.core.model.PageEdits.redactions]. */
-    val areas: List<Quad> = emptyList(),
+    val areas: List<List<Corner>> = emptyList(),
     /** Words read on the page; empty if it hasn't been read yet. */
     val words: List<WordBox> = emptyList(),
     val saved: Boolean = false,
@@ -32,7 +31,7 @@ data class RedactUiState(
 
     /** [areas] as outlines on the page as shown, for drawing and tapping. */
     val shapes: List<List<Corner>>
-        get() = page?.let { p -> areas.map { a -> a.corners.map { QuadGeometry.sourceToPage(p.edits.quad, p.edits.rotation, it) } } }.orEmpty()
+        get() = page?.let { p -> QuadGeometry.redactionsOnPage(p.edits.copy(redactions = areas)) }.orEmpty()
 
     /** Height ÷ width of the page as shown. */
     val aspect: Float get() = base?.let { it.height.toFloat() / it.width } ?: 1.414f
@@ -105,11 +104,14 @@ class RedactViewModel(
 
     private fun addRects(rects: List<PageRect>) {
         val page = _state.value.page ?: return
-        val quad = page.edits.quad
-        val rotation = page.edits.rotation
-        fun toSource(x: Float, y: Float) = QuadGeometry.pageToSource(quad, rotation, Corner(x, y))
+        // Straight edges stay straight through the perspective map, but a flattened page bends
+        // them: trace each side in steps so the area follows the text it covers.
+        fun toSource(x: Float, y: Float) = QuadGeometry.pageToSource(page.edits, Corner(x, y))
         val areas = rects.map { r ->
-            Quad(toSource(r.left, r.top), toSource(r.right, r.top), toSource(r.right, r.bottom), toSource(r.left, r.bottom))
+            fun side(x0: Float, y0: Float, x1: Float, y1: Float) =
+                List(SIDE_STEPS) { i -> toSource(x0 + (x1 - x0) * i / SIDE_STEPS, y0 + (y1 - y0) * i / SIDE_STEPS) }
+            side(r.left, r.top, r.right, r.top) + side(r.right, r.top, r.right, r.bottom) +
+                side(r.right, r.bottom, r.left, r.bottom) + side(r.left, r.bottom, r.left, r.top)
         }
         _state.update { it.copy(areas = it.areas + areas) }
     }
@@ -118,5 +120,6 @@ class RedactViewModel(
         const val SOURCE_SIDE = 2400
         const val PREVIEW_SIDE = 1800
         const val MIN_SIDE = 0.01f
+        const val SIDE_STEPS = 8
     }
 }
