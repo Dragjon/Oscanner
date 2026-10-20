@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.olaf.oscanner.core.data.DocumentRepository
 import dev.olaf.oscanner.core.data.PageStore
+import dev.olaf.oscanner.core.data.ReadProgress
 import dev.olaf.oscanner.core.model.Document
 import dev.olaf.oscanner.core.model.Page
 import kotlinx.coroutines.channels.Channel
@@ -20,6 +21,8 @@ data class TextUiState(
     val loading: Boolean = true,
     val document: Document? = null,
     val pages: List<Page> = emptyList(),
+    /** How far reading has got while it runs; null otherwise. */
+    val progress: ReadProgress? = null,
 )
 
 class TextViewModel(
@@ -31,7 +34,8 @@ class TextViewModel(
     val state: StateFlow<TextUiState> = combine(
         documents.observeDocument(documentId),
         store.observePages(documentId),
-    ) { document, pages -> TextUiState(loading = false, document = document, pages = pages) }
+        store.readProgress(documentId),
+    ) { document, pages, progress -> TextUiState(loading = false, document = document, pages = pages, progress = progress) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TextUiState())
 
     /** A finished export and the MIME type to share it as. */

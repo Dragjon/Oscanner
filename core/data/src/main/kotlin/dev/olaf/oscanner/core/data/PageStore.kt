@@ -572,7 +572,10 @@ class PageStore(
     suspend fun printedAreas(page: Page, edits: PageEdits): List<Area> = text.printedAreas(page.originalPath, edits)
 
     /** Reads the text now, even if automatic reading is off. */
-    fun readNow(documentId: Long) = text.schedule(documentId)
+    fun readNow(documentId: Long) = text.readNow(documentId)
+
+    /** How far reading [documentId]'s text has got, or null when it isn't being read. */
+    fun readProgress(documentId: Long): Flow<ReadProgress?> = text.progress.map { it[documentId] }
 
     /** One JPEG per page in the share cache: "Title 1.jpg", "Title 2.jpg"… */
     suspend fun exportJpegs(documentId: Long): List<File> {

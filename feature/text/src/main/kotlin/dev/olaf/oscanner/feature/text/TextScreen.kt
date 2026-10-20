@@ -34,6 +34,21 @@ import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.LibraryBooks
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material3.CircularProgressIndicator
+import dev.olaf.oscanner.core.design.ChalkSnowman
+import dev.olaf.oscanner.core.data.ReadProgress
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -96,7 +111,7 @@ fun TextRoute(viewModel: TextViewModel, startPage: Int, onBack: () -> Unit) {
     }
     val pagerState = rememberPagerState(initialPage = startPage.coerceIn(0, pages.lastIndex)) { pages.size }
     val current = pages[pagerState.currentPage.coerceIn(0, pages.lastIndex)]
-    val reading = state.document?.state == ProcessingState.ReadingText
+    val reading = state.progress != null || state.document?.state == ProcessingState.ReadingText
 
     fun copy(text: String) {
         context.copyToClipboard(text)
@@ -152,6 +167,7 @@ fun TextRoute(viewModel: TextViewModel, startPage: Int, onBack: () -> Unit) {
                 PageText(
                     page = page,
                     reading = reading,
+                    progress = state.progress,
                     editing = editingId == page.id,
                     onReadNow = viewModel::readNow,
                     onSave = { viewModel.save(page, it) },
@@ -210,10 +226,63 @@ private fun ExportSheet(onWord: () -> Unit, onPlain: () -> Unit, onDismiss: () -
     }
 }
 
+/**
+ * Reading in progress: the chalk snowman bobs while a bar fills with how far the reader has got,
+ * page by page and line by line.
+ */
+@Composable
+private fun ReadingProgressView(progress: ReadProgress?) {
+    val colors = MaterialTheme.colorScheme
+    val bob by rememberInfiniteTransition(label = "bob").animateFloat(
+        initialValue = -4f,
+        targetValue = 4f,
+        animationSpec = infiniteRepeatable(tween(900, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "bob",
+    )
+    val shown by animateFloatAsState(progress?.fraction ?: 0f, tween(400), label = "progress")
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+            .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        ChalkSnowman(
+            Modifier
+                .size(width = 140.dp, height = 154.dp)
+                .graphicsLayer { translationY = bob.dp.toPx() },
+        )
+        Spacer(Modifier.height(12.dp))
+        val label = when {
+            progress == null || progress.preparing || progress.pages == 0 -> stringResource(R.string.text_reading_starting)
+            progress.pages == 1 -> stringResource(R.string.text_reading_percent, (shown * 100).toInt())
+            else -> stringResource(R.string.text_reading_pages, progress.page + 1, progress.pages, (shown * 100).toInt())
+        }
+        Text(label, style = MaterialTheme.typography.bodyLarge, color = colors.onSurface)
+        Spacer(Modifier.height(10.dp))
+        if (progress == null || progress.preparing || progress.pages == 0) {
+            LinearProgressIndicator(
+                modifier = Modifier.fillMaxWidth(0.7f).height(6.dp).clip(CircleShape),
+                color = colors.primary,
+                trackColor = colors.surfaceContainerHigh,
+            )
+        } else {
+            LinearProgressIndicator(
+                progress = { shown },
+                modifier = Modifier.fillMaxWidth(0.7f).height(6.dp).clip(CircleShape),
+                color = colors.primary,
+                trackColor = colors.surfaceContainerHigh,
+                drawStopIndicator = {},
+            )
+        }
+    }
+}
+
 @Composable
 private fun PageText(
     page: Page,
     reading: Boolean,
+    progress: ReadProgress?,
     editing: Boolean,
     onReadNow: () -> Unit,
     onSave: (String) -> Unit,
@@ -242,11 +311,7 @@ private fun PageText(
         Spacer(Modifier.height(16.dp))
         val text = page.text
         when {
-            text == null && reading -> Row(verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = colors.onSurfaceVariant)
-                Spacer(Modifier.width(10.dp))
-                Text(stringResource(R.string.text_reading), style = MaterialTheme.typography.bodyLarge, color = colors.onSurfaceVariant)
-            }
+            text == null && reading -> ReadingProgressView(progress)
             text == null -> Column {
                 Text(stringResource(R.string.text_not_read), style = MaterialTheme.typography.bodyLarge, color = colors.onSurfaceVariant)
                 Spacer(Modifier.height(12.dp))

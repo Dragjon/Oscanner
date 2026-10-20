@@ -25,7 +25,8 @@ import kotlin.math.roundToInt
 
 /** A page reader: an image in, its words with boxes and the text in reading order out. */
 interface PageReader : AutoCloseable {
-    fun read(image: Bitmap): OcrResult
+    /** [onProgress] hears 0…1 as the page is read, when the reader can tell. */
+    fun read(image: Bitmap, onProgress: (Float) -> Unit = {}): OcrResult
 }
 
 /**
@@ -57,7 +58,7 @@ class PaddleReader(context: Context) : PageReader {
         fixer = WordFixer.get(assets)
     }
 
-    override fun read(image: Bitmap): OcrResult {
+    override fun read(image: Bitmap, onProgress: (Float) -> Unit): OcrResult {
         val rgba = Mat()
         Utils.bitmapToMat(image, rgba)
         // The models were trained on OpenCV's BGR images.
@@ -67,7 +68,12 @@ class PaddleReader(context: Context) : PageReader {
         try {
             val w = bgr.cols().toDouble()
             val h = bgr.rows().toDouble()
-            val lines = findLines(bgr).mapNotNull { box -> readLine(bgr, box, w, h) }
+            // Finding the lines is about a tenth of the work; reading them, the rest.
+            val boxes = findLines(bgr)
+            onProgress(0.1f)
+            val lines = boxes.mapIndexedNotNull { i, box ->
+                readLine(bgr, box, w, h).also { onProgress(0.1f + 0.9f * (i + 1) / boxes.size) }
+            }
             return assemble(lines)
         } finally {
             bgr.release()

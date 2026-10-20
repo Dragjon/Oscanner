@@ -39,7 +39,7 @@ class TextRecognizer(languages: Languages, codes: List<String>) : PageReader {
         api.setVariable("user_defined_dpi", "300")
     }
 
-    override fun read(image: Bitmap): OcrResult {
+    override fun read(image: Bitmap, onProgress: (Float) -> Unit): OcrResult {
         api.setImage(image)
         val text = api.utF8Text.orEmpty().trim()
         val words = mutableListOf<OcrWord>()
