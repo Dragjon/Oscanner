@@ -51,6 +51,7 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.PictureAsPdf
 import androidx.compose.material.icons.rounded.Portrait
 import androidx.compose.material.icons.rounded.Print
+import androidx.compose.material.icons.rounded.Quiz
 import androidx.compose.material.icons.rounded.Rectangle
 import androidx.compose.material.icons.rounded.SaveAlt
 import androidx.compose.material.icons.rounded.Slideshow
@@ -118,6 +119,7 @@ fun DocumentRoute(
     onCleanup: (documentId: Long, page: Int) -> Unit,
     onRedact: (documentId: Long, page: Int) -> Unit,
     onTrashed: (documentId: Long) -> Unit,
+    onOpenDocument: (documentId: Long) -> Unit = {},
 ) {
     val context = LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -134,6 +136,7 @@ fun DocumentRoute(
     val failedText = stringResource(R.string.document_failed)
     val noAppText = stringResource(R.string.document_no_share_app)
     val noFaceText = stringResource(R.string.document_id_photo_no_face)
+    val noQuestionsText = stringResource(R.string.document_split_questions_none)
     val currentOnTrashed by rememberUpdatedState(onTrashed)
     LaunchedEffect(viewModel) {
         viewModel.eventFlow.collect { event ->
@@ -145,6 +148,8 @@ fun DocumentRoute(
                 DocumentEvent.Saved -> snackbar.showSnackbar(savedText)
                 DocumentEvent.Failed -> snackbar.showSnackbar(failedText)
                 DocumentEvent.NoFace -> snackbar.showSnackbar(noFaceText)
+                DocumentEvent.NoQuestions -> snackbar.showSnackbar(noQuestionsText)
+                is DocumentEvent.Open -> onOpenDocument(event.documentId)
                 is DocumentEvent.Trashed -> currentOnTrashed(event.documentId)
             }
         }
@@ -167,6 +172,7 @@ fun DocumentRoute(
         if (!state.loading) LaunchedEffect(Unit) { onBack() }
         return
     }
+    val questionsTitle = stringResource(R.string.document_questions_title, document.title)
 
     val pagerState = rememberPagerState { state.pages.size }
     val colors = MaterialTheme.colorScheme
@@ -294,6 +300,7 @@ fun DocumentRoute(
                         SheetAction(Icons.Rounded.Rectangle, stringResource(R.string.document_redact), stringResource(R.string.document_redact_description), act { onRedact(document.id, pagerState.currentPage) })
                         SheetSection(stringResource(R.string.document_section_pages))
                         SheetAction(Icons.Rounded.GridView, stringResource(R.string.document_arrange), stringResource(R.string.document_arrange_description), act { onArrange(document.id) })
+                        SheetAction(Icons.Rounded.Quiz, stringResource(R.string.document_split_questions), stringResource(R.string.document_split_questions_description), act { viewModel.splitQuestions(questionsTitle) })
                         SheetAction(Icons.Rounded.DocumentScanner, stringResource(R.string.document_scan_more), stringResource(R.string.document_scan_more_description), act { onScanMore(document.id) })
                         SheetAction(
                             Icons.Rounded.AddPhotoAlternate,
@@ -468,6 +475,7 @@ private fun BusyLine(busy: Busy) {
                     Busy.PreparingImages -> R.string.document_preparing_images
                     Busy.Saving -> R.string.document_saving
                     Busy.Importing -> R.string.document_importing
+                    Busy.Splitting -> R.string.document_splitting
                 },
             ),
             style = MaterialTheme.typography.bodyMedium,

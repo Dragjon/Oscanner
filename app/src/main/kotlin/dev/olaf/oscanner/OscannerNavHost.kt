@@ -236,6 +236,7 @@ fun OscannerNavHost(
                 onMarkup = { id, page -> navController.navigate(Routes.markup(id, page)) },
                 onRedact = { id, page -> navController.navigate(Routes.redact(id, page)) },
                 onCleanup = { id, page -> navController.navigate(Routes.cleanup(id, page)) },
+                onOpenDocument = { navController.navigate(Routes.document(it)) },
                 onTrashed = { id ->
                     navController.popBackStack(Routes.LIBRARY, inclusive = false)
                     scope.launch {

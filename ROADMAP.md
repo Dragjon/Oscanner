@@ -25,7 +25,7 @@ are not layout references (`PLAN.md` §1 still applies to how we build).
 | Capture Screens (photo of a monitor, moiré removed) | ✅ Slides mode, with screen patterns reduced |
 | Timestamp (date and time stamped on the scan) | ✅ |
 | HD toggle (capture at full sensor resolution) | 🟡 always full resolution, no choice |
-| Incorrect Question / test paper (blank out answers, re-scan missed questions) | 🟡 handwriting removal blanks a test; no question cropping |
+| Incorrect Question / test paper (blank out answers, re-scan missed questions) | ✅ handwriting removal blanks a test; split into questions |
 | Formula (maths to LaTeX) | ❌ |
 | ID Photo Maker (passport photo sizes, background colour) | ✅ |
 | Mega Scan (stitch a large object from many shots) | ❌ (⚠ patents) |
@@ -158,8 +158,10 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   photo at 300 dpi from a page's photo, the head placed by the size's rules, on white, gray,
   light blue or the photo's own background, and a 4 × 6 in sheet of copies. Faces are found
   with Android's own face finder; the background is cut with GrabCut.
-- **Test paper**: blank the answers (have), then crop each question into its own page for
-  re-doing; mark which were wrong.
+- ✅ **Test paper** (2026-10-21): blank the answers with handwriting removal, then Edit → Split
+  into questions puts each numbered question ("1.", "2)", "Q3", "Question 4") with its answer
+  space on a page of its own in a new document, across pages too. Marking which were wrong
+  is still to do.
 - **Large objects** (blueprints, posters): stitch overlapping shots. Only after a patent check.
 
 ### 3.5 Editing extras

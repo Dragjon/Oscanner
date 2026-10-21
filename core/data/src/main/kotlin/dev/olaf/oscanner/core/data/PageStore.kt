@@ -333,6 +333,74 @@ class PageStore(
         return target
     }
 
+    /**
+     * A new document with each numbered question of [documentId] on a page of its own, for doing
+     * again: cut from the page it's on (see [Questions]), and a question running onto the next
+     * page gets that part as a page too. Pages not read yet are read first. Null if fewer than
+     * two questions are found.
+     */
+    suspend fun splitQuestions(documentId: Long, title: String): Long? {
+        text.readDocument(documentId)
+        val pages = db.pages().forDocument(documentId)
+        val words = pages.map { visibleWords(it) }
+        val starts = Questions.starts(words)
+        if (starts.isEmpty()) return null
+        fun textTop(page: Int) = words[page].minOfOrNull { it.top } ?: 0f
+        fun textBottom(page: Int) = words[page].maxOfOrNull { it.bottom } ?: 1f
+        // Each question's stretch of a page: which page, and from where to where down it.
+        val parts = mutableListOf<Triple<Int, Float, Float>>()
+        for ((i, start) in starts.withIndex()) {
+            val next = starts.getOrNull(i + 1)
+            val pad = start.lineHeight * QUESTION_PAD
+            for (p in start.page..(next?.page ?: start.page)) {
+                val top = if (p == start.page) start.top - pad else textTop(p) - pad
+                val bottom = if (next != null && p == next.page) next.top - next.lineHeight * QUESTION_PAD else textBottom(p) + pad
+                if (bottom - top > MIN_QUESTION) parts += Triple(p, top.coerceIn(0f, 1f), bottom.coerceIn(0f, 1f))
+            }
+        }
+        val source = db.documents().getRow(documentId)
+        val now = System.currentTimeMillis()
+        val target = db.documents().insert(
+            DocumentEntity(title = title, folderId = source?.folderId, createdAt = now, updatedAt = now, kind = source?.kind ?: DocumentKind.Document.name),
+        )
+        val copies = copyPages(parts.map { pages[it.first] }, target).mapIndexed { i, copy ->
+            val (_, top, bottom) = parts[i]
+            // The whole page's render and thumbnail are left behind: each part is rendered afresh.
+            copy.copy(editsJson = EditsJson.write(cutOut(EditsJson.read(copy.editsJson), top, bottom)), ocrText = null, renderPath = null, thumbPath = null)
+        }
+        db.withTransaction { copies.forEach { db.pages().insert(it) } }
+        // What was read off the whole page doesn't fit the part: each is read again.
+        db.pages().forDocument(target).forEach { text.forget(it.id) }
+        renderDocument(target)
+        text.scheduleIfWanted(target)
+        return target
+    }
+
+    /**
+     * [edits] for the stretch of its page from [top] to [bottom] (page coordinates, full width):
+     * the crop is moved in to that stretch, and what was drawn on the whole page is left behind.
+     */
+    private fun cutOut(edits: PageEdits, top: Float, bottom: Float): PageEdits {
+        val corners = listOf(Corner(0f, 0f), Corner(1f, 0f), Corner(1f, 1f), Corner(0f, 1f)).map { c ->
+            // Where this corner of the new crop's square sits on the new page as shown...
+            val shown = QuadGeometry.sourceToPage(edits.quad, edits.rotation, QuadGeometry.pageToSource(edits.quad, 0, c))
+            // ...and so on the old page: the same across, the new page's height squeezed into top..bottom.
+            QuadGeometry.pageToSource(edits, Corner(shown.x, top + shown.y * (bottom - top)))
+        }
+        return edits.copy(
+            quad = Quad(corners[0], corners[1], corners[2], corners[3]),
+            aspect = null,
+            flatten = false,
+            curve = null,
+            marks = emptyList(),
+            texts = emptyList(),
+            erase = emptyList(),
+            keep = emptyList(),
+            removePenInk = false,
+            printed = null,
+        )
+    }
+
     /** Turns pages a quarter clockwise each. */
     suspend fun rotatePages(pageIds: List<Long>) {
         pageIds.forEach { id ->
@@ -923,6 +991,9 @@ class PageStore(
         private const val SOURCE_SIDE = 4000
         /** ID photos are cut from the photo at up to this size: plenty for 300 dpi. */
         private const val ID_SOURCE_SIDE = 3000
+        /** Room left above a question and below it, in its line heights; parts thinner than [MIN_QUESTION] are dropped. */
+        private const val QUESTION_PAD = 0.8f
+        private const val MIN_QUESTION = 0.02f
         /** Automatic handwriting removal waits for a page at least this much paper. */
         private const val MIN_PAPER = 0.45
         private const val PAPER_CHECK_SIDE = 800

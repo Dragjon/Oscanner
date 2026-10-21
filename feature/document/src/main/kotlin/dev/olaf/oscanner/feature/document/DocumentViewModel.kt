@@ -36,7 +36,7 @@ data class DocumentUiState(
     val busy: Busy? = null,
 )
 
-enum class Busy { PreparingPdf, PreparingImages, Saving, Importing }
+enum class Busy { PreparingPdf, PreparingImages, Saving, Importing, Splitting }
 
 private const val PPTX = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 
@@ -49,6 +49,8 @@ sealed interface DocumentEvent {
     data object Saved : DocumentEvent
     data object Failed : DocumentEvent
     data object NoFace : DocumentEvent
+    data object NoQuestions : DocumentEvent
+    data class Open(val documentId: Long) : DocumentEvent
     data class Trashed(val documentId: Long) : DocumentEvent
 }
 
@@ -81,6 +83,10 @@ class DocumentViewModel(
     fun shareImages() = work(Busy.PreparingImages) { DocumentEvent.ShareImages(store.exportJpegs(documentId)) }
 
     fun shareLongImage() = work(Busy.PreparingImages) { DocumentEvent.ShareImages(listOf(store.exportLongImage(documentId))) }
+
+    fun splitQuestions(title: String) = work(Busy.Splitting) {
+        store.splitQuestions(documentId, title)?.let { DocumentEvent.Open(it) } ?: DocumentEvent.NoQuestions
+    }
 
     fun shareIdPhoto(page: Int, size: IdPhotoSize, background: IdBackground) = work(Busy.PreparingImages) {
         store.exportIdPhoto(documentId, page, size, background)?.let { DocumentEvent.ShareImages(it) } ?: DocumentEvent.NoFace

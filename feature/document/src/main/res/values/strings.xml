@@ -38,6 +38,11 @@
     <string name="document_share_images_description">One JPEG picture per page</string>
     <string name="document_share_long">Share as one long picture</string>
     <string name="document_share_long_description">Every page, one under the next</string>
+    <string name="document_split_questions">Split into questions</string>
+    <string name="document_split_questions_description">Each numbered question on a page of its own, in a new document, to do again</string>
+    <string name="document_split_questions_none">No numbered questions found. They need to start with 1., 2) or Q3 at the left.</string>
+    <string name="document_splitting">Finding the questions…</string>
+    <string name="document_questions_title">%1$s – questions</string>
     <string name="document_id_photo">ID photo</string>
     <string name="document_id_photo_description">A passport-size photo of the person in this picture, and a sheet of copies to print</string>
     <string name="document_id_photo_title">ID photo</string>
