@@ -133,6 +133,8 @@ data class PageEdits(
     val printByLook: Boolean = false,
     /** Clean-up: remove skin-colored shapes reaching in from the page edge, like holding fingers. */
     val removeFingers: Boolean = false,
+    /** Clean-up: remove the back page's print showing through thin paper. */
+    val removeShowThrough: Boolean = false,
     /**
      * Areas blacked out, as outlines in the original photo (normalized upright-image
      * coordinates, like [quad]), so they stay over the same words when the page is re-cropped,
@@ -151,7 +153,7 @@ data class PageEdits(
 ) {
     val adjusted: Boolean get() = brightness != 0f || contrast != 0f || detail != 0f
 
-    val cleaned: Boolean get() = erase.isNotEmpty() || removePenInk || removeFingers
+    val cleaned: Boolean get() = erase.isNotEmpty() || removePenInk || removeFingers || removeShowThrough
 
     /** A quarter turn clockwise, with everything drawn on the page turned along. */
     fun rotatedClockwise(): PageEdits {

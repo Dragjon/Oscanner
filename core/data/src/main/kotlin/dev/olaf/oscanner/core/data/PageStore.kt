@@ -222,15 +222,16 @@ class PageStore(
     }
 
     /**
-     * Turns the automatic clean-ups on for [pageIds] as well: fingers straight away, handwriting
-     * once each page's print is found.
+     * Turns the automatic clean-ups on for [pageIds] as well: fingers and show-through straight
+     * away, handwriting once each page's print is found.
      */
-    fun autoCleanup(pageIds: List<Long>, handwriting: Boolean, fingers: Boolean) {
+    fun autoCleanup(pageIds: List<Long>, handwriting: Boolean, fingers: Boolean, showThrough: Boolean = false) {
         scope.launch {
-            if (fingers) {
+            if (fingers || showThrough) {
                 for (id in pageIds) {
                     val edits = db.pages().get(id)?.let { EditsJson.read(it.editsJson) } ?: continue
-                    if (!edits.removeFingers) setEdits(id, edits.copy(removeFingers = true))
+                    val wanted = edits.copy(removeFingers = edits.removeFingers || fingers, removeShowThrough = edits.removeShowThrough || showThrough)
+                    if (wanted != edits) setEdits(id, wanted)
                 }
             }
             if (handwriting) removeHandwritingLater(pageIds)
@@ -373,6 +374,7 @@ class PageStore(
             before.quad != edits.quad || before.rotation != edits.rotation ||
                 before.erase != edits.erase || before.keep != edits.keep ||
                 before.removePenInk != edits.removePenInk || before.removeFingers != edits.removeFingers ||
+                before.removeShowThrough != edits.removeShowThrough ||
                 before.redactions != edits.redactions ||
                 before.flatten != edits.flatten || before.curve != edits.curve || before.descreen != edits.descreen
             )

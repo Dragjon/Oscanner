@@ -60,7 +60,9 @@ internal object Cleanup {
                 val printed = if (edits.printByLook) found else confidentPrint(rgb, found)
                 // Pen of another color than the print goes by its color; black and gray writing,
                 // the print's own color, by where it is: outside the lines of print.
-                val sorted = runCatching { InkSorter.handwriting(rgb, printed) }.getOrNull()
+                val neutral = withoutHighlights(rgb)
+                val sorted = runCatching { InkSorter.handwriting(neutral, printed) }.getOrNull()
+                neutral.release()
                 val writing = Mat.zeros(h, w, CvType.CV_8UC1)
                 sorted?.remove?.let { Core.bitwise_or(writing, it, writing); it.release() }
                 if (sorted?.blank != true) {
@@ -87,6 +89,7 @@ internal object Cleanup {
             solid.release()
         }
         if (edits.removeFingers) fingers(rgb).also { Core.bitwise_or(mask, it, mask); it.release() }
+        if (edits.removeShowThrough) showThrough(rgb).also { Core.bitwise_or(mask, it, mask); it.release() }
         // "Keep" protects from the automatic removals; painting "erase" always wins.
         draw(mask, edits.keep, 0.0)
         draw(mask, edits.erase, 255.0)
@@ -239,6 +242,155 @@ internal object Cleanup {
         // The outermost strip is where desk or shadow is left after cropping, never handwriting.
         clearMargin(mask, 0.02)
         return mask
+    }
+
+    /**
+     * [rgb] with the color taken out of highlighted areas (light and strongly colored), for
+     * telling pen from print by color: letters under a highlighter blend into it at their edges
+     * and would look like ink of another color than the print. Pen inside a highlight is still
+     * found by where it is, outside the lines of print.
+     */
+    private fun withoutHighlights(rgb: Mat): Mat {
+        // Light in brightness as the eye sees it, which colored pen isn't, however vivid.
+        val hsv = Mat()
+        Imgproc.cvtColor(rgb, hsv, Imgproc.COLOR_RGB2HSV)
+        val marked = Mat()
+        Core.extractChannel(hsv, marked, 1)
+        hsv.release()
+        Imgproc.threshold(marked, marked, HIGHLIGHT_SATURATION, 255.0, Imgproc.THRESH_BINARY)
+        val light = Mat()
+        Imgproc.cvtColor(rgb, light, Imgproc.COLOR_RGB2GRAY)
+        Imgproc.threshold(light, light, HIGHLIGHT_LIGHTNESS, 255.0, Imgproc.THRESH_BINARY)
+        Core.bitwise_and(marked, light, marked)
+        light.release()
+        // Whole stripes, letters and their soft edges included.
+        val side = max(rgb.cols(), rgb.rows())
+        val close = max(9.0, side * 0.012)
+        Imgproc.morphologyEx(marked, marked, Imgproc.MORPH_CLOSE, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(close, close)))
+        Imgproc.dilate(marked, marked, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(5.0, 5.0)))
+        val out = rgb.clone()
+        if (Core.countNonZero(marked) > 0) {
+            val gray = Mat()
+            Imgproc.cvtColor(rgb, gray, Imgproc.COLOR_RGB2GRAY)
+            Imgproc.cvtColor(gray, gray, Imgproc.COLOR_GRAY2RGB)
+            gray.copyTo(out, marked)
+            gray.release()
+        }
+        marked.release()
+        return out
+    }
+
+    /**
+     * The back page's print seen through thin paper: marks far lighter than the print, gray, and
+     * soft-edged, because the paper blurs them on the way through. Faint ink on the front, like
+     * pencil, has sharp edges; highlighter and colored print are saturated; and a photo's pale
+     * parts are broad areas, not marks the size of letters, so all of those stay.
+     */
+    private fun showThrough(rgb: Mat): Mat {
+        val w = rgb.cols()
+        val h = rgb.rows()
+        val side = max(w, h)
+        val gray = Mat()
+        Imgproc.cvtColor(rgb, gray, Imgproc.COLOR_RGB2GRAY)
+        val paper = Filters.backgroundOf(gray)
+        val even = Mat()
+        Core.divide(gray, paper, even, 255.0)
+        gray.release()
+
+        // Faint: off the paper, but far lighter than print. Judged with the grain smoothed out:
+        // show-through is smooth, grain is not.
+        val faint = Mat()
+        Imgproc.medianBlur(even, faint, 5)
+        Core.inRange(faint, Scalar(SHOW_DARKEST + 1), Scalar(paperFloor(faint) - 1), faint)
+        // Print, and its soft edge.
+        val near = Mat()
+        Imgproc.threshold(even, near, SHOW_DARKEST, 255.0, Imgproc.THRESH_BINARY_INV)
+        val reach = (max(3, side / 400) * 2 + 1).toDouble()
+        Imgproc.dilate(near, near, Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(reach, reach)))
+        Core.subtract(faint, near, faint)
+        // Sharp steps are ink on the front.
+        val soft = Mat()
+        Imgproc.GaussianBlur(even, soft, Size(3.0, 3.0), 0.0)
+        Imgproc.morphologyEx(soft, soft, Imgproc.MORPH_GRADIENT, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0)))
+        Imgproc.threshold(soft, near, SHOW_STEP, 255.0, Imgproc.THRESH_BINARY)
+        Imgproc.dilate(near, near, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(5.0, 5.0)))
+        Core.subtract(faint, near, faint)
+        listOf(soft, even).forEach(Mat::release)
+        // Colored marks: highlighter, colored print.
+        val hsv = Mat()
+        Imgproc.cvtColor(rgb, hsv, Imgproc.COLOR_RGB2HSV)
+        Core.extractChannel(hsv, near, 1)
+        hsv.release()
+        Imgproc.threshold(near, near, SHOW_SATURATION, 255.0, Imgproc.THRESH_BINARY)
+        Core.subtract(faint, near, faint)
+        Imgproc.morphologyEx(faint, faint, Imgproc.MORPH_OPEN, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(2.0, 2.0)))
+
+        // Letter-sized marks only: grain and the fringes of pen strokes are specks, and blurred
+        // letters run together into words. Around anything broad (a photo's pale part), small
+        // pieces are part of it too; and where the paper estimate itself sinks below the paper
+        // further out, something big sits there and its rim looks faint.
+        val labelMat = Mat()
+        val stats = Mat()
+        val centroids = Mat()
+        val count = Imgproc.connectedComponentsWithStats(faint, labelMat, stats, centroids, 8, CvType.CV_32S)
+        val labels = IntArray(w * h).also { labelMat.get(0, 0, it) }
+        val big = side * SHOW_MARK
+        val least = (side * SHOW_SPECK).let { it * it }
+        // 1: a mark to remove; 2: something broad to keep clear of.
+        val kind = ByteArray(count) { k ->
+            when {
+                k == 0 -> 0
+                min(stats.get(k, Imgproc.CC_STAT_WIDTH)[0], stats.get(k, Imgproc.CC_STAT_HEIGHT)[0]) >= big -> 2
+                stats.get(k, Imgproc.CC_STAT_AREA)[0] >= least -> 1
+                else -> 0
+            }
+        }
+        listOf(labelMat, stats, centroids).forEach(Mat::release)
+        faint.put(0, 0, ByteArray(w * h) { if (kind[labels[it]] == 1.toByte()) -1 else 0 })
+        val broad = Mat(h, w, CvType.CV_8UC1)
+        broad.put(0, 0, ByteArray(w * h) { if (kind[labels[it]] == 2.toByte()) -1 else 0 })
+        val scale = min(1.0, 400.0 / side)
+        val small = Mat()
+        Imgproc.resize(paper, small, Size(), scale, scale, Imgproc.INTER_AREA)
+        paper.release()
+        val wide = Mat()
+        val k = ((max(small.cols(), small.rows()) / 5).coerceAtLeast(31) or 1).toDouble()
+        Imgproc.morphologyEx(small, wide, Imgproc.MORPH_CLOSE, Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(k, k)))
+        Core.multiply(small, Scalar(1.0 / SHOW_SUNK), small)
+        Core.compare(small, wide, wide, Core.CMP_LT)
+        small.release()
+        Imgproc.resize(wide, near, Size(w.toDouble(), h.toDouble()), 0.0, 0.0, Imgproc.INTER_NEAREST)
+        wide.release()
+        Core.bitwise_or(broad, near, broad)
+        val margin = (big.toInt() or 1).toDouble()
+        Imgproc.dilate(broad, broad, Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(margin, margin)))
+        Core.subtract(faint, broad, faint)
+        listOf(broad, near).forEach(Mat::release)
+        Imgproc.dilate(faint, faint, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0)))
+        return faint
+    }
+
+    /**
+     * The lightest a mark can be and still stand out from the paper on flattened [even] (paper at
+     * about 255): below the paper's own blotchiness on a grainy photo, which would otherwise read
+     * as faint marks. The paper's level and spread are its median and median deviation, which the
+     * page's text and show-through hardly move.
+     */
+    private fun paperFloor(even: Mat): Double {
+        val bytes = ByteArray(even.total().toInt()).also { even.get(0, 0, it) }
+        val counts = IntArray(256)
+        for (v in bytes) counts[v.toInt() and 0xFF]++
+        fun median(from: Int, to: Int, value: (Int) -> Int): Int {
+            val spread = IntArray(256)
+            for (v in from..to) spread[value(v)] += counts[v]
+            val half = spread.sum() / 2
+            var seen = 0
+            spread.forEachIndexed { i, n -> seen += n; if (seen > half) return i }
+            return 0
+        }
+        val level = median(PAPER_FROM, 255) { it }
+        val deviation = median(PAPER_FROM, 255) { abs(it - level) }
+        return min(SHOW_LIGHTEST, level - SHOW_SPREAD * 1.4826 * max(deviation, 1))
     }
 
     /**
@@ -508,6 +660,9 @@ internal object Cleanup {
     }
 
     private const val FILL_SIDE = 320.0
+    /** Highlighter: at least this saturated (HSV, 0-255) and this light (gray level). */
+    private const val HIGHLIGHT_SATURATION = 70.0
+    private const val HIGHLIGHT_LIGHTNESS = 170.0
     /** How far past a line's sure words, in line heights, its other words are looked for. */
     private const val LINE_REACH = 2.0
     /** The share of a line's ink inside sure words for it to count as print... */
@@ -522,6 +677,21 @@ internal object Cleanup {
     private const val SOLID_DARK = 200.0
     /** ...filled this share of the page's long side every way: wider than a marker's stroke. */
     private const val SOLID_STROKE = 0.01
+    /** Show-through: lighter than this on flattened paper (255) and darker than [SHOW_LIGHTEST]... */
+    private const val SHOW_DARKEST = 150.0
+    private const val SHOW_LIGHTEST = 247.0
+    /** ...and further below the paper than this many of its own noise's standard deviations. */
+    private const val SHOW_SPREAD = 4.0
+    /** Flattened values from here up are paper for measuring its noise. */
+    private const val PAPER_FROM = 200
+    /** ...with no step sharper than this (levels across three pixels), and grayer than this. */
+    private const val SHOW_STEP = 22.0
+    private const val SHOW_SATURATION = 40.0
+    /** A mark this share of the page's long side, both ways, is no letter; under this share squared, a speck. */
+    private const val SHOW_MARK = 0.03
+    private const val SHOW_SPECK = 0.004
+    /** The paper estimate this far below the paper further out has something big under it. */
+    private const val SHOW_SUNK = 0.9
     /** A solid shape is at least this many of those wide and tall. */
     private const val SOLID_PIECE = 3.0
 }

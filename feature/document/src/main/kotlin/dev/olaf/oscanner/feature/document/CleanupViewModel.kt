@@ -106,11 +106,13 @@ class CleanupViewModel(
 
     fun setRemoveFingers(on: Boolean) = edit { it.copy(removeFingers = on) }
 
-    /** Gives [pageIds] this page's automatic clean-up: each page finds its own handwriting and fingers. */
+    fun setRemoveShowThrough(on: Boolean) = edit { it.copy(removeShowThrough = on) }
+
+    /** Gives [pageIds] this page's automatic clean-up: each page finds its own handwriting, fingers and show-through. */
     fun applyAutoTo(pageIds: Set<Long>) {
         val edits = _state.value.edits ?: return
         if (pageIds.isEmpty()) return
-        store.autoCleanup(pageIds.toList(), handwriting = edits.removePenInk, fingers = edits.removeFingers)
+        store.autoCleanup(pageIds.toList(), handwriting = edits.removePenInk, fingers = edits.removeFingers, showThrough = edits.removeShowThrough)
         _state.update { it.copy(appliedTo = pageIds.size) }
     }
 
@@ -174,4 +176,4 @@ class CleanupViewModel(
 
 /** The same page with no clean-up and no drawn marks: the "before" for comparing. */
 internal fun PageEdits.withoutCleanup() =
-    copy(erase = emptyList(), keep = emptyList(), removePenInk = false, printed = null, removeFingers = false, marks = emptyList(), texts = emptyList())
+    copy(erase = emptyList(), keep = emptyList(), removePenInk = false, printed = null, removeFingers = false, removeShowThrough = false, marks = emptyList(), texts = emptyList())

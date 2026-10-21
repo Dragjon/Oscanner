@@ -66,7 +66,6 @@ internal object InkSorter {
         even.release()
         Core.bitwise_or(faint, dark, faint)
         dark.release()
-        gray.release()
         // A scanned rule is rarely level: it drifts a pixel or two over a hand's width. Thickening
         // the ink a little across before looking for long runs lets a slanted rule count; the
         // rule is then the ink inside those runs.
@@ -95,6 +94,11 @@ internal object InkSorter {
         Imgproc.morphologyEx(rules, across, Imgproc.MORPH_CLOSE, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(1.0, side * 0.04)))
         Core.bitwise_or(bridged, across, bridged)
         Core.bitwise_and(bridged, zone, bridged)
+        // The lines to learn print's color from: rules with paper on both sides. The edge of a
+        // photo or a colored band is a long straight run too, with the picture on one side, and
+        // its color is the picture's, not the print's.
+        val reference = lined(rules, gray, max(4, side / 300))
+        gray.release()
         listOf(down, thick, faint, zone, across).forEach(Mat::release)
         val marks = Mat()
         val rulesWide = Mat()
@@ -105,7 +109,8 @@ internal object InkSorter {
         // Print's color: the darker half of the rules' pixels. Ink inside words the reader is sure
         // of only helps when there are too few rules: it can be sure of neat handwriting too, and
         // on a ruled page that's mostly what the words are.
-        val rulePx = ByteArray(w * h).also { rules.get(0, 0, it) }
+        val rulePx = ByteArray(w * h).also { reference.get(0, 0, it) }
+        reference.release()
         val markPx = ByteArray(w * h).also { marks.get(0, 0, it) }
         val ruleL = (0 until w * h).filter { rulePx[it] != 0.toByte() }.map { l(it) }.sorted()
         val darkRule = ruleL.getOrNull(ruleL.size / 2) ?: 0
@@ -277,6 +282,36 @@ internal object InkSorter {
         return Result(remove, rules, bridged, Core.mean(rgb, rules))
     }
 
+    /**
+     * Pixels of [rules] darker by [RULE_CONTRAST] levels of [gray] than the page [d] pixels
+     * above and below, or to the left and right: a line, not the edge of something.
+     */
+    private fun lined(rules: Mat, gray: Mat, d: Int): Mat {
+        val w = rules.cols()
+        val h = rules.rows()
+        // How much lighter the page is (dx, dy) away than here; 0 where it's darker.
+        fun lighter(dx: Int, dy: Int): Mat {
+            val out = Mat.zeros(h, w, CvType.CV_8UC1)
+            if (d >= w || d >= h) return out
+            val there = gray.submat(maxOf(0, dy), h + minOf(0, dy), maxOf(0, dx), w + minOf(0, dx))
+            val here = gray.submat(maxOf(0, -dy), h + minOf(0, -dy), maxOf(0, -dx), w + minOf(0, -dx))
+            val diff = out.submat(maxOf(0, -dy), h + minOf(0, -dy), maxOf(0, -dx), w + minOf(0, -dx))
+            Core.subtract(there, here, diff)
+            listOf(there, here, diff).forEach(Mat::release)
+            Imgproc.threshold(out, out, RULE_CONTRAST, 255.0, Imgproc.THRESH_BINARY)
+            return out
+        }
+        fun both(a: Mat, b: Mat) = a.also { Core.bitwise_and(a, b, a); b.release() }
+        val across = both(lighter(0, -d), lighter(0, d))
+        val along = both(lighter(-d, 0), lighter(d, 0))
+        Core.bitwise_or(across, along, across)
+        Core.bitwise_and(across, rules, across)
+        along.release()
+        return across
+    }
+
+    /** A rule is this much darker (gray levels) than the page on either side of it. */
+    private const val RULE_CONTRAST = 15.0
     /** Fewer surely-print pixels than this and the print's color isn't known well enough. */
     private const val MIN_REFERENCE = 200
     /** Marks smaller than this (pixels) are too small to judge by their own color. */

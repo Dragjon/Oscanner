@@ -39,7 +39,7 @@ are not layout references (`PLAN.md` §1 still applies to how we build).
 | Erase handwriting ("Erase Marks") | ✅ print-vs-handwriting network |
 | Smart Erase (brush) | ✅ Erase brush |
 | Remove fingers, moiré, curved-page flattening | ✅ |
-| Remove creases and stains, bleed-through | ❌ |
+| Remove creases and stains, bleed-through | 🟡 show-through; ❌ creases, stains |
 | Restore old photo, Enhance image (colour photos) | ❌ |
 | Mosaic / pixelate, auto-mask text | 🟡 black-out boxes and "find emails / numbers" |
 | Edit text inside the image (retype a word in the page's font) | ❌ |
@@ -117,15 +117,18 @@ benchmark it belongs to, committed and pushed, released only when everything is 
 - **Auto filter parity.** Side-by-side test set against our own baseline: whiter paper, no grey
   cast, crisp but not crunchy text, colour kept where it matters. Add a "No shadow" style
   option if Auto can't cover both.
-- **Creases, stains and bleed-through** in Clean up: bleed-through as faint mirrored ink lighter
-  than the page's text; stains as low-frequency colour blotches; creases as long thin
-  shading lines. Classical first, measured on staged photos.
+- 🟡 **Creases, stains and bleed-through** in Clean up. ✅ Show-through (2026-10-21): Clean up →
+  Show-through takes out the back page's print, told from faint ink on the front by its soft
+  edges and gray colour; pencil, highlighter and pale photos stay (94% found on a staged page,
+  none of the pencil). Still to do: stains as low-frequency colour blotches, creases as long
+  thin shading lines.
 
 ### 3.2 Work with files people already have
 - ✅ **Import PDFs** into the library as documents (2026-10-21): from Import → Files, a
   document's "Add from files", or by sharing or opening a PDF with Oscanner. Pages are rendered
   at 200 dpi and read for text; keeping a PDF's own vector text is still to do.
-- **Merge across sources**: scans and imported PDFs in one document.
+- ✅ **Merge across sources**: a document's "Add from files" adds a PDF's pages (or pictures)
+  after its scans, and documents of either kind merge.
 - ✅ **Smaller PDF** to share, whatever the quality setting (2026-10-21).
 - ✅ **Long image** export: pages stacked into one tall picture (2026-10-21).
 
@@ -142,8 +145,10 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   pending a licence check), shown side by side and overlaid on the photo.
 
 ### 3.4 Capture modes
-- **Slides / screen mode**: finds a bright rectangle, removes keystone and moiré, 16:9 output.
-- **Timestamp**: optional date and time printed on the page or as PDF metadata only.
+- ✅ **Slides / screen mode** (2026-10-21): colours kept, screen patterns reduced, squared up to
+  16:9, 16:10 or 4:3 when the outline is close to one.
+- ✅ **Timestamp** (2026-10-21): an Auto-fix option stamps when the photo was taken, as a text
+  mark that can be moved or deleted.
 - **ID photo**: face-centred crop to common passport sizes, plain background colour, a sheet
   of copies to print.
 - **Test paper**: blank the answers (have), then crop each question into its own page for
