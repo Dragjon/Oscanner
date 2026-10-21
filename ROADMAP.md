@@ -19,7 +19,7 @@ are not layout references (`PLAN.md` §1 still applies to how we build).
 ### Capture
 | CamScanner | Oscanner |
 |---|---|
-| Auto edge detection, auto-capture, single and batch | ✅ (detection weaker on light busy counters; see §3.1) |
+| Auto edge detection, auto-capture, single and batch | ✅ (light busy counters improved, still behind; see §3.1) |
 | Modes: Document, ID card, Book, Whiteboard, Scan code | ✅ |
 | Slides (projector or screen, cropped and straightened, de-glared) | 🟡 Whiteboard and Document mostly cover it |
 | Capture Screens (photo of a monitor, moiré removed) | 🟡 "Reduce screen patterns" exists, no mode |
@@ -89,7 +89,8 @@ In rough order of how many people it affects:
    what it scanned itself.
 2. **The scan just works on their counter.** Detection that misses a white page on a light
    table, or an Auto filter that leaves a grey cast, sends people back to what they trust. On
-   our new off-white benchmark the detector finds 164 of 240 pages.
+   our new off-white benchmark the detector found 164 of 240 pages; with the learned page
+   finder, 192.
 3. **They need Office files.** A table to Excel, a page to an editable Word file that still looks
    like the page, slides to PowerPoint.
 4. **They need it in another language.** Translate a letter or a menu, ideally over the photo.
@@ -108,11 +109,11 @@ Each step ships on its own, behind the same bar as today: tested on the emulator
 benchmark it belongs to, committed and pushed, released only when everything is checked.
 
 ### 3.1 Quality first (the thing people notice every day)
-- **Page detection on any counter.** Grow `tools/detector-bench` with more surfaces and real
-  photos; keep tuning the classical detector; then train a small learned detector (page
-  outline or corner heatmap) on synthetic scenes, run it alongside the classical one, and keep
-  whichever is surer. Target: 225 of 240 on the benchmark, no regressions on the 177 older
-  scenes.
+- 🟡 **Page detection on any counter.** A small learned page finder, trained on drawn scenes
+  (`tools/page-finder`), now steps in when the edge search finds nothing (2026-10-21): 192 of
+  240 on the off-white benchmark (was 164), no new outlines on the 177 older scenes. Still to
+  do: real photos in the benchmark, and letting the finder overrule a classical outline that
+  is slightly off (most of the remaining misses). Target: 225 of 240.
 - **Auto filter parity.** Side-by-side test set against our own baseline: whiter paper, no grey
   cast, crisp but not crunchy text, colour kept where it matters. Add a "No shadow" style
   option if Auto can't cover both.
