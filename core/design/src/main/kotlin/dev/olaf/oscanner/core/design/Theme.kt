@@ -1,6 +1,7 @@
 package dev.olaf.oscanner.core.design
 
 import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
@@ -176,6 +177,7 @@ fun OscannerTheme(
  * "only actions are colored" rule and the contrast checks survive.
  */
 @Composable
+@RequiresApi(Build.VERSION_CODES.S)
 private fun withWallpaperAction(base: ColorScheme, dark: Boolean): ColorScheme {
     val context = LocalContext.current
     val dynamic = if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
