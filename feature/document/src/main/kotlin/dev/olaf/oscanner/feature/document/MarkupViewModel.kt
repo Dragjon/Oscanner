@@ -13,6 +13,7 @@ import dev.olaf.oscanner.core.model.LineStyle
 import dev.olaf.oscanner.core.model.TextFont
 import dev.olaf.oscanner.core.model.Page
 import dev.olaf.oscanner.core.model.TextMark
+import dev.olaf.oscanner.core.model.WordBox
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -55,6 +56,8 @@ data class MarkupUiState(
     /** The text whose style the options change, in the Text tool; -1 for none. */
     val selectedText: Int = -1,
     val placement: Placement? = null,
+    /** The words read from the page, so a tap on one can retype it. */
+    val words: List<WordBox> = emptyList(),
     val saving: Boolean = false,
     val saved: Boolean = false,
 ) {
@@ -77,6 +80,9 @@ val TEXT_SIZES = listOf(0.017f, 0.024f, 0.038f)
 /** Behind text: none, white, a highlighter yellow, or dark. */
 val TEXT_BACKGROUNDS: List<Int?> = listOf(null, 0xFFFFFFFF.toInt(), 0xFFFFF59D.toInt(), 0xFF263238.toInt())
 private const val SIGNATURE_PEN_WIDTH = 0.0035f
+/** A retyped word's font size, against its line's usual word height; the cover reaches this far above and below the old word, in its heights. */
+private const val RETYPE_SIZE = 1.3f
+private const val RETYPE_PAD = 0.12f
 
 class MarkupViewModel(
     private val store: PageStore,
@@ -109,7 +115,71 @@ class MarkupViewModel(
                 PageRenderer.render(source, page.edits.copy(marks = emptyList(), texts = emptyList()), 1800).also { source.recycle() }
             }
             _state.update { it.copy(page = page, base = base, marks = page.edits.marks, texts = page.edits.texts) }
+            val words = store.words(page.id)
+            _state.update { it.copy(words = words) }
         }
+    }
+
+    /** The read word at [point], if any, and not already retyped. */
+    fun wordAt(point: Corner): WordBox? = _state.value.words.firstOrNull { w ->
+        point.x in w.left..w.right && point.y in w.top..w.bottom
+    }?.takeIf { w -> _state.value.texts.none { it.coverWidth > 0f && it.x in w.left..w.right && it.y in w.top..w.bottom } }
+
+    /**
+     * Retypes [word] as [text]: the old word covered with the paper's color from around it, and
+     * the new one written over it in the old word's letter height and ink color.
+     */
+    fun retype(word: WordBox, text: String) {
+        val base = _state.value.base ?: return
+        if (text.isBlank()) return
+        val (ink, paper) = inkAndPaper(base, word)
+        val w = base.width.toFloat()
+        val h = base.height.toFloat()
+        val height = (word.bottom - word.top) * h
+        val pad = height * RETYPE_PAD
+        // The line's usual word height sets the size: a word without tall or low letters has a
+        // shorter box than the font it's set in.
+        val line = _state.value.words.filter { o -> minOf(o.bottom, word.bottom) - maxOf(o.top, word.top) > 0.5f * (word.bottom - word.top) }
+        val letters = line.map { it.bottom - it.top }.sorted().let { it[it.size / 2] } * h
+        change {
+            val mark = TextMark(
+                text.trim(),
+                (word.left + word.right) / 2,
+                (word.top + word.bottom) / 2,
+                // A word's box runs from its tallest letter to its lowest; a font's size is a bit less.
+                size = letters * RETYPE_SIZE / w,
+                color = ink,
+                font = it.text.font,
+                bold = it.text.bold,
+                background = paper,
+                // Not past its ends: the next words sit close.
+                coverWidth = word.right - word.left,
+                coverHeight = (height + 2 * pad) / w,
+            )
+            it.copy(texts = it.texts + mark)
+        }
+    }
+
+    /** The darkest and the commonest bright color in and around [word] on [page]: its ink and paper. */
+    private fun inkAndPaper(page: Bitmap, word: WordBox): Pair<Int, Int> {
+        val x0 = (word.left * page.width).toInt().coerceIn(0, page.width - 1)
+        val y0 = (word.top * page.height).toInt().coerceIn(0, page.height - 1)
+        val x1 = (word.right * page.width).toInt().coerceIn(x0 + 1, page.width)
+        val y1 = (word.bottom * page.height).toInt().coerceIn(y0 + 1, page.height)
+        val pixels = IntArray((x1 - x0) * (y1 - y0))
+        page.getPixels(pixels, 0, x1 - x0, x0, y0, x1 - x0, y1 - y0)
+        fun luma(p: Int) = 0.299 * ((p shr 16) and 0xFF) + 0.587 * ((p shr 8) and 0xFF) + 0.114 * (p and 0xFF)
+        val sorted = pixels.sortedBy(::luma)
+        fun average(part: List<Int>): Int {
+            val r = part.sumOf { (it shr 16) and 0xFF } / part.size
+            val g = part.sumOf { (it shr 8) and 0xFF } / part.size
+            val b = part.sumOf { it and 0xFF } / part.size
+            return (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+        }
+        // Ink: the darkest tenth; paper: the lightest half, which letters hardly reach.
+        val ink = average(sorted.take(maxOf(1, sorted.size / 10)))
+        val paper = average(sorted.takeLast(maxOf(1, sorted.size / 2)))
+        return ink to paper
     }
 
     fun setTool(tool: MarkupTool) = _state.update { it.copy(tool = tool, selectedText = -1) }

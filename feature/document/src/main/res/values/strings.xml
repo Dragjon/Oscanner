@@ -168,7 +168,7 @@
     <string name="document_text_bold">Bold</string>
     <string name="document_text_background">Background</string>
     <string name="document_text_no_background">No background</string>
-    <string name="document_text_tool_hint">Tap the page to add text. Tap a text to restyle it, tap it again to change its words.</string>
+    <string name="document_text_tool_hint">Tap the page to add text, or a word of the page to change it. Tap a text to restyle it, tap it again to change its words.</string>
     <string name="document_text_selected_hint">These change the selected text. Tap it again to change its words; drag to move it.</string>
     <string name="document_signature_title">Your signature</string>
     <string name="document_signature_saved">Saved signatures</string>
@@ -187,6 +187,7 @@
     <string name="document_remove_handwriting_description">Pen and pencil, not print</string>
     <string name="document_remove_fingers">Fingers</string>
     <string name="document_remove_fingers_description">Hands holding the page</string>
+    <string name="document_text_retype">Change this word</string>
     <string name="document_remove_show_through">Show-through</string>
     <string name="document_remove_stains">Stains</string>
     <string name="document_finding_print">Finding the printed text…</string>

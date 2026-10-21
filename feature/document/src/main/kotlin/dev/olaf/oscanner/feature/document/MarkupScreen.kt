@@ -113,6 +113,7 @@ import dev.olaf.oscanner.core.model.InkMark
 import dev.olaf.oscanner.core.model.LineStyle
 import dev.olaf.oscanner.core.model.TextFont
 import dev.olaf.oscanner.core.model.TextMark
+import dev.olaf.oscanner.core.model.WordBox
 import kotlin.math.max
 import kotlin.math.min
 
@@ -124,6 +125,8 @@ fun MarkupRoute(viewModel: MarkupViewModel, onDone: () -> Unit) {
     var signing by rememberSaveable { mutableStateOf(false) }
     /** The text dialog: a new text at a point, or an existing one by index. */
     var newTextAt by remember { mutableStateOf<Corner?>(null) }
+    /** A read word being retyped. */
+    var retyping by remember { mutableStateOf<WordBox?>(null) }
     var editingText by rememberSaveable { mutableStateOf(-1) }
     var confirmDiscard by rememberSaveable { mutableStateOf(false) }
     val colors = MaterialTheme.colorScheme
@@ -175,7 +178,7 @@ fun MarkupRoute(viewModel: MarkupViewModel, onDone: () -> Unit) {
                             // on it changes its words; a tap on blank paper adds new text.
                             val hit = viewModel.textAt(at, base.width.toFloat(), base.height.toFloat())
                             when {
-                                hit < 0 -> newTextAt = at
+                                hit < 0 -> viewModel.wordAt(at)?.let { retyping = it } ?: run { newTextAt = at }
                                 hit == state.selectedText -> editingText = hit
                                 else -> viewModel.selectText(hit)
                             }
@@ -260,6 +263,18 @@ fun MarkupRoute(viewModel: MarkupViewModel, onDone: () -> Unit) {
                 viewModel.saveSignature(strokes, aspect, keep)
             },
             onDismiss = { signing = false },
+        )
+    }
+    retyping?.let { word ->
+        TextDialog(
+            initial = TextMark(word.text, 0f, 0f, 0f, 0),
+            retype = true,
+            onDone = { text, _ ->
+                retyping = null
+                viewModel.retype(word, text)
+            },
+            onDelete = null,
+            onDismiss = { retyping = null },
         )
     }
     newTextAt?.let { at ->
@@ -699,6 +714,7 @@ private fun DrawScope.drawInk(mark: InkMark, shown: Rect) {
 @Composable
 private fun TextDialog(
     initial: TextMark?,
+    retype: Boolean = false,
     onDone: (text: String, stamp: Boolean) -> Unit,
     onDelete: (() -> Unit)?,
     onDismiss: () -> Unit,
@@ -717,7 +733,17 @@ private fun TextDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = colors.surfaceContainer,
-        title = { Text(stringResource(if (initial == null) R.string.document_text_add else R.string.document_text_change)) },
+        title = {
+            Text(
+                stringResource(
+                    when {
+                        retype -> R.string.document_text_retype
+                        initial == null -> R.string.document_text_add
+                        else -> R.string.document_text_change
+                    },
+                ),
+            )
+        },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
@@ -733,7 +759,8 @@ private fun TextDialog(
                     ),
                     modifier = Modifier.fillMaxWidth(),
                 )
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Stamps and dates are for new text; a retyped word is just a word.
+                if (!retype) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     QuickChip(stringResource(R.string.document_text_today)) {
                         text = today
                         stamp = false
@@ -745,7 +772,7 @@ private fun TextDialog(
                         }
                     }
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                if (!retype) Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = stamp, onCheckedChange = { stamp = it }, colors = CheckboxDefaults.colors(checkedColor = colors.primary, checkmarkColor = colors.onPrimary))
                     Text(stringResource(R.string.document_text_stamp), style = MaterialTheme.typography.bodyMedium)
                 }

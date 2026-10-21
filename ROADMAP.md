@@ -146,8 +146,12 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   put back in reading order. Columns side by side still come out one after the other.
 - ✅ **Slides to PowerPoint** (2026-10-21): Share → Share as slides; each page fills a slide,
   its text behind the picture so the deck can be searched.
-- **On-device translation** with downloadable language pairs (Bergamot or another open model,
-  pending a licence check), shown side by side and overlaid on the photo.
+- **On-device translation** with downloadable language pairs, shown side by side and overlaid
+  on the photo. Licence check done (2026-10-21): Mozilla's Firefox Translations models are
+  MPL-2.0 (their repository's LICENSE; the repository is archived, the models now live on
+  Mozilla's storage), and the bergamot-translator engine is MPL-2.0 too; both fit a GPL app.
+  Next: a native build (NDK, the engine and its ARM matrix library) and a language-pair
+  download screen. dev.davidv.translator on F-Droid shows it can be done (with slimt).
 
 ### 3.4 Capture modes
 - ✅ **Slides / screen mode** (2026-10-21): colours kept, screen patterns reduced, squared up to
@@ -169,7 +173,10 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   can often be read back (tools such as Depix do it), and black-out is for privacy; solid
   boxes stay the only style. ✅ Black out → Find → All the text (2026-10-21) covers every line of
   read text, a box per line and column, leaving pictures, rules and signatures.
-- **Retype a word** in the image: erase it and draw the new word in a close matching font.
+- ✅ **Retype a word** (2026-10-21): in Sign and draw → Text, tap a word that was read to change
+  it. The old word is covered with the paper's colour from around it and the new one written
+  in its place, in the line's letter height and the word's ink colour. The phone's own fonts
+  are used, so it matches print closely but not exactly.
 - ✅ **Restore old photo** (2026-10-21): the Photo look stretches each colour back between its
   own darkest and lightest (undoing fading and its yellow or magenta cast), gives back a little
   colour, and fills in dust specks on plain areas and thin straight bright scratches. Detail in

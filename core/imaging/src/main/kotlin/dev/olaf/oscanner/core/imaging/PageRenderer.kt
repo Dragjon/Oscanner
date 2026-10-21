@@ -188,6 +188,12 @@ object PageRenderer {
             val cy = mark.y * height
             canvas.save()
             canvas.rotate(mark.angle.toFloat(), cx, cy)
+            if (mark.coverWidth > 0f && mark.coverHeight > 0f) {
+                val cover = Paint().apply { color = mark.background ?: 0xFFFFFFFF.toInt() }
+                val hw = mark.coverWidth * width / 2
+                val hh = mark.coverHeight * width / 2
+                canvas.drawRect(cx - hw, cy - hh, cx + hw, cy + hh, cover)
+            }
             mark.background?.let { fill ->
                 val half = textHalfSize(mark, width)
                 val box = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = fill }
@@ -221,8 +227,13 @@ object PageRenderer {
         val lines = mark.text.lines()
         val textWidth = lines.maxOf { paint.measureText(it) }
         val textHeight = paint.fontSpacing * (lines.size - 1) + (paint.descent() - paint.ascent())
-        val pad = if (mark.stamp || mark.background != null) paint.textSize * 0.4f else paint.textSize * 0.1f
-        return (textWidth / 2 + pad) to (textHeight / 2 + pad)
+        // A retyped word sits snug on its line: no label padding, so it doesn't spill onto the next.
+        val pad = when {
+            mark.coverWidth > 0f -> 0f
+            mark.stamp || mark.background != null -> paint.textSize * 0.4f
+            else -> paint.textSize * 0.1f
+        }
+        return max(textWidth / 2 + pad, mark.coverWidth * width / 2) to max(textHeight / 2 + pad, mark.coverHeight * width / 2)
     }
 
     private fun textPaint(mark: TextMark, width: Float) = Paint(Paint.ANTI_ALIAS_FLAG).apply {

@@ -202,6 +202,13 @@ data class TextMark(
     val bold: Boolean = false,
     /** ARGB filled behind the text, like a label; null for none. */
     val background: Int? = null,
+    /**
+     * A word retyped in place: the size of the word it replaces (as shares of the page's width,
+     * in the mark's own frame), filled with [background] first so none of the old word shows
+     * around a shorter new one. 0 for none.
+     */
+    val coverWidth: Float = 0f,
+    val coverHeight: Float = 0f,
 )
 
 /** Typefaces every Android phone has. */

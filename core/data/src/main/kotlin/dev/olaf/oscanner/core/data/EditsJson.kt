@@ -69,6 +69,12 @@ internal object EditsJson {
         .apply { if (mark.font != TextFont.Sans) put("font", mark.font.name) }
         .apply { if (mark.bold) put("bold", true) }
         .apply { mark.background?.let { put("background", it) } }
+        .apply {
+            if (mark.coverWidth > 0f) {
+                put("coverWidth", mark.coverWidth.toDouble())
+                put("coverHeight", mark.coverHeight.toDouble())
+            }
+        }
 
     private fun readText(obj: JSONObject): TextMark? {
         val text = obj.optString("text").takeIf { it.isNotBlank() } ?: return null
@@ -82,6 +88,8 @@ internal object EditsJson {
             font = TextFont.entries.firstOrNull { it.name == obj.optString("font") } ?: TextFont.Sans,
             bold = obj.optBoolean("bold"),
             background = if (obj.has("background")) obj.optInt("background") else null,
+            coverWidth = obj.optDouble("coverWidth", 0.0).toFloat().takeIf { it.isFinite() && it > 0f } ?: 0f,
+            coverHeight = obj.optDouble("coverHeight", 0.0).toFloat().takeIf { it.isFinite() && it > 0f } ?: 0f,
         )
     }
 
