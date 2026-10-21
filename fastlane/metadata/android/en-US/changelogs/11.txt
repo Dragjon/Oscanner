@@ -1,0 +1,1 @@
+New Auto-fix: clean corners and edges, so desk showing in a page's corners or along its edges becomes paper. The camera notices when you scan the same page twice: a repeat taken automatically is left out (with Keep), one taken with the shutter is kept (with Remove).
