@@ -1,0 +1,1 @@
+New scans are named after their heading once read. The welcome tour snows, and Olaf hops along with you. Fixes: the Done button no longer touches the switch beside it, text fields let go when you tap away, toolbars show when there are more tools.
