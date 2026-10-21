@@ -21,6 +21,11 @@ class FlattenShapesTest {
             Imgproc.rectangle(page, Rect(900 + i * 180, 900, 120, 400), c, -1)
         }
         Imgproc.rectangle(page, Rect(300, 1600, 500, 120), Scalar(25.0, 25.0, 25.0), -1)
+        // A pale photo: a smooth gradient only 5 to 20% darker than the paper.
+        for (x in 0 until 400) {
+            val v = (0.8 + 0.15 * x / 400) * 250
+            Imgproc.line(page, Point(1100.0 + x, 1800.0), Point(1100.0 + x, 2049.0), Scalar(v, v * 0.97, v * 0.93))
+        }
         // Shadow: darkest (x0.65) at the left edge, fading out by a third of the way across.
         val shade = Mat(page.size(), CvType.CV_32FC3)
         for (x in 0 until page.cols()) {
@@ -48,6 +53,8 @@ class FlattenShapesTest {
         assertTrue("Gray hollowed the bar: ${mean(gray, bar)[0]}", mean(gray, bar)[0] < 170)
         assertTrue("Gray hollowed the black box: ${mean(gray, box)[0]}", mean(gray, box)[0] < 90)
         assertTrue("Gray left the shadow: ${mean(gray, shadowedPaper)[0]}", mean(gray, shadowedPaper)[0] > 225)
+        val photoMiddle = Rect(1150, 1850, 100, 150)
+        assertTrue("Gray whitened the pale photo: ${mean(gray, photoMiddle)[0]}", mean(gray, photoMiddle)[0] < 220)
 
         val auto = Filters.apply(src, PageFilter.Auto)
         val red = mean(auto, bar)

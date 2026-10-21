@@ -21,8 +21,17 @@ internal object Filters {
 
     /** Side length the paper background is estimated at; text strokes vanish at this size. */
     private const val BACKGROUND_SIDE = 400.0
-    /** The estimate this far below the wider paper around it is a shadow or a solid shape... */
-    private const val SUNK = 0.88
+    /** The estimate this far below the wider paper around it is a shadow or something on the page... */
+    private const val SUNK = 0.97
+    /**
+     * ...a pale picture when this share of its edge band steps by half its depth (at least
+     * [PALE_STEP]): a step lights up only a pixel or two of the five-pixel band, so a crisp
+     * outline scores about 0.4, and 0.3 is sharp most of the way round...
+     */
+    private const val ALL_ROUND = 0.3
+    private const val PALE_STEP = 0.04
+    /** ...or, at least this deep (a share of the paper's brightness), a solid shape when... */
+    private const val DEEP = 0.12
     /** ...a shape when this share of its edge steps by [EDGE_STEP] of the paper's brightness in a pixel or two... */
     private const val SHARP_SHARE = 0.15
     private const val EDGE_STEP = 0.25
@@ -304,9 +313,13 @@ internal object Filters {
         Core.multiply(estimate, Scalar(1.0 / SUNK), lifted)
         val sunk = Mat()
         Core.compare(lifted, wide, sunk, Core.CMP_LT)
-        listOf(lifted, estimate).forEach(Mat::release)
+        lifted.release()
         val edges = Mat()
         Imgproc.morphologyEx(gray, edges, Imgproc.MORPH_GRADIENT, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0)))
+        // Steps only: with thin lines closed away first, a ruled box around a shadow isn't an edge.
+        val steps = Mat()
+        Imgproc.morphologyEx(gray, steps, Imgproc.MORPH_CLOSE, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(5.0, 5.0)))
+        Imgproc.morphologyEx(steps, steps, Imgproc.MORPH_GRADIENT, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0)))
 
         val labels = Mat()
         val stats = Mat()
@@ -330,18 +343,28 @@ internal object Filters {
             Imgproc.erode(part, shrunk, near)
             Core.subtract(grown, shrunk, band)
             val level = Core.mean(wide, part).`val`[0].coerceAtLeast(1.0)
-            // Sharp: a good share of the edge band steps by a quarter of the paper's brightness.
-            Core.compare(edges, Scalar(EDGE_STEP * level), sharp, Core.CMP_GT)
-            Core.bitwise_and(sharp, band, sharp)
-            val sharpShare = Core.countNonZero(sharp).toDouble() / Core.countNonZero(band).coerceAtLeast(1)
-            if (sharpShare < SHARP_SHARE) continue
-            val darkness = Core.mean(gray, part).`val`[0] / level
-            // The ring just outside is the paper the shape sits on.
-            Core.subtract(grown, part, band)
-            val tint = Core.mean(saturation, part).`val`[0] - Core.mean(saturation, band).`val`[0]
-            if (tint > SHAPE_TINT || darkness < SHAPE_DARK) Core.bitwise_or(holes, grown, holes)
+            val depth = 1.0 - Core.mean(estimate, part).`val`[0] / level
+            val bandSize = Core.countNonZero(band).coerceAtLeast(1).toDouble()
+            // The share of the edge band that steps by this share of the paper's brightness.
+            fun sharpShare(step: Double, from: Mat = edges): Double {
+                Core.compare(from, Scalar(step * level), sharp, Core.CMP_GT)
+                Core.bitwise_and(sharp, band, sharp)
+                return Core.countNonZero(sharp) / bandSize
+            }
+            // A pale picture (a light photo, a tinted box) dips only a little, but stops sharply
+            // nearly all the way round; a shadow fades out on most of its sides.
+            val pale = sharpShare(max(PALE_STEP, depth / 2), steps) >= ALL_ROUND
+            // Deeper, a sharp edge in places will do, if it's colored or very dark.
+            val deep = depth >= DEEP && sharpShare(EDGE_STEP) >= SHARP_SHARE && run {
+                val darkness = Core.mean(gray, part).`val`[0] / level
+                // The ring just outside is the paper the shape sits on.
+                Core.subtract(grown, part, band)
+                val tint = Core.mean(saturation, part).`val`[0] - Core.mean(saturation, band).`val`[0]
+                tint > SHAPE_TINT || darkness < SHAPE_DARK
+            }
+            if (pale || deep) Core.bitwise_or(holes, grown, holes)
         }
-        listOf(labels, stats, centroids, part, grown, shrunk, band, sharp, near, sunk, edges, wide, gray, saturation).forEach(Mat::release)
+        listOf(labels, stats, centroids, part, grown, shrunk, band, sharp, near, sunk, edges, steps, wide, gray, saturation, estimate).forEach(Mat::release)
         if (Core.countNonZero(holes) > 0) Photo.inpaint(paper, holes, paper, 5.0, Photo.INPAINT_TELEA)
         holes.release()
     }
