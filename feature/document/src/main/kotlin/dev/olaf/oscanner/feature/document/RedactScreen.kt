@@ -30,6 +30,7 @@ import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material.icons.rounded.AlternateEmail
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.automirrored.rounded.Notes
 import androidx.compose.material.icons.rounded.Numbers
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.AlertDialog
@@ -191,6 +192,7 @@ private fun FindSheet(state: RedactUiState, onCover: (List<List<dev.olaf.oscanne
     val words = state.uncovered
     val emails = remember(words) { PrivateDetails.emails(words) }
     val numbers = remember(words) { PrivateDetails.numbers(words) }
+    val lines = remember(words) { PrivateDetails.lines(words) }
     var query by rememberSaveable { mutableStateOf("") }
     val matches = remember(words, query) { PrivateDetails.matching(words, query) }
 
@@ -231,6 +233,14 @@ private fun FindSheet(state: RedactUiState, onCover: (List<List<dev.olaf.oscanne
                     stringResource(R.string.document_redact_numbers),
                     pluralStringResource(R.plurals.document_redact_numbers_found, numbers.size, numbers.size),
                     { onCover(numbers) },
+                )
+            }
+            if (lines.isNotEmpty()) {
+                SheetAction(
+                    Icons.AutoMirrored.Rounded.Notes,
+                    stringResource(R.string.document_redact_all),
+                    pluralStringResource(R.plurals.document_redact_lines_found, lines.size, lines.size),
+                    { onCover(lines) },
                 )
             }
             if (emails.isEmpty() && numbers.isEmpty()) {

@@ -165,7 +165,8 @@ benchmark it belongs to, committed and pushed, released only when everything is 
 ### 3.5 Editing extras
 - ~~Pixelate / blur as a second style for black-out~~: not doing it. Pixelated or blurred text
   can often be read back (tools such as Depix do it), and black-out is for privacy; solid
-  boxes stay the only style. "Cover all text in a box" is still worth adding.
+  boxes stay the only style. ✅ Black out → Find → All the text (2026-10-21) covers every line of
+  read text, a box per line and column, leaving pictures, rules and signatures.
 - **Retype a word** in the image: erase it and draw the new word in a close matching font.
 - **Restore old photo**: dust and scratch removal, colour fading correction (classical first).
 

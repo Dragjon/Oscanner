@@ -50,6 +50,24 @@ object PrivateDetails {
         return groups
     }
 
+    /**
+     * All the text, a line at a time: words in reading order on one line, split where a gap is
+     * wider than [COLUMN_GAP] letter heights (a second column, a form's label and its value), so
+     * a box covers words and not the space between columns.
+     */
+    fun lines(words: List<WordBox>): List<List<WordBox>> {
+        val groups = mutableListOf<MutableList<WordBox>>()
+        for (word in words) {
+            val run = groups.lastOrNull()
+            val last = run?.last()
+            val joins = last != null && sameLine(last, word) &&
+                word.left - last.right < COLUMN_GAP * min(last.bottom - last.top, word.bottom - word.top) &&
+                word.left > last.left
+            if (joins) run!! += word else groups += mutableListOf(word)
+        }
+        return groups
+    }
+
     /** Every place the words of [query] appear in a row, ignoring case and punctuation. */
     fun matching(words: List<WordBox>, query: String): List<List<WordBox>> {
         val wanted = query.split(Regex("""\s+""")).map(::normalize).filter { it.isNotEmpty() }
@@ -103,5 +121,6 @@ object PrivateDetails {
     private fun normalize(text: String) = text.lowercase().filter { it.isLetterOrDigit() }
 
     private const val MIN_DIGITS = 7
+    private const val COLUMN_GAP = 3f
     private const val PAD = 0.25f
 }

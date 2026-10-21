@@ -17,6 +17,15 @@ class PrivateDetailsTest {
     }
 
     @Test
+    fun coversAllTheTextALineAtATimeAndKeepsColumnsApart() {
+        val words = page("Dear Sam thanks for the parcel", "Name Ana Lima") +
+            // A second column on the second line's height, far to the right.
+            WordBox("Date", 0.7f, 0.15f, 0.78f, 0.18f) + WordBox("today", 0.8f, 0.15f, 0.9f, 0.18f)
+        val lines = PrivateDetails.lines(words).map { g -> g.joinToString(" ") { it.text } }
+        assertEquals(listOf("Dear Sam thanks for the parcel", "Name Ana Lima", "Date today"), lines)
+    }
+
+    @Test
     fun findsEmailsWithTrailingPunctuation() {
         val words = page("Write to ana.lima@example.org, or call")
         assertEquals(listOf("ana.lima@example.org,"), PrivateDetails.emails(words).map { it.single().text })

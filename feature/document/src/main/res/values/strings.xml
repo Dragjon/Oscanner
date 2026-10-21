@@ -89,6 +89,11 @@
         <item quantity="one">%d found</item>
         <item quantity="other">%d found</item>
     </plurals>
+    <string name="document_redact_all">All the text</string>
+    <plurals name="document_redact_lines_found">
+        <item quantity="one">%d line, leaving pictures, lines and signatures</item>
+        <item quantity="other">%d lines, leaving pictures, lines and signatures</item>
+    </plurals>
     <plurals name="document_redact_numbers_found">
         <item quantity="one">%d found: card, account, phone or ID number</item>
         <item quantity="other">%d found: card, account, phone or ID numbers</item>
