@@ -21,7 +21,10 @@ data class TrackerState(
  *
  * One frame's say isn't enough: an outline first shows once the next frame finds it again, and
  * one far from the shown outline replaces it only when the next frame agrees. A stray outline
- * on a single frame, on a patch of counter, say, never shows.
+ * on a single frame, on a patch of counter, say, never shows. An outline that takes in the shown
+ * one and reaches further out (a strip of desk, out to a mat's edge) is the likeliest mistake,
+ * so it needs [growFrames] frames in a row. Wobbles smaller than [still] leave the outline where
+ * it is, so it doesn't shiver while the phone is held still.
  */
 class AutoCaptureTracker(
     private val stableMillis: Long = 600,
@@ -29,10 +32,13 @@ class AutoCaptureTracker(
     private val minSharpness: Double = 40.0,
     private val lostMillis: Long = 400,
     private val smoothing: Float = 0.5f,
+    private val growFrames: Int = 3,
+    private val still: Float = 0.006f,
 ) {
     private var smoothed: Quad? = null
-    /** A detection that disagrees with [smoothed], waiting for the next frame to confirm it. */
+    /** A detection that disagrees with [smoothed], waiting for the next frames to confirm it. */
     private var pending: Quad? = null
+    private var pendingFrames = 0
     private var anchor: Quad? = null
     private var anchorAt = 0L
     private var lastSeenAt = 0L
@@ -45,21 +51,28 @@ class AutoCaptureTracker(
             return TrackerState(smoothed, 0f, fire = false)
         }
         val shown = smoothed
-        if (shown == null || QuadGeometry.iou(shown, detected) < AGREE_IOU) {
+        val grows = shown != null && grows(shown, detected)
+        if (shown == null || grows || QuadGeometry.iou(shown, detected) < AGREE_IOU) {
             val candidate = pending
+            pendingFrames = if (candidate != null && QuadGeometry.iou(candidate, detected) >= AGREE_IOU) pendingFrames + 1 else 1
             pending = detected
-            if (candidate == null || QuadGeometry.iou(candidate, detected) < AGREE_IOU) {
+            // A page is still in view, even while it's not yet clear where: what's shown stays.
+            if (shown != null && grows) lastSeenAt = now
+            if (pendingFrames < if (grows) growFrames else 2) {
                 // Unconfirmed: keep what's shown (or nothing) a little longer.
                 if (shown != null && now - lastSeenAt > lostMillis) reset()
                 return TrackerState(smoothed, 0f, fire = false)
             }
-            // Two frames agree on a new place: jump there rather than slide across.
+            // Frames agree on a new place: jump there rather than slide across.
             smoothed = null
             anchor = null
         }
         pending = null
+        pendingFrames = 0
         lastSeenAt = now
-        val eased = smoothed?.let { QuadGeometry.lerp(it, detected, smoothing) } ?: detected
+        val eased = smoothed?.let { from ->
+            if (QuadGeometry.maxCornerDistance(from, detected) < still) from else QuadGeometry.lerp(from, detected, smoothing)
+        } ?: detected
         smoothed = eased
 
         val settled = anchor
@@ -93,7 +106,18 @@ class AutoCaptureTracker(
         smoothed = null
         anchor = null
         pending = null
+        pendingFrames = 0
         rearm()
+    }
+
+    /** Whether [next] takes in [shown] and reaches clearly further out. */
+    private fun grows(shown: Quad, next: Quad): Boolean {
+        val a = QuadGeometry.area(shown.corners)
+        val b = QuadGeometry.area(next.corners)
+        if (b < GROW * a) return false
+        val iou = QuadGeometry.iou(shown, next)
+        val shared = iou * (a + b) / (1 + iou)
+        return shared >= CONTAINED * a
     }
 
     private companion object {
@@ -101,5 +125,8 @@ class AutoCaptureTracker(
         const val REARM_IOU = 0.8
         /** Outlines overlapping this much are the same page, moved a little. */
         const val AGREE_IOU = 0.85
+        /** Larger by this share of its area, holding nearly all of what was shown. */
+        const val GROW = 1.05
+        const val CONTAINED = 0.95
     }
 }

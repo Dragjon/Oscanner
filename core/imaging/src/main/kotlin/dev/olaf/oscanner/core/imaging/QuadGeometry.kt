@@ -134,6 +134,10 @@ object QuadGeometry {
     }
 
     /** Blends [from] toward [to] corner by corner; [alpha] 1 jumps straight to [to]. */
+    /** The furthest any corner of [a] is from the matching corner of [b]. */
+    fun maxCornerDistance(a: Quad, b: Quad): Float =
+        a.corners.zip(b.corners).maxOf { (p, q) -> kotlin.math.hypot(p.x - q.x, p.y - q.y) }
+
     fun lerp(from: Quad, to: Quad, alpha: Float): Quad = Quad.of(
         from.corners.zip(to.corners) { a, b -> Corner(a.x + (b.x - a.x) * alpha, a.y + (b.y - a.y) * alpha) },
     )

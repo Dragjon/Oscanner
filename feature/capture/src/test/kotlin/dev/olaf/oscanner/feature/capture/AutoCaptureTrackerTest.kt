@@ -49,6 +49,29 @@ class AutoCaptureTrackerTest {
     }
 
     @Test
+    fun anOutlineJumpingOutForAFrameOrTwoNeverShows() {
+        val tracker = AutoCaptureTracker()
+        tracker.feed(page, 0, 300)
+        // Out to a mat's edge on the right and below: 8% bigger, holding the page.
+        val wider = Quad(Corner(0.2f, 0.2f), Corner(0.84f, 0.2f), Corner(0.84f, 0.84f), Corner(0.2f, 0.84f))
+        assertEquals(page, tracker.onFrame(wider, 100.0, 350, true).quad)
+        assertEquals(page, tracker.onFrame(wider, 100.0, 400, true).quad)
+        assertEquals(page, tracker.onFrame(page, 100.0, 450, true).quad)
+        // Held for three frames, it's believed: the page really is bigger (the phone moved closer).
+        tracker.onFrame(wider, 100.0, 500, true)
+        tracker.onFrame(wider, 100.0, 550, true)
+        assertEquals(wider, tracker.onFrame(wider, 100.0, 600, true).quad)
+    }
+
+    @Test
+    fun aTinyWobbleLeavesTheOutlineStill() {
+        val tracker = AutoCaptureTracker()
+        tracker.feed(page, 0, 300)
+        val nudged = Quad(Corner(0.203f, 0.2f), Corner(0.803f, 0.202f), Corner(0.8f, 0.8f), Corner(0.2f, 0.797f))
+        assertEquals(page, tracker.onFrame(nudged, 100.0, 350, true).quad)
+    }
+
+    @Test
     fun doesNotFireOnBlurryFrames() {
         val tracker = AutoCaptureTracker()
         assertTrue(tracker.feed(page, 0, 2000, sharp = 5.0).isEmpty())

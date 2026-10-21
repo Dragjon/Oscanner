@@ -12,6 +12,7 @@ import org.opencv.core.MatOfInt
 import org.opencv.core.MatOfPoint
 import org.opencv.core.MatOfPoint2f
 import org.opencv.core.Point
+import org.opencv.core.Scalar
 import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
 import kotlin.math.PI
@@ -107,8 +108,11 @@ class DocumentDetector(
         val found = valid
             .filter { outer ->
                 keepSpreads || valid.none { inner ->
-                    inner.whole && inner.polarity == outer.polarity &&
-                        inner.area < UNION_SHARE * outer.area && sharesSide(inner.quad, outer.quad)
+                    inner.whole && inner.polarity == outer.polarity && sharesSide(inner.quad, outer.quad) &&
+                        // Two sheets side by side; or a sheet with a strip of darker desk taken in
+                        // beside it, out to the edge of a mat or the table, which the camera
+                        // would show one frame and not the next.
+                        (inner.area < UNION_SHARE * outer.area || (inner.area < BAND_SHARE * outer.area && darkerBand(inner.quad, outer.quad, width, height)))
                 }
             }
             .maxByOrNull { it.score }
@@ -125,7 +129,7 @@ class DocumentDetector(
             if (sharpness < FOLLOW_BLURRY) return Detection(prior, sharpness, followed = true)
             // The prior was inset when it was found; its sides are snapped back onto the edge.
             val reach = max(REFINE_REACH, (FOLLOW_REACH * max(gray.cols(), gray.rows())).toInt())
-            val followed = snapToPaper(toFull(outset(prior)), reach, maxMove = 1.5 * reach)?.let(::toQuad)
+            val followed = snapToPaper(toFull(outset(prior)), reach, maxMove = 1.5 * reach, nearest = true)?.let(::toQuad)
             if (followed != null && plausible(followed)) return Detection(inset(followed), sharpness, followed = true)
         }
         // The finder's outline is rough (its mask is coarse): its sides are snapped onto the
@@ -197,6 +201,25 @@ class DocumentDetector(
         if (quad.corners.count { it.x < BORDER || it.x > 1 - BORDER || it.y < BORDER || it.y > 1 - BORDER } >= 2) return null
         if (QuadGeometry.angles(quad).any { abs(it - 90.0) > angleTolerance }) return null
         return quad
+    }
+
+    /** Whether what [outer] takes in beyond [inner] is clearly darker than [inner]: desk, not paper. */
+    private fun darkerBand(inner: Quad, outer: Quad, width: Int, height: Int): Boolean {
+        fun shape(q: Quad) = MatOfPoint(*q.corners.map { Point(it.x * width.toDouble(), it.y * height.toDouble()) }.toTypedArray())
+        val inMask = Mat.zeros(height, width, CvType.CV_8UC1)
+        val outMask = Mat.zeros(height, width, CvType.CV_8UC1)
+        val a = shape(inner)
+        val b = shape(outer)
+        Imgproc.fillConvexPoly(inMask, a, Scalar(255.0))
+        Imgproc.fillConvexPoly(outMask, b, Scalar(255.0))
+        // A pixel or two of the band next to the page is the page's own soft edge: left out.
+        val grown = Mat()
+        Imgproc.dilate(inMask, grown, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(5.0, 5.0)))
+        Core.subtract(outMask, grown, outMask)
+        val band = Core.countNonZero(outMask)
+        val result = band > 0 && Core.mean(raw.image, outMask).`val`[0] < BAND_DARKER * Core.mean(raw.image, inMask).`val`[0]
+        listOf(inMask, outMask, grown, a, b).forEach(Mat::release)
+        return result
     }
 
     private fun pixels(mask: Mat) = ByteArray(mask.rows() * mask.cols()).also { mask.get(0, 0, it) }
@@ -461,10 +484,10 @@ class DocumentDetector(
 
     /**
      * Each side moved onto the outermost strong edge nearby with paper on the inside (lighter
-     * inward), within [reach] pixels either way; null unless most of every side finds one, or if
+     * inward), within [reach] pixels either way, or with [nearest] the one closest to where it is; null unless most of every side finds one, or if
      * a corner then lands far from where it was.
      */
-    private fun snapToPaper(corners: List<P>, reach: Int, maxMove: Double = 3.0 * reach): List<P>? {
+    private fun snapToPaper(corners: List<P>, reach: Int, maxMove: Double = 3.0 * reach, nearest: Boolean = false): List<P>? {
         val fitted = List(4) { i ->
             val a = corners[i]
             val b = corners[(i + 1) % 4]
@@ -487,7 +510,10 @@ class DocumentDetector(
                     // The page's own edge is the outermost one: lines printed on it are further in.
                     // And it's a step, darker all the way out, where a ruled line is paper again
                     // just past it.
-                    val i = g.indices.firstOrNull { g[it] >= FINDER_OUTER * best && isStepAt(x0 + nx * (it - reach), y0 + ny * (it - reach), nx, ny) }
+                    val steps = g.indices.filter { g[it] >= FINDER_OUTER * best && isStepAt(x0 + nx * (it - reach), y0 + ny * (it - reach), nx, ny) }
+                    // Following a page already found, the edge nearest where it was is the page's:
+                    // a shadow or a desk's edge just outside is a step too.
+                    val i = if (nearest) steps.minByOrNull { abs(it - reach) } else steps.firstOrNull()
                     if (i != null) {
                         xs += x0 + nx * (i - reach)
                         ys += y0 + ny * (i - reach)
@@ -747,6 +773,9 @@ class DocumentDetector(
         /** An inner sheet this well outlined, at most this share of an outer one, splits it. */
         private const val WHOLE = 0.9
         private const val UNION_SHARE = 0.85
+        /** Up to this share, an inner sheet still wins if the band beyond it is this much darker than it. */
+        private const val BAND_SHARE = 0.97
+        private const val BAND_DARKER = 0.92
         /** Paper darker than its background is rarer, so it needs the stronger outline. */
         private const val DARK_PAGE = 0.8
         private const val REFINE_REACH = 4
