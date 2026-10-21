@@ -21,7 +21,31 @@ class AutoCaptureTrackerTest {
     fun firesOnceAfterPageHoldsStill() {
         val tracker = AutoCaptureTracker()
         val fired = tracker.feed(page, 0, 3000)
-        assertEquals(listOf(600L), fired)
+        // Shown from the second frame (50 ms), held 600 ms.
+        assertEquals(listOf(650L), fired)
+    }
+
+    @Test
+    fun aStrayOutlineOnOneFrameNeverShows() {
+        val tracker = AutoCaptureTracker()
+        assertNull(tracker.onFrame(elsewhere, 100.0, 0, true).quad)
+        assertNull(tracker.onFrame(null, 100.0, 50, true).quad)
+    }
+
+    @Test
+    fun aStrayOutlineDoesNotPullTheShownOneAway() {
+        val tracker = AutoCaptureTracker()
+        tracker.feed(page, 0, 300)
+        assertEquals(page, tracker.onFrame(elsewhere, 100.0, 350, true).quad)
+        assertEquals(page, tracker.onFrame(page, 100.0, 400, true).quad)
+    }
+
+    @Test
+    fun anOutlineSeenTwiceElsewhereIsAdopted() {
+        val tracker = AutoCaptureTracker()
+        tracker.feed(page, 0, 300)
+        tracker.onFrame(elsewhere, 100.0, 350, true)
+        assertEquals(elsewhere, tracker.onFrame(elsewhere, 100.0, 400, true).quad)
     }
 
     @Test

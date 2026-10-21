@@ -25,8 +25,11 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-/** A page outline found in one frame, normalized to that frame, plus how sharp the frame was. */
-data class Detection(val quad: Quad?, val sharpness: Double)
+/**
+ * A page outline found in one frame, normalized to that frame, plus how sharp the frame was.
+ * [followed] means it was found only near where it was before, not afresh.
+ */
+data class Detection(val quad: Quad?, val sharpness: Double, val followed: Boolean = false)
 
 /**
  * Finds the page in a grayscale frame (PLAN.md §5.4). The search runs on a small copy of the
@@ -69,8 +72,13 @@ class DocumentDetector(
     private val filled = Field()
     private val full = Field()
 
-    /** [gray] is a single-channel 8-bit frame, ideally around 640 px on its long side. */
-    fun detect(gray: Mat): Detection {
+    /**
+     * [gray] is a single-channel 8-bit frame, ideally around 640 px on its long side. [prior] is
+     * where the page was in the frame before, if anywhere: when the search here finds nothing,
+     * the page is looked for near there, on weaker evidence. Telling whether a page is still
+     * where it was is easier than finding it, so a faint page stays found while the camera moves.
+     */
+    fun detect(gray: Mat, prior: Quad? = null): Detection {
         val sharpness = sharpness(gray)
         val scale = SEARCH_SIDE.toDouble() / max(gray.cols(), gray.rows())
         Imgproc.resize(gray, small, Size(), scale, scale, Imgproc.INTER_AREA)
@@ -112,6 +120,14 @@ class DocumentDetector(
         fun toFull(q: Quad) = q.corners.map { P(it.x * width * sx, it.y * height * sy) }
         fun toQuad(points: List<P>) = QuadGeometry.order(points.map { Corner((it.x / gray.cols()).toFloat(), (it.y / gray.rows()).toFloat()) })
         if (found != null) return Detection(inset(toQuad(refine(toFull(found)))), sharpness)
+        if (prior != null) {
+            // A blurred frame (the phone moving) can't place the page better than the last one did.
+            if (sharpness < FOLLOW_BLURRY) return Detection(prior, sharpness, followed = true)
+            // The prior was inset when it was found; its sides are snapped back onto the edge.
+            val reach = max(REFINE_REACH, (FOLLOW_REACH * max(gray.cols(), gray.rows())).toInt())
+            val followed = snapToPaper(toFull(outset(prior)), reach, maxMove = 1.5 * reach)?.let(::toQuad)
+            if (followed != null && plausible(followed)) return Detection(inset(followed), sharpness, followed = true)
+        }
         // The finder's outline is rough (its mask is coarse): its sides are snapped onto the
         // page's own edge, looked for further out, and it only counts if that edge is there.
         val rough = fromFinder(gray, width, height) ?: return Detection(null, sharpness)
@@ -202,6 +218,24 @@ class DocumentDetector(
 
     private fun polygonArea(points: List<P>): Double =
         abs(points.indices.sumOf { i -> points[i].x * points[(i + 1) % points.size].y - points[(i + 1) % points.size].x * points[i].y }) / 2
+
+    /**
+     * Whether the full frame steps down across (x, y) going against (nx, ny): the middle of a
+     * few pixels just outside is darker than the middle of a few just inside.
+     */
+    private fun isStepAt(x: Double, y: Double, nx: Double, ny: Double): Boolean {
+        fun middle(from: Int, to: Int) = (from..to).map { full.at(x + nx * it, y + ny * it) }.sorted().let { it[it.size / 2] }
+        return middle(STEP_NEAR, STEP_FAR) - middle(-STEP_FAR, -STEP_NEAR) >= STEP_MIN_LEVELS
+    }
+
+    /** A page-shaped outline: convex, a sensible size, square enough, not running out of view. */
+    private fun plausible(quad: Quad): Boolean {
+        if (!QuadGeometry.isConvex(quad)) return false
+        val area = QuadGeometry.area(quad.corners)
+        if (area < MIN_AREA_RATIO || area > 0.98) return false
+        if (quad.corners.count { it.x < BORDER || it.x > 1 - BORDER || it.y < BORDER || it.y > 1 - BORDER } >= 2) return false
+        return QuadGeometry.angles(quad).none { abs(it - 90.0) > angleTolerance }
+    }
 
     /** Variance of the Laplacian: low when the frame is blurred by motion or focus. */
     private fun sharpness(gray: Mat): Double {
@@ -430,7 +464,7 @@ class DocumentDetector(
      * inward), within [reach] pixels either way; null unless most of every side finds one, or if
      * a corner then lands far from where it was.
      */
-    private fun snapToPaper(corners: List<P>, reach: Int): List<P>? {
+    private fun snapToPaper(corners: List<P>, reach: Int, maxMove: Double = 3.0 * reach): List<P>? {
         val fitted = List(4) { i ->
             val a = corners[i]
             val b = corners[(i + 1) % 4]
@@ -451,9 +485,13 @@ class DocumentDetector(
                 val best = g.max()
                 if (best >= FINDER_GRAD) {
                     // The page's own edge is the outermost one: lines printed on it are further in.
-                    val o = g.indices.first { g[it] >= FINDER_OUTER * best } - reach
-                    xs += x0 + nx * o
-                    ys += y0 + ny * o
+                    // And it's a step, darker all the way out, where a ruled line is paper again
+                    // just past it.
+                    val i = g.indices.firstOrNull { g[it] >= FINDER_OUTER * best && isStepAt(x0 + nx * (it - reach), y0 + ny * (it - reach), nx, ny) }
+                    if (i != null) {
+                        xs += x0 + nx * (i - reach)
+                        ys += y0 + ny * (i - reach)
+                    }
                 }
             }
             if (xs.size < n * FINDER_SIDE) return null
@@ -464,7 +502,7 @@ class DocumentDetector(
             if (keep.size < xs.size / 2) first else Line.fit(keep.map { xs[it] }, keep.map { ys[it] })
         }
         val snapped = List(4) { i -> fitted[(i + 3) % 4].meet(fitted[i]) ?: return null }
-        return snapped.takeIf { snapped.indices.all { i -> hypot(snapped[i].x - corners[i].x, snapped[i].y - corners[i].y) <= 3.0 * reach } }
+        return snapped.takeIf { snapped.indices.all { i -> hypot(snapped[i].x - corners[i].x, snapped[i].y - corners[i].y) <= maxMove } }
     }
 
     /**
@@ -475,6 +513,14 @@ class DocumentDetector(
         val cx = quad.corners.map { it.x }.average().toFloat()
         val cy = quad.corners.map { it.y }.average().toFloat()
         return Quad.of(quad.corners.map { Corner(it.x + (cx - it.x) * INSET, it.y + (cy - it.y) * INSET) })
+    }
+
+    /** Undoes [inset]. */
+    private fun outset(quad: Quad): Quad {
+        val cx = quad.corners.map { it.x }.average().toFloat()
+        val cy = quad.corners.map { it.y }.average().toFloat()
+        val k = 1f / (1f - INSET)
+        return Quad.of(quad.corners.map { Corner(cx + (it.x - cx) * k, cy + (it.y - cy) * k) })
     }
 
     private class Candidate(val quad: Quad, val area: Double, val polarity: Int, val score: Double, val whole: Boolean)
@@ -653,6 +699,14 @@ class DocumentDetector(
         /** A paper edge as faint as a few gray levels counts, along this share of each side. */
         private const val FINDER_GRAD = 8.0
         private const val FINDER_SIDE = 0.6
+        /** How far, as a share of the frame, the page may have moved since the frame before. */
+        private const val FOLLOW_REACH = 0.025
+        /** Sharpness below which a frame is too blurred to follow the page in. */
+        private const val FOLLOW_BLURRY = 150.0
+        /** A step at a page edge: pixels this far either side differ by this much at the middle. */
+        private const val STEP_NEAR = 2
+        private const val STEP_FAR = 7
+        private const val STEP_MIN_LEVELS = 5
         /** An edge this near the strongest counts, so the outermost of a page's edges is taken. */
         private const val FINDER_OUTER = 0.5
         /** Points further from a first fit than this many times the median (or pixels) are dropped. */

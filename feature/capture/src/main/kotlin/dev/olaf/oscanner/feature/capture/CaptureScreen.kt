@@ -340,7 +340,6 @@ private fun CameraLayer(viewModel: CaptureViewModel, state: CaptureUiState, titl
     DisposableEffect(controller, lifecycleOwner) {
         val executor = Executors.newSingleThreadExecutor()
         val analyzer = PageAnalyzer(
-            context = context.applicationContext,
             mode = { viewModel.state.value.mode },
             toScreen = context.backCameraToPortrait(),
             onCode = viewModel::onCode,

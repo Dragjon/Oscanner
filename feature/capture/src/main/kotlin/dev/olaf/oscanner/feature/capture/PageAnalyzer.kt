@@ -1,10 +1,8 @@
 package dev.olaf.oscanner.feature.capture
 
-import android.content.Context
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import dev.olaf.oscanner.core.imaging.DocumentDetector
-import dev.olaf.oscanner.core.imaging.PageNet
 import dev.olaf.oscanner.core.imaging.PageRenderer
 import dev.olaf.oscanner.core.imaging.QuadGeometry
 import dev.olaf.oscanner.core.model.Quad
@@ -20,8 +18,6 @@ import kotlin.math.max
  * thread, which owns its [DocumentDetector].
  */
 internal class PageAnalyzer(
-    /** For the page finder's model, which the detector asks when its own search finds nothing. */
-    private val context: Context,
     private val mode: () -> CaptureMode,
     /**
      * Clockwise degrees from the camera's frames to the screen, which stays upright in portrait
@@ -36,8 +32,10 @@ internal class PageAnalyzer(
     // Created on the analysis thread, after OpenCV's native code is loaded.
     private var detector: DocumentDetector? = null
     private var detectorMode: CaptureMode? = null
-    private val pageNet by lazy { runCatching { PageNet(context) }.getOrNull() }
     private var scaled: Mat? = null
+    /** Where the page was in the last frame, and how many frames running it was only followed. */
+    private var lastQuad: Quad? = null
+    private var followedFrames = 0
     private val codes by lazy { CodeReader() }
 
     override fun analyze(image: ImageProxy) {
@@ -52,11 +50,11 @@ internal class PageAnalyzer(
                 detector?.release()
                 detector = null
                 detectorMode = current
+                lastQuad = null
             }
             val detector = detector ?: DocumentDetector(
                 angleTolerance = if (current == CaptureMode.Whiteboard || current == CaptureMode.Slides) 50.0 else 35.0,
                 keepSpreads = current == CaptureMode.Book,
-                finder = pageNet,
             ).also { detector = it }
             val plane = image.planes[0]
             val luminance = Mat(image.height, image.width, CvType.CV_8UC1, plane.buffer, plane.rowStride.toLong())
@@ -69,7 +67,11 @@ internal class PageAnalyzer(
             } else {
                 luminance
             }
-            val detection = detector.detect(frame)
+            // A page is followed from frame to frame for a while, but must be found afresh now
+            // and then, so an outline can't wander off on its own.
+            val detection = detector.detect(frame, lastQuad.takeIf { followedFrames < MAX_FOLLOWED })
+            lastQuad = detection.quad
+            followedFrames = if (detection.quad != null && detection.followed) followedFrames + 1 else 0
             val glare = detection.quad?.let { Glare.onPage(frame, it) } ?: false
             val signals = FrameSampler.measure(image, detection.quad, Core.mean(frame).`val`[0])
             luminance.release()
@@ -88,12 +90,12 @@ internal class PageAnalyzer(
     fun release() {
         detector?.release()
         detector = null
-        pageNet?.close()
         scaled?.release()
         scaled = null
     }
 
     private companion object {
+        const val MAX_FOLLOWED = 10
         const val MAX_SIDE = 720
         const val TARGET_SIDE = 640
     }

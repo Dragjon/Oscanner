@@ -18,6 +18,10 @@ data class TrackerState(
  * eased toward the latest detection; a page that stays within [stableIou] of where it settled for
  * [stableMillis] on a sharp frame fires once. It re-arms only after the page leaves or moves well
  * away, so one sheet is never captured twice.
+ *
+ * One frame's say isn't enough: an outline first shows once the next frame finds it again, and
+ * one far from the shown outline replaces it only when the next frame agrees. A stray outline
+ * on a single frame, on a patch of counter, say, never shows.
  */
 class AutoCaptureTracker(
     private val stableMillis: Long = 600,
@@ -27,6 +31,8 @@ class AutoCaptureTracker(
     private val smoothing: Float = 0.5f,
 ) {
     private var smoothed: Quad? = null
+    /** A detection that disagrees with [smoothed], waiting for the next frame to confirm it. */
+    private var pending: Quad? = null
     private var anchor: Quad? = null
     private var anchorAt = 0L
     private var lastSeenAt = 0L
@@ -38,6 +44,20 @@ class AutoCaptureTracker(
             if (now - lastSeenAt > lostMillis) reset()
             return TrackerState(smoothed, 0f, fire = false)
         }
+        val shown = smoothed
+        if (shown == null || QuadGeometry.iou(shown, detected) < AGREE_IOU) {
+            val candidate = pending
+            pending = detected
+            if (candidate == null || QuadGeometry.iou(candidate, detected) < AGREE_IOU) {
+                // Unconfirmed: keep what's shown (or nothing) a little longer.
+                if (shown != null && now - lastSeenAt > lostMillis) reset()
+                return TrackerState(smoothed, 0f, fire = false)
+            }
+            // Two frames agree on a new place: jump there rather than slide across.
+            smoothed = null
+            anchor = null
+        }
+        pending = null
         lastSeenAt = now
         val eased = smoothed?.let { QuadGeometry.lerp(it, detected, smoothing) } ?: detected
         smoothed = eased
@@ -72,11 +92,14 @@ class AutoCaptureTracker(
     private fun reset() {
         smoothed = null
         anchor = null
+        pending = null
         rearm()
     }
 
     private companion object {
         /** The page must move this far from where it was captured before auto fires again. */
         const val REARM_IOU = 0.8
+        /** Outlines overlapping this much are the same page, moved a little. */
+        const val AGREE_IOU = 0.85
     }
 }
