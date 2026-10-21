@@ -117,6 +117,11 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   outline takes in what the finder calls desk (its 48×64 mask can't tell: wrong and right
   outlines score the same). Of the 31 wrong outlines most are near misses, 2 to 5% off, which
   is edge refinement, not finding. Now 190 of 240. Target: 225 of 240.
+  2026-10-22: the finder retrained on patterned cloth, booklets and curved spreads (from photos
+  users sent), and its outline kept when its sides won't snap: 193 of 240, the new outlines
+  near misses. The camera's own outline is now kept for the captured photo. Still to do: the
+  finder on live frames (off since 0.5.4 for misfiring on real ones), and a benchmark of real
+  photos rather than drawn ones.
 - **Auto filter parity.** Side-by-side test set against our own baseline: whiter paper, no grey
   cast, crisp but not crunchy text, colour kept where it matters. Add a "No shadow" style
   option if Auto can't cover both.
