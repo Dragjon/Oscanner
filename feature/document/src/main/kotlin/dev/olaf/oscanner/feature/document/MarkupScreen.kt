@@ -1,5 +1,6 @@
 package dev.olaf.oscanner.feature.document
 
+import dev.olaf.oscanner.core.design.fadingEdges
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -145,7 +146,7 @@ fun MarkupRoute(viewModel: MarkupViewModel, onDone: () -> Unit) {
             title = stringResource(R.string.document_markup),
             closeLabel = stringResource(R.string.document_cancel),
             onClose = leave,
-            doneLabel = stringResource(R.string.document_ok),
+            doneLabel = stringResource(R.string.document_apply),
             onDone = viewModel::save,
             doneEnabled = state.placement == null,
         ) {
@@ -307,7 +308,7 @@ fun MarkupRoute(viewModel: MarkupViewModel, onDone: () -> Unit) {
             onDismissRequest = { confirmDiscard = false },
             containerColor = colors.surfaceContainer,
             title = { Text(stringResource(R.string.document_markup_discard)) },
-            confirmButton = { TextButton(onClick = viewModel::save) { Text(stringResource(R.string.document_ok)) } },
+            confirmButton = { TextButton(onClick = viewModel::save) { Text(stringResource(R.string.document_apply)) } },
             dismissButton = {
                 TextButton(onClick = {
                     confirmDiscard = false
@@ -373,10 +374,12 @@ private fun Gap() {
 
 @Composable
 private fun OptionRow(content: @Composable () -> Unit) {
+    val scroll = rememberScrollState()
     Row(
         Modifier
             .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
+            .fadingEdges(scroll)
+            .horizontalScroll(scroll)
             .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(2.dp),

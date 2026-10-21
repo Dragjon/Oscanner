@@ -1,5 +1,6 @@
 package dev.olaf.oscanner.feature.document
 
+import dev.olaf.oscanner.core.design.endTypingOutside
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -90,6 +91,7 @@ internal fun DetailsSheet(
         Column(
             Modifier
                 .fillMaxWidth()
+                .endTypingOutside()
                 .verticalScroll(rememberScrollState())
                 .navigationBarsPadding()
                 .imePadding()

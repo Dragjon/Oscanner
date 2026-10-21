@@ -77,18 +77,21 @@ fun Dock(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
         ) { measurables, constraints ->
             val width = constraints.maxWidth
+            // Room kept between neighbors, so a lit switch never touches the pill beside it.
+            val gaps = DOCK_GAP.roundToPx() * (measurables.size - 1).coerceAtLeast(0)
+            val usable = (width - gaps).coerceAtLeast(0)
             val loose = constraints.copy(minWidth = 0, minHeight = 0)
             val isPill = measurables.map { it.layoutId == PRIMARY }
             val needs = measurables.mapIndexed { i, m -> if (isPill[i]) 0 else m.maxIntrinsicWidth(constraints.maxHeight) }
             val pills = isPill.count { it }
-            val pillRoom = if (pills == 0) 0 else (width - needs.sum()) / pills
+            val pillRoom = if (pills == 0) 0 else (usable - needs.sum()) / pills
             val pill = measurables.indices.filter { isPill[it] }.associateWith { i ->
                 val m = measurables[i]
                 val most = max(pillRoom, m.minIntrinsicWidth(constraints.maxHeight)).coerceAtMost(width)
                 // Roomy when there's space; down to a snug fit around its word when there isn't.
                 m.measure(loose.copy(minWidth = min(PILL_WIDTH.roundToPx(), most), maxWidth = most))
             }
-            val left = (width - pill.values.sumOf { it.width }).coerceAtLeast(0)
+            val left = (usable - pill.values.sumOf { it.width }).coerceAtLeast(0)
             val scale = if (needs.sum() > left) left.toFloat() / needs.sum() else 1f
             val placeables = measurables.mapIndexed { i, m -> pill[i] ?: m.measure(loose.copy(maxWidth = (needs[i] * scale).toInt())) }
             val height = placeables.maxOfOrNull { it.height } ?: 0
@@ -111,6 +114,7 @@ fun Dock(
 private const val PRIMARY = "primary"
 
 private val PILL_WIDTH = 140.dp
+private val DOCK_GAP = 8.dp
 
 
 /**

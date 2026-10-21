@@ -1,5 +1,6 @@
 package dev.olaf.oscanner.feature.text
 
+import dev.olaf.oscanner.core.design.endTypingOutside
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -123,7 +124,8 @@ fun TextRoute(viewModel: TextViewModel, startPage: Int, onBack: () -> Unit) {
     Box(
         Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(MaterialTheme.colorScheme.background)
+            .endTypingOutside(),
     ) {
         Column(Modifier.fillMaxSize()) {
             Row(

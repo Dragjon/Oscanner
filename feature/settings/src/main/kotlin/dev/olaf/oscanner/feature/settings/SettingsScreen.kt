@@ -1,5 +1,10 @@
 package dev.olaf.oscanner.feature.settings
 
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import dev.olaf.oscanner.core.design.endTypingOutside
 import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
@@ -143,7 +148,8 @@ fun SettingsScreen(
     Box(
         Modifier
             .fillMaxSize()
-            .background(colors.background),
+            .background(colors.background)
+            .endTypingOutside(),
     ) {
         LazyColumn(
             modifier = Modifier.align(Alignment.TopCenter).widthIn(max = 720.dp).fillMaxSize(),
@@ -280,6 +286,7 @@ fun SettingsScreen(
                     Spacer(Modifier.height(12.dp))
                     // Once typing starts, the field keeps its own text; storage catching up never overwrites it.
                     var draft by rememberSaveable { mutableStateOf<String?>(null) }
+                    val focus = LocalFocusManager.current
                     OutlinedTextField(
                         value = draft ?: state.watermark,
                         onValueChange = {
@@ -288,6 +295,8 @@ fun SettingsScreen(
                             onWatermarkChange(text)
                         },
                         singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { focus.clearFocus() }),
                         placeholder = { Text(stringResource(R.string.settings_watermark_hint)) },
                         modifier = Modifier.fillMaxWidth(),
                         shape = MaterialTheme.shapes.medium,

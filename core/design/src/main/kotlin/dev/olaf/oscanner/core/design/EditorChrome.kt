@@ -78,9 +78,11 @@ fun EditorTopBar(
 @Composable
 fun EditorToolbar(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
     Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = modifier.fillMaxWidth()) {
+        val scroll = rememberScrollState()
         Row(
             Modifier
-                .horizontalScroll(rememberScrollState())
+                .fadingEdges(scroll)
+                .horizontalScroll(scroll)
                 .padding(horizontal = 8.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically,
