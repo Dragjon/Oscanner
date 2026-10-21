@@ -1,0 +1,1 @@
+The camera's outline is steadier: it no longer jumps out to the edge of a desk, a mat or a shadow beside the page, and holds still while the phone does. Delete a page from a document with the small x on its corner.
