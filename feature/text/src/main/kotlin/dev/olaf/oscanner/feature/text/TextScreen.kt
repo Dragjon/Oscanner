@@ -29,6 +29,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.TableChart
 import androidx.compose.material.icons.rounded.TextSnippet
 import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.LibraryBooks
@@ -200,6 +201,10 @@ fun TextRoute(viewModel: TextViewModel, startPage: Int, onBack: () -> Unit) {
                 exporting = false
                 viewModel.exportText()
             },
+            onSpreadsheet = {
+                exporting = false
+                viewModel.exportSpreadsheet()
+            },
             onDismiss = { exporting = false },
         )
     }
@@ -207,7 +212,7 @@ fun TextRoute(viewModel: TextViewModel, startPage: Int, onBack: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ExportSheet(onWord: () -> Unit, onPlain: () -> Unit, onDismiss: () -> Unit) {
+private fun ExportSheet(onWord: () -> Unit, onPlain: () -> Unit, onSpreadsheet: () -> Unit, onDismiss: () -> Unit) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -221,6 +226,7 @@ private fun ExportSheet(onWord: () -> Unit, onPlain: () -> Unit, onDismiss: () -
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             SheetAction(Icons.Rounded.Description, stringResource(R.string.text_export_word), stringResource(R.string.text_export_word_description), onWord)
+            SheetAction(Icons.Rounded.TableChart, stringResource(R.string.text_export_sheet), stringResource(R.string.text_export_sheet_description), onSpreadsheet)
             SheetAction(Icons.Rounded.TextSnippet, stringResource(R.string.text_export_plain), stringResource(R.string.text_export_plain_description), onPlain)
         }
     }

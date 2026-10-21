@@ -19,6 +19,8 @@
     <string name="text_no_app">No app on this phone can receive it.</string>
     <string name="text_export_word">Word document</string>
     <string name="text_export_word_description">A .docx file you can edit in any word processor</string>
+    <string name="text_export_sheet">Spreadsheet</string>
+    <string name="text_export_sheet_description">An Excel .xlsx file: tables and receipts in rows and columns</string>
     <string name="text_export_plain">Plain text</string>
     <string name="text_export_plain_description">A .txt file with just the words</string>
 </resources>

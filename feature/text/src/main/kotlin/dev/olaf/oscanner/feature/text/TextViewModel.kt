@@ -59,7 +59,12 @@ class TextViewModel(
         viewModelScope.launch { runCatching { store.exportDocx(documentId) }.onSuccess { exports.send(it to DOCX) } }
     }
 
+    fun exportSpreadsheet() {
+        viewModelScope.launch { runCatching { store.exportXlsx(documentId) }.onSuccess { exports.send(it to XLSX) } }
+    }
+
     private companion object {
         const val DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        const val XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     }
 }

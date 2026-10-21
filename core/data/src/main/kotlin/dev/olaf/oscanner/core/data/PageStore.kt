@@ -27,6 +27,8 @@ import dev.olaf.oscanner.core.pdf.JpegPdfWriter
 import dev.olaf.oscanner.core.pdf.PdfPage
 import dev.olaf.oscanner.core.pdf.PdfPageSize
 import dev.olaf.oscanner.core.pdf.PdfWord
+import dev.olaf.oscanner.core.pdf.TableLayout
+import dev.olaf.oscanner.core.pdf.XlsxWriter
 import dev.olaf.oscanner.core.model.PdfPageFormat
 import dev.olaf.oscanner.core.model.PdfQuality
 import kotlinx.coroutines.flow.first
@@ -620,6 +622,25 @@ class PageStore(
         return withContext(Dispatchers.IO) {
             File(exportsDir.apply { mkdirs() }, "${safeName(title)}.docx").apply {
                 outputStream().buffered().use { DocxWriter.write(title, pages, it) }
+            }
+        }
+    }
+
+    /**
+     * The read pages as a spreadsheet, one sheet per page: words placed in rows and columns by
+     * where they sit (see [TableLayout]), so a receipt or a table comes out as cells. Covered
+     * areas stay out. Pages not read yet are skipped.
+     */
+    suspend fun exportXlsx(documentId: Long): File {
+        val title = db.documents().getRow(documentId)?.title ?: "Scan"
+        val sheets = db.pages().forDocument(documentId).mapIndexedNotNull { i, page ->
+            val words = visibleWords(page)
+            if (words.isEmpty()) null else "Page ${i + 1}" to TableLayout.cells(words)
+        }
+        require(sheets.isNotEmpty()) { "No page has been read yet" }
+        return withContext(Dispatchers.IO) {
+            File(exportsDir.apply { mkdirs() }, "${safeName(title)}.xlsx").apply {
+                outputStream().buffered().use { XlsxWriter.write(sheets, it) }
             }
         }
     }
