@@ -84,6 +84,10 @@ class DocumentViewModel(
 
     fun shareLongImage() = work(Busy.PreparingImages) { DocumentEvent.ShareImages(listOf(store.exportLongImage(documentId))) }
 
+    fun deletePage(pageId: Long) {
+        viewModelScope.launch { store.deletePage(pageId) }
+    }
+
     fun splitQuestions(title: String) = work(Busy.Splitting) {
         store.splitQuestions(documentId, title)?.let { DocumentEvent.Open(it) } ?: DocumentEvent.NoQuestions
     }

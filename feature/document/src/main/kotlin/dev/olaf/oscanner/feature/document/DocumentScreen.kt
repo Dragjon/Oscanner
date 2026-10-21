@@ -58,6 +58,8 @@ import androidx.compose.material.icons.rounded.Slideshow
 import androidx.compose.material.icons.rounded.Sell
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.TextSnippet
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -128,6 +130,8 @@ fun DocumentRoute(
     var renaming by rememberSaveable { mutableStateOf(false) }
     var moving by rememberSaveable { mutableStateOf(false) }
     var protecting by rememberSaveable { mutableStateOf(false) }
+    // The page whose deletion is being confirmed.
+    var deletingPage by rememberSaveable { mutableStateOf<Int?>(null) }
     // The page an ID photo is being made from, while its options are asked.
     var idPhotoPage by rememberSaveable { mutableStateOf<Int?>(null) }
     var details by rememberSaveable { mutableStateOf(false) }
@@ -231,7 +235,11 @@ fun DocumentRoute(
                 contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
                 pageSpacing = 16.dp,
             ) { index ->
-                PageView(state.pages[index], Modifier.fillMaxSize())
+                PageView(
+                    state.pages[index],
+                    onDelete = if (state.pages.size > 1) ({ deletingPage = index }) else null,
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
 
             if (state.pages.size > 1) {
@@ -377,6 +385,24 @@ fun DocumentRoute(
             },
         )
     }
+    deletingPage?.let { index ->
+        val colors = MaterialTheme.colorScheme
+        AlertDialog(
+            onDismissRequest = { deletingPage = null },
+            containerColor = colors.surfaceContainer,
+            title = { Text(stringResource(R.string.document_delete_page_title, index + 1)) },
+            text = { Text(stringResource(R.string.document_delete_page_body), color = colors.onSurfaceVariant) },
+            confirmButton = {
+                TextButton(onClick = {
+                    deletingPage = null
+                    state.pages.getOrNull(index)?.let { viewModel.deletePage(it.id) }
+                }) { Text(stringResource(R.string.document_text_delete), color = colors.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { deletingPage = null }) { Text(stringResource(R.string.document_cancel), color = colors.onSurfaceVariant) }
+            },
+        )
+    }
     idPhotoPage?.let { page ->
         IdPhotoDialog(
             onMake = { size, background ->
@@ -409,7 +435,7 @@ fun DocumentRoute(
 }
 
 @Composable
-private fun PageView(page: Page, modifier: Modifier = Modifier) {
+private fun PageView(page: Page, onDelete: (() -> Unit)?, modifier: Modifier = Modifier) {
     // The full render once it exists; until then the small thumbnail or the original photo.
     val path = page.renderPath ?: page.thumbPath ?: page.originalPath
     val image by rememberPageImage(path, maxSide = 2000)
@@ -418,7 +444,26 @@ private fun PageView(page: Page, modifier: Modifier = Modifier) {
         if (shown == null) {
             CircularProgressIndicator(Modifier.size(32.dp), strokeWidth = 3.dp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
-            Image(shown, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.clip(MaterialTheme.shapes.small))
+            // Sized to the page, so the delete button sits on its corner.
+            Box {
+                Image(shown, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.clip(MaterialTheme.shapes.small))
+                if (onDelete != null) {
+                    Surface(
+                        onClick = onDelete,
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.7f),
+                        contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(8.dp)
+                            .size(36.dp),
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.document_delete_page), modifier = Modifier.size(20.dp))
+                        }
+                    }
+                }
+            }
         }
         if (page.renderPath == null) {
             StatusChip(ProcessingState.Enhancing, Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp))
