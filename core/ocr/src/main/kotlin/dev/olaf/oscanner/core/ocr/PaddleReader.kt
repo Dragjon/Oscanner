@@ -273,23 +273,33 @@ class PaddleReader(context: Context) : PageReader {
 
     /** Lines into reading order: rows top to bottom (lines whose middles share a row), each left to right. */
     private fun assemble(lines: List<Line>): OcrResult {
-        val sorted = lines.sortedBy { line -> line.corners.sumOf { it.y } / 4 }
-        val rows = mutableListOf<MutableList<Line>>()
-        for (line in sorted) {
-            val mid = line.corners.sumOf { it.y } / 4
-            val height = (line.corners[3].y - line.corners[0].y + line.corners[2].y - line.corners[1].y) / 2
-            val row = rows.lastOrNull()?.takeIf { row ->
-                val rowMid = row.sumOf { l -> l.corners.sumOf { it.y } / 4 } / row.size
-                kotlin.math.abs(rowMid - mid) < height * 0.5
-            }
-            if (row != null) row += line else rows += mutableListOf(line)
-        }
-        val ordered = rows.map { row -> row.sortedBy { line -> line.corners.minOf { it.x } } }
+        val spans = lines.map { line -> line.corners.minOf { it.y } to line.corners.maxOf { it.y } }
+        val ordered = rows(spans).map { row -> row.map { lines[it] }.sortedBy { line -> line.corners.minOf { it.x } } }
         val text = ordered.joinToString("\n") { row -> row.joinToString(" ") { line -> line.words.joinToString(" ") { it.text } } }
         return OcrResult(text, ordered.flatten().flatMap { it.words })
     }
 
-    private companion object {
+    internal companion object {
+        /**
+         * Lines (each its top and bottom) grouped into rows, top to bottom, as indexes. A line
+         * shares a row when it overlaps the row's latest line by half the shorter of the two: a
+         * short piece read on its own ("and" at a line's end) has a short box, so its middle can
+         * sit well off the row's and still belong to it; and comparing with the latest line, not
+         * the whole row, keeps a row from growing tall enough to swallow the next.
+         */
+        fun rows(spans: List<Pair<Double, Double>>): List<List<Int>> {
+            val rows = mutableListOf<MutableList<Int>>()
+            for (i in spans.indices.sortedBy { (spans[it].first + spans[it].second) / 2 }) {
+                val (top, bottom) = spans[i]
+                val row = rows.lastOrNull()?.takeIf { row ->
+                    val (rowTop, rowBottom) = spans[row.last()]
+                    minOf(bottom, rowBottom) - maxOf(top, rowTop) > 0.5 * minOf(bottom - top, rowBottom - rowTop)
+                }
+                if (row != null) row += i else rows += mutableListOf(i)
+            }
+            return rows
+        }
+
         const val THREADS = 4
         /** The long side the page is scaled to for finding lines: small print stays legible. */
         const val DET_SIDE = 1600
