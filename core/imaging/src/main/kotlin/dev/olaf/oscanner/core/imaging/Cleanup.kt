@@ -52,7 +52,9 @@ internal object Cleanup {
         val mask = Mat.zeros(h, w, CvType.CV_8UC1)
         var mend: Pair<Mat, Scalar>? = null
         if (edits.removePenInk) {
-            penInk(rgb).also { Core.bitwise_or(mask, it, mask); it.release() }
+            // Charts, photos and coloured boxes are pen-coloured in places, but no pen draws that thick.
+            val solid = solidShapes(rgb)
+            penInk(rgb).also { Core.subtract(it, solid, it); Core.bitwise_or(mask, it, mask); it.release() }
             edits.printed?.let { found ->
                 // Print found by its look is exact; words the reader was sure of need checking.
                 val printed = if (edits.printByLook) found else confidentPrint(rgb, found)
@@ -64,6 +66,8 @@ internal object Cleanup {
                 if (sorted?.blank != true) {
                     darkHandwriting(rgb, printed, exact = edits.printByLook).also { Core.bitwise_or(writing, it, writing); it.release() }
                 }
+                // Before the mend, too: a bar's straight edges look like rules the writing crossed.
+                Core.subtract(writing, solid, writing)
                 sorted?.let { s ->
                     // Rules stay, and are drawn on through the gaps the writing leaves.
                     val near = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0))
@@ -80,6 +84,7 @@ internal object Cleanup {
                 Core.bitwise_or(mask, writing, mask)
                 writing.release()
             }
+            solid.release()
         }
         if (edits.removeFingers) fingers(rgb).also { Core.bitwise_or(mask, it, mask); it.release() }
         // "Keep" protects from the automatic removals; painting "erase" always wins.
@@ -234,6 +239,52 @@ internal object Cleanup {
         // The outermost strip is where desk or shadow is left after cropping, never handwriting.
         clearMargin(mask, 0.02)
         return mask
+    }
+
+    /**
+     * Filled areas wider every way than a pen or marker stroke: chart bars, photos, coloured
+     * boxes, solid logos. Ink is anything clearly coloured or darker than the paper around it;
+     * what an opening wider than a stroke leaves of it is solid. Grown to take in the shapes'
+     * edges, which the removals see as thin marks of their own.
+     */
+    private fun solidShapes(rgb: Mat): Mat {
+        val side = max(rgb.cols(), rgb.rows())
+        val hsv = Mat()
+        Imgproc.cvtColor(rgb, hsv, Imgproc.COLOR_RGB2HSV)
+        val ink = Mat()
+        Core.extractChannel(hsv, ink, 1)
+        hsv.release()
+        Imgproc.threshold(ink, ink, SOLID_SATURATION, 255.0, Imgproc.THRESH_BINARY)
+        val gray = Mat()
+        Imgproc.cvtColor(rgb, gray, Imgproc.COLOR_RGB2GRAY)
+        val paper = Filters.backgroundOf(gray)
+        Core.divide(gray, paper, gray, 255.0)
+        paper.release()
+        val dark = Mat()
+        Imgproc.threshold(gray, dark, SOLID_DARK, 255.0, Imgproc.THRESH_BINARY_INV)
+        gray.release()
+        Core.bitwise_or(ink, dark, ink)
+        dark.release()
+        val stroke = max(9.0, side * SOLID_STROKE)
+        Imgproc.morphologyEx(ink, ink, Imgproc.MORPH_OPEN, Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(stroke, stroke)))
+        // A fat marker's letters leave crumbs about a stroke wide; a picture is a few strokes each way.
+        val labels = Mat()
+        val stats = Mat()
+        val centroids = Mat()
+        val count = Imgproc.connectedComponentsWithStats(ink, labels, stats, centroids, 8, CvType.CV_32S)
+        val least = stroke * SOLID_PIECE
+        for (k in 1 until count) {
+            if (stats.get(k, Imgproc.CC_STAT_WIDTH)[0] < least || stats.get(k, Imgproc.CC_STAT_HEIGHT)[0] < least) {
+                val crumb = Mat()
+                Core.compare(labels, Scalar(k.toDouble()), crumb, Core.CMP_EQ)
+                ink.setTo(Scalar(0.0), crumb)
+                crumb.release()
+            }
+        }
+        listOf(labels, stats, centroids).forEach(Mat::release)
+        // As far again: the opening rounds the shapes' corners off by about that much.
+        Imgproc.dilate(ink, ink, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(stroke, stroke)))
+        return ink
     }
 
     /**
@@ -466,4 +517,11 @@ internal object Cleanup {
     /** or for a short label of this many line heights, this share. */
     private const val SURE_LABEL = 0.9
     private const val LABEL_RUN = 2.5
+    /** Solid shapes: saturation, or brightness against the paper (255 = paper), that counts as ink... */
+    private const val SOLID_SATURATION = 60.0
+    private const val SOLID_DARK = 200.0
+    /** ...filled this share of the page's long side every way: wider than a marker's stroke. */
+    private const val SOLID_STROKE = 0.01
+    /** A solid shape is at least this many of those wide and tall. */
+    private const val SOLID_PIECE = 3.0
 }
