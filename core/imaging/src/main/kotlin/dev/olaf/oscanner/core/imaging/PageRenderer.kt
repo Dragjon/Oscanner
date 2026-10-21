@@ -40,6 +40,10 @@ object PageRenderer {
     const val OCR_SIDE = 3400
     /** Plenty to trace text lines; the detector works at 1200 wide anyway. */
     private const val MEASURE_SIDE = 2000
+    /** Paper is judged on a copy this big; it is brighter than this share of the page's brightest, and less saturated than this. */
+    private const val PAPER_SIDE = 400.0
+    private const val PAPER_BRIGHT = 0.75
+    private const val PAPER_SATURATION = 60.0
 
     @Volatile private var loaded = false
 
@@ -55,6 +59,38 @@ object PageRenderer {
     }
 
     /** Decodes [path] turned upright per its EXIF tag, with the long side near [maxSide] (never under it unless the photo is). */
+    /**
+     * The share of [page] that looks like paper: bright next to the page's brightest parts, and
+     * not strongly colored (paper under warm light still counts). A page of print or writing is
+     * mostly paper; a photo of a person or a scene isn't.
+     */
+    fun paperShare(page: Bitmap): Double {
+        ensureLoaded()
+        val rgb = toRgb(page)
+        val scale = min(1.0, PAPER_SIDE / max(rgb.cols(), rgb.rows()))
+        val small = Mat()
+        Imgproc.resize(rgb, small, Size(), scale, scale, Imgproc.INTER_AREA)
+        rgb.release()
+        val gray = Mat()
+        Imgproc.cvtColor(small, gray, Imgproc.COLOR_RGB2GRAY)
+        val hsv = Mat()
+        Imgproc.cvtColor(small, hsv, Imgproc.COLOR_RGB2HSV)
+        small.release()
+        val saturation = Mat()
+        Core.extractChannel(hsv, saturation, 1)
+        hsv.release()
+        val values = ByteArray(gray.total().toInt()).also { gray.get(0, 0, it) }.map { it.toInt() and 0xFF }.sorted()
+        val bright = values[(values.size * 0.95).toInt().coerceAtMost(values.size - 1)]
+        val light = Mat()
+        Core.compare(gray, Scalar(PAPER_BRIGHT * bright), light, Core.CMP_GT)
+        val plain = Mat()
+        Core.compare(saturation, Scalar(PAPER_SATURATION), plain, Core.CMP_LT)
+        Core.bitwise_and(light, plain, light)
+        val share = Core.countNonZero(light).toDouble() / light.total()
+        listOf(gray, saturation, light, plain).forEach(Mat::release)
+        return share
+    }
+
     fun loadUpright(path: String, maxSide: Int): Bitmap {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(path, bounds)

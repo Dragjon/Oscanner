@@ -255,6 +255,9 @@ class PageStore(
                 val entity = db.pages().get(id) ?: continue
                 val edits = EditsJson.read(entity.editsJson)
                 if (edits.removePenInk) continue
+                // Not on a photo of a person or a scene: it's made for paper, and it would blot
+                // whatever it took for ink. It can still be turned on by hand in Clean up.
+                if (!mostlyPaper(entity)) continue
                 val printed = runCatching { text.printedAreas(entity.originalPath, edits) }
                     .onFailure { Log.w(TAG, "Finding print on page $id failed", it) }
                     .getOrNull() ?: continue
@@ -262,6 +265,15 @@ class PageStore(
                 setEdits(id, edits.copy(removePenInk = true, printed = printed, printByLook = true))
             }
         }
+    }
+
+    /** Whether a page is mostly paper (see [PageRenderer.paperShare]), judged on its straightened render if there is one. */
+    private suspend fun mostlyPaper(page: PageEntity): Boolean = withContext(Dispatchers.Default) {
+        val path = page.renderPath?.takeIf { File(it).exists() } ?: page.originalPath
+        runCatching {
+            val bitmap = PageRenderer.loadUpright(path, PAPER_CHECK_SIDE)
+            PageRenderer.paperShare(bitmap).also { bitmap.recycle() } >= MIN_PAPER
+        }.getOrDefault(true)
     }
 
     /**
@@ -911,6 +923,9 @@ class PageStore(
         private const val SOURCE_SIDE = 4000
         /** ID photos are cut from the photo at up to this size: plenty for 300 dpi. */
         private const val ID_SOURCE_SIDE = 3000
+        /** Automatic handwriting removal waits for a page at least this much paper. */
+        private const val MIN_PAPER = 0.45
+        private const val PAPER_CHECK_SIDE = 800
         private const val DETECT_SIDE = 640
         private const val LONG_WIDTH = 1240
         private const val LONG_GAP = 24
