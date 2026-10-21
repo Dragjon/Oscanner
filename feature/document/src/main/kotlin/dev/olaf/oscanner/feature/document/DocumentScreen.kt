@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -232,7 +233,7 @@ fun DocumentRoute(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
+                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
                 pageSpacing = 16.dp,
             ) { index ->
                 PageView(
@@ -453,13 +454,14 @@ private fun PageView(page: Page, onDelete: (() -> Unit)?, modifier: Modifier = M
                         shape = CircleShape,
                         color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.7f),
                         contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+                        // Half off the page's corner, so even a narrow page keeps its content clear.
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .padding(8.dp)
-                            .size(36.dp),
+                            .offset(x = 14.dp, y = (-14).dp)
+                            .size(32.dp),
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.document_delete_page), modifier = Modifier.size(20.dp))
+                            Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.document_delete_page), modifier = Modifier.size(18.dp))
                         }
                     }
                 }
