@@ -68,6 +68,7 @@ internal object Filters {
         PageFilter.Gray -> gray(rgb)
         PageFilter.Ink -> ink(rgb)
         PageFilter.Board -> board(rgb)
+        PageFilter.Photo -> OldPhoto.restore(rgb)
     }
 
     /** Whiteboards: white board, marker colors made vivid, glare and shadows flattened. */

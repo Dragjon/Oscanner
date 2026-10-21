@@ -88,7 +88,8 @@ data class Quad(
 }
 
 /** Enhancement looks. Names say what they do, see PLAN.md §4.3. */
-enum class PageFilter { Original, Auto, Bright, Gray, Ink, Board }
+/** The looks. [Photo] is for photographs, old prints especially: colors restored, dust taken out. */
+enum class PageFilter { Original, Auto, Bright, Gray, Ink, Board, Photo }
 
 /** The recipe that turns an original photo into the page people see. Stored, never baked in. */
 data class PageEdits(

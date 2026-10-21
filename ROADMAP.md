@@ -40,7 +40,7 @@ are not layout references (`PLAN.md` §1 still applies to how we build).
 | Smart Erase (brush) | ✅ Erase brush |
 | Remove fingers, moiré, curved-page flattening | ✅ |
 | Remove creases and stains, bleed-through | ✅ |
-| Restore old photo, Enhance image (colour photos) | ❌ |
+| Restore old photo, Enhance image (colour photos) | ✅ Photo look |
 | Mosaic / pixelate, auto-mask text | 🟡 black-out boxes and "find emails / numbers" |
 | Edit text inside the image (retype a word in the page's font) | ❌ |
 
@@ -170,7 +170,11 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   boxes stay the only style. ✅ Black out → Find → All the text (2026-10-21) covers every line of
   read text, a box per line and column, leaving pictures, rules and signatures.
 - **Retype a word** in the image: erase it and draw the new word in a close matching font.
-- **Restore old photo**: dust and scratch removal, colour fading correction (classical first).
+- ✅ **Restore old photo** (2026-10-21): the Photo look stretches each colour back between its
+  own darkest and lightest (undoing fading and its yellow or magenta cast), gives back a little
+  colour, and fills in dust specks on plain areas and thin straight bright scratches. Detail in
+  the picture, such as the catchlights in eyes, is left alone. Torn corners and large stains are
+  still to do.
 
 ### 3.6 Optional, later
 - **On-device questions and summaries** with a small downloadable model, off by default, so
