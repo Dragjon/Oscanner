@@ -19,7 +19,8 @@ follows, in [`PLAN.md`](PLAN.md).
 - **Text**: on-device OCR (PP-OCR models for English, with doubtful words corrected from word
   statistics; Tesseract for other languages), full-text search, searchable PDFs, copy, and export to
   plain text, a spreadsheet, or a Word file that keeps the page's headings, paragraphs and
-  pictures; documents can also be shared as PowerPoint slides.
+  pictures; documents can also be shared as PowerPoint slides, and a portrait made into a
+  passport or ID photo with a sheet of copies to print.
 - **Documents**: folders, tags and notes, Trash, merge, reorder/rotate/copy out pages, sign,
   draw, type text and stamps, erase, remove handwriting (told from print by a small on-device
   network) or fingers, black out private details (found automatically or by hand, and removed

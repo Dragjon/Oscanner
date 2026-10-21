@@ -10,6 +10,8 @@ import dev.olaf.oscanner.core.data.PageStore
 import dev.olaf.oscanner.core.data.TagRepository
 import dev.olaf.oscanner.core.model.Document
 import dev.olaf.oscanner.core.model.Folder
+import dev.olaf.oscanner.core.model.IdBackground
+import dev.olaf.oscanner.core.model.IdPhotoSize
 import dev.olaf.oscanner.core.model.Page
 import dev.olaf.oscanner.core.model.Tag
 import kotlinx.coroutines.channels.Channel
@@ -46,6 +48,7 @@ sealed interface DocumentEvent {
     data class Print(val file: File, val title: String) : DocumentEvent
     data object Saved : DocumentEvent
     data object Failed : DocumentEvent
+    data object NoFace : DocumentEvent
     data class Trashed(val documentId: Long) : DocumentEvent
 }
 
@@ -78,6 +81,10 @@ class DocumentViewModel(
     fun shareImages() = work(Busy.PreparingImages) { DocumentEvent.ShareImages(store.exportJpegs(documentId)) }
 
     fun shareLongImage() = work(Busy.PreparingImages) { DocumentEvent.ShareImages(listOf(store.exportLongImage(documentId))) }
+
+    fun shareIdPhoto(page: Int, size: IdPhotoSize, background: IdBackground) = work(Busy.PreparingImages) {
+        store.exportIdPhoto(documentId, page, size, background)?.let { DocumentEvent.ShareImages(it) } ?: DocumentEvent.NoFace
+    }
 
     fun shareSlides() = work(Busy.PreparingImages) { DocumentEvent.ShareFile(store.exportPptx(documentId), PPTX) }
 

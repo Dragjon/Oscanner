@@ -11,6 +11,7 @@ import dev.olaf.oscanner.core.data.db.PageEntity
 import dev.olaf.oscanner.core.imaging.BookSplitter
 import dev.olaf.oscanner.core.imaging.DocumentDetector
 import dev.olaf.oscanner.core.imaging.Figures
+import dev.olaf.oscanner.core.imaging.IdPhoto
 import dev.olaf.oscanner.core.imaging.PageFinder
 import dev.olaf.oscanner.core.imaging.PageNet
 import dev.olaf.oscanner.core.imaging.PageRenderer
@@ -26,6 +27,8 @@ import dev.olaf.oscanner.core.model.PageFilter
 import dev.olaf.oscanner.core.model.ProcessingState
 import dev.olaf.oscanner.core.model.ScanFixes
 import dev.olaf.oscanner.core.model.TextMark
+import dev.olaf.oscanner.core.model.IdBackground
+import dev.olaf.oscanner.core.model.IdPhotoSize
 import dev.olaf.oscanner.core.model.Quad
 import dev.olaf.oscanner.core.model.WordBox
 import dev.olaf.oscanner.core.pdf.DocxWriter
@@ -811,6 +814,34 @@ class PageStore(
      * Every page, one under the next, as a single tall JPEG: easy to scroll through in a chat.
      * Pages share the narrowest page's width (at most [LONG_WIDTH]) with a thin gap between.
      */
+    /**
+     * An ID photo of [size] from the photo of page [index] (taken or imported as it is, before any
+     * crop or look), on [background], and a 4 × 6 in sheet of copies to print. Null when there's
+     * no face to go by.
+     */
+    suspend fun exportIdPhoto(documentId: Long, index: Int, size: IdPhotoSize, background: IdBackground): List<File>? {
+        val page = db.pages().forDocument(documentId).getOrNull(index) ?: return null
+        val title = safeName(db.documents().getRow(documentId)?.title ?: "Scan")
+        val turn = EditsJson.read(page.editsJson).rotation
+        return withContext(Dispatchers.Default) {
+            val photo = PageRenderer.loadUpright(page.originalPath, ID_SOURCE_SIDE).let { source ->
+                if (((turn % 360) + 360) % 360 == 0) {
+                    source
+                } else {
+                    val m = android.graphics.Matrix().apply { postRotate(turn.toFloat()) }
+                    android.graphics.Bitmap.createBitmap(source, 0, 0, source.width, source.height, m, true).also { source.recycle() }
+                }
+            }
+            val made = IdPhoto.fromPhoto(photo, size, background)
+            photo.recycle()
+            made ?: return@withContext null
+            val dir = exportsDir.apply { mkdirs() }
+            listOf(made.first to "$title ID photo.jpg", made.second to "$title ID photos 4x6 in.jpg").map { (jpeg, name) ->
+                File(dir, name).apply { writeBytes(jpeg) }
+            }
+        }
+    }
+
     suspend fun exportLongImage(documentId: Long): File {
         val pages = exportJpegs(documentId)
         require(pages.isNotEmpty()) { "Nothing to export" }
@@ -878,6 +909,8 @@ class PageStore(
         private const val TAG = "PageStore"
         /** Originals are read at this size before warping, so the crop still has detail. */
         private const val SOURCE_SIDE = 4000
+        /** ID photos are cut from the photo at up to this size: plenty for 300 dpi. */
+        private const val ID_SOURCE_SIDE = 3000
         private const val DETECT_SIDE = 640
         private const val LONG_WIDTH = 1240
         private const val LONG_GAP = 24

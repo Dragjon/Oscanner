@@ -21,13 +21,13 @@ are not layout references (`PLAN.md` §1 still applies to how we build).
 |---|---|
 | Auto edge detection, auto-capture, single and batch | ✅ (light busy counters improved, still behind; see §3.1) |
 | Modes: Document, ID card, Book, Whiteboard, Scan code | ✅ |
-| Slides (projector or screen, cropped and straightened, de-glared) | 🟡 Whiteboard and Document mostly cover it |
-| Capture Screens (photo of a monitor, moiré removed) | 🟡 "Reduce screen patterns" exists, no mode |
-| Timestamp (date and time stamped on the scan) | ❌ |
+| Slides (projector or screen, cropped and straightened, de-glared) | ✅ Slides mode |
+| Capture Screens (photo of a monitor, moiré removed) | ✅ Slides mode, with screen patterns reduced |
+| Timestamp (date and time stamped on the scan) | ✅ |
 | HD toggle (capture at full sensor resolution) | 🟡 always full resolution, no choice |
 | Incorrect Question / test paper (blank out answers, re-scan missed questions) | 🟡 handwriting removal blanks a test; no question cropping |
 | Formula (maths to LaTeX) | ❌ |
-| ID Photo Maker (passport photo sizes, background colour) | ❌ |
+| ID Photo Maker (passport photo sizes, background colour) | ✅ |
 | Mega Scan (stitch a large object from many shots) | ❌ (⚠ patents) |
 | Import images | ✅ |
 | Import files (PDF, Word, Excel, PPT into the library) | ✅ PDFs and pictures; ❌ Office files |
@@ -154,8 +154,10 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   16:9, 16:10 or 4:3 when the outline is close to one.
 - ✅ **Timestamp** (2026-10-21): an Auto-fix option stamps when the photo was taken, as a text
   mark that can be moved or deleted.
-- **ID photo**: face-centred crop to common passport sizes, plain background colour, a sheet
-  of copies to print.
+- ✅ **ID photo** (2026-10-21): Share → ID photo makes a 35 × 45 mm, 2 × 2 in or 33 × 48 mm
+  photo at 300 dpi from a page's photo, the head placed by the size's rules, on white, gray,
+  light blue or the photo's own background, and a 4 × 6 in sheet of copies. Faces are found
+  with Android's own face finder; the background is cut with GrabCut.
 - **Test paper**: blank the answers (have), then crop each question into its own page for
   re-doing; mark which were wrong.
 - **Large objects** (blueprints, posters): stitch overlapping shots. Only after a patent check.
