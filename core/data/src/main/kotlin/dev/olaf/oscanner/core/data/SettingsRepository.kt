@@ -38,6 +38,7 @@ class SettingsRepository(context: Context) {
                 flatten = prefs[FIX_FLATTEN] ?: true,
                 descreen = prefs[FIX_DESCREEN] ?: false,
                 look = prefs[FIX_LOOK]?.let { name -> PageFilter.entries.firstOrNull { it.name == name } },
+                timestamp = prefs[FIX_TIMESTAMP] ?: false,
             ),
             cameraOrientation = prefs[CAMERA_ORIENTATION].toEnum(CameraOrientation.Auto),
         )
@@ -49,6 +50,7 @@ class SettingsRepository(context: Context) {
             it[FIX_FINGERS] = fixes.removeFingers
             it[FIX_FLATTEN] = fixes.flatten
             it[FIX_DESCREEN] = fixes.descreen
+            it[FIX_TIMESTAMP] = fixes.timestamp
             val look = fixes.look
             if (look == null) it.remove(FIX_LOOK) else it[FIX_LOOK] = look.name
         }
@@ -110,6 +112,7 @@ class SettingsRepository(context: Context) {
         val FIX_FLATTEN = booleanPreferencesKey("fix_flatten_on")
         val FIX_DESCREEN = booleanPreferencesKey("fix_descreen")
         val FIX_LOOK = stringPreferencesKey("fix_look")
+        val FIX_TIMESTAMP = booleanPreferencesKey("fix_timestamp")
         val CAMERA_ORIENTATION = stringPreferencesKey("camera_orientation")
     }
 }

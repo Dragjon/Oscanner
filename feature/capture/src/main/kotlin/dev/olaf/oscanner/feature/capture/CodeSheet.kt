@@ -117,6 +117,7 @@ internal fun CaptureMode.label(): Int = when (this) {
     CaptureMode.IdCard -> R.string.capture_mode_id_card
     CaptureMode.Book -> R.string.capture_mode_book
     CaptureMode.Whiteboard -> R.string.capture_mode_whiteboard
+    CaptureMode.Slides -> R.string.capture_mode_slides
     CaptureMode.Code -> R.string.capture_mode_code
 }
 

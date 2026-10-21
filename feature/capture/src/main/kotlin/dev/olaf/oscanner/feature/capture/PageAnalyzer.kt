@@ -54,7 +54,7 @@ internal class PageAnalyzer(
                 detectorMode = current
             }
             val detector = detector ?: DocumentDetector(
-                angleTolerance = if (current == CaptureMode.Whiteboard) 50.0 else 35.0,
+                angleTolerance = if (current == CaptureMode.Whiteboard || current == CaptureMode.Slides) 50.0 else 35.0,
                 keepSpreads = current == CaptureMode.Book,
                 finder = pageNet,
             ).also { detector = it }

@@ -9,11 +9,13 @@
     <string name="capture_status_card_back">Now turn it over: the back</string>
     <string name="capture_status_book">Fit both open pages in view</string>
     <string name="capture_status_board">Looking for the board…</string>
+    <string name="capture_status_slides">Fit the whole slide or screen in view</string>
     <string name="capture_status_code">Point at a QR code or barcode</string>
     <string name="capture_mode_document">Document</string>
     <string name="capture_mode_id_card">ID card</string>
     <string name="capture_mode_book">Book</string>
     <string name="capture_mode_whiteboard">Whiteboard</string>
+    <string name="capture_mode_slides">Slides</string>
     <string name="capture_mode_code">QR code</string>
     <string name="capture_code_hint">Codes are read here and never saved. Nothing opens unless you tap it.</string>
     <string name="capture_code_link">Link</string>
@@ -45,6 +47,8 @@
     <string name="capture_fix_flatten_description">Lines that bend toward a book\'s spine</string>
     <string name="capture_fix_descreen">Reduce screen patterns</string>
     <string name="capture_fix_descreen_description">For photos of screens and printed pictures</string>
+    <string name="capture_fix_timestamp">Date and time stamp</string>
+    <string name="capture_fix_timestamp_description">When the photo was taken, in a corner of the page</string>
     <string name="capture_fix_look">Look</string>
     <string name="capture_fix_look_usual">Usual</string>
     <string name="capture_fix_look_original">Original</string>

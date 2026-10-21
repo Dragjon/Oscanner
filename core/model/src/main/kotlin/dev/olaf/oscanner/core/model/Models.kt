@@ -33,6 +33,8 @@ enum class DocumentKind {
     /** Two-page spreads, each split at the spine. */
     Book,
     Whiteboard,
+    /** A projected slide or a screen: colors kept, screen patterns reduced, a standard shape. */
+    Slides,
 }
 
 /** Background work running on a document. Shown in place on its card, so the list never reflows. */
@@ -265,7 +267,9 @@ data class ScanFixes(
     val descreen: Boolean = false,
     /** The look every new page gets; null keeps each mode's own (Auto, Board, Original for cards). */
     val look: PageFilter? = null,
+    /** The date and time the photo was taken, printed in a corner like a camera's date stamp. */
+    val timestamp: Boolean = false,
 ) {
     /** How many fixes are on, for the camera's button. */
-    val count: Int get() = listOf(removeHandwriting, removeFingers, flatten, descreen, look != null).count { it }
+    val count: Int get() = listOf(removeHandwriting, removeFingers, flatten, descreen, look != null, timestamp).count { it }
 }

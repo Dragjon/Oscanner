@@ -446,6 +446,7 @@ private fun statusText(state: CaptureUiState): String = when {
     state.mode == CaptureMode.IdCard -> stringResource(R.string.capture_status_card_back)
     state.mode == CaptureMode.Book -> stringResource(R.string.capture_status_book)
     state.mode == CaptureMode.Whiteboard -> stringResource(R.string.capture_status_board)
+    state.mode == CaptureMode.Slides -> stringResource(R.string.capture_status_slides)
     else -> stringResource(R.string.capture_status_searching)
 }
 
@@ -852,7 +853,7 @@ private val WHEEL_GAP = 12.dp
 private const val ACTIVE_GROWTH = 0.22f
 
 /** Document, the usual choice, in the middle; the others either side, one swipe away. */
-private val WHEEL_ORDER = listOf(CaptureMode.IdCard, CaptureMode.Book, CaptureMode.Document, CaptureMode.Whiteboard, CaptureMode.Code)
+private val WHEEL_ORDER = listOf(CaptureMode.IdCard, CaptureMode.Book, CaptureMode.Document, CaptureMode.Whiteboard, CaptureMode.Slides, CaptureMode.Code)
 
 /** Orange ring, white core. While auto-capture waits for a steady page, the ring fills clockwise. */
 @Composable

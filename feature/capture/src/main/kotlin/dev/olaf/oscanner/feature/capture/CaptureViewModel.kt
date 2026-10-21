@@ -33,6 +33,7 @@ enum class CaptureMode(val kind: DocumentKind?) {
     IdCard(DocumentKind.IdCard),
     Book(DocumentKind.Book),
     Whiteboard(DocumentKind.Whiteboard),
+    Slides(DocumentKind.Slides),
     /** QR codes and barcodes: read live, nothing is saved. */
     Code(null),
     ;

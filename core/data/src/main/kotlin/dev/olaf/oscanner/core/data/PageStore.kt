@@ -1,6 +1,7 @@
 package dev.olaf.oscanner.core.data
 
 import android.content.Context
+import android.media.ExifInterface
 import android.net.Uri
 import android.util.Log
 import androidx.room.withTransaction
@@ -13,6 +14,7 @@ import dev.olaf.oscanner.core.imaging.PageFinder
 import dev.olaf.oscanner.core.imaging.PageNet
 import dev.olaf.oscanner.core.imaging.PageRenderer
 import dev.olaf.oscanner.core.imaging.QuadGeometry
+import dev.olaf.oscanner.core.imaging.SlideShape
 import dev.olaf.oscanner.core.model.Area
 import dev.olaf.oscanner.core.model.Corner
 import dev.olaf.oscanner.core.model.DocumentKind
@@ -22,6 +24,7 @@ import dev.olaf.oscanner.core.model.PageEdits
 import dev.olaf.oscanner.core.model.PageFilter
 import dev.olaf.oscanner.core.model.ProcessingState
 import dev.olaf.oscanner.core.model.ScanFixes
+import dev.olaf.oscanner.core.model.TextMark
 import dev.olaf.oscanner.core.model.Quad
 import dev.olaf.oscanner.core.model.WordBox
 import dev.olaf.oscanner.core.pdf.DocxWriter
@@ -46,7 +49,11 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.OutputStream
+import java.text.DateFormat
+import java.text.SimpleDateFormat
 import java.time.Duration
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -164,8 +171,9 @@ class PageStore(
                         editsJson = EditsJson.write(edits),
                     ),
                 )
-                // Pages of a PDF stay as they were; clean-up is left to the person.
-                if (!flat) added += id
+                // Pages of a PDF stay as they were, and slides have no handwriting: clean-up is
+                // left to the person.
+                if (!flat && kind != DocumentKind.Slides) added += id
             }
             db.documents().touch(documentId, System.currentTimeMillis())
         }
@@ -184,7 +192,25 @@ class PageStore(
         if (fixes.flatten && !fixed.flatten) {
             fixed = fixed.copy(flatten = true).let { it.copy(curve = measureCurve(original.path, it)) }
         }
+        if (fixes.timestamp) fixed = fixed.copy(texts = fixed.texts + timeStamp(original))
         return fixed
+    }
+
+    /**
+     * When the photo was taken (from its camera data, else the file's time), as a small orange
+     * stamp in the bottom-right corner. It's an ordinary text mark: it can be moved or deleted.
+     */
+    private fun timeStamp(original: File): TextMark {
+        val taken = runCatching {
+            val exif = ExifInterface(original.path)
+            val raw = exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL) ?: exif.getAttribute(ExifInterface.TAG_DATETIME)
+            raw?.let { SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US).parse(it)?.time }
+        }.getOrNull() ?: original.lastModified()
+        val label = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(taken))
+        val mark = TextMark(label, 0f, 0f, STAMP_SIZE, STAMP_COLOR, bold = true)
+        // Its half-width on a page 1000 wide, to tuck it into the corner whatever its length.
+        val (halfWidth, _) = PageRenderer.textHalfSize(mark, 1000f)
+        return mark.copy(x = 1f - STAMP_MARGIN - halfWidth / 1000f, y = 1f - STAMP_MARGIN * 1.4f)
     }
 
     /**
@@ -491,6 +517,12 @@ class PageStore(
         return when (kind) {
             DocumentKind.Document -> listOf(original to PageEdits(quad = quad))
             DocumentKind.Whiteboard -> listOf(original to PageEdits(quad = quad, filter = PageFilter.Board))
+            // Slides keep their colors and pictures; a screen's own pattern is taken out, and the
+            // shape is squared up to 16:9, 16:10 or 4:3 when it's near one.
+            DocumentKind.Slides -> {
+                val shape = preview?.let { QuadGeometry.warpSize(quad, it.width, it.height) }?.let { (w, h) -> SlideShape.snap(w, h) }
+                listOf(original to PageEdits(quad = quad, filter = PageFilter.Original, descreen = true, contrast = SLIDE_CONTRAST, aspect = shape))
+            }
             // Cards are photos and colored backgrounds, which Auto would bleach to "paper" white.
             DocumentKind.IdCard -> listOf(original to PageEdits(quad = quad, filter = PageFilter.Original, aspect = ID1_ASPECT))
             DocumentKind.Book -> {
@@ -520,7 +552,7 @@ class PageStore(
     private fun detect(preview: android.graphics.Bitmap, kind: DocumentKind): Quad? = runCatching {
         val finder = pageNet
         val detector = DocumentDetector(
-            angleTolerance = if (kind == DocumentKind.Whiteboard) 50.0 else 35.0,
+            angleTolerance = if (kind == DocumentKind.Whiteboard || kind == DocumentKind.Slides) 50.0 else 35.0,
             keepSpreads = kind == DocumentKind.Book,
             finder = finder?.let { net -> PageFinder { gray -> synchronized(net) { net.pageMask(gray) } } },
         )
@@ -762,6 +794,12 @@ class PageStore(
         private const val LONG_GAP_COLOR = 0xFFD9D9D9.toInt()
         /** Taller than this and some apps refuse to show a picture. */
         private const val LONG_MAX_HEIGHT = 30000
+        /** The date stamp: letters 2.2% of the page's width, orange like a film camera's. */
+        private const val STAMP_SIZE = 0.022f
+        private const val STAMP_COLOR = 0xFFF06A1D.toInt()
+        private const val STAMP_MARGIN = 0.03f
+        /** A photo of a lit screen comes out a little flat; this much more contrast lifts it. */
+        private const val SLIDE_CONTRAST = 0.15f
         private const val MEASURE_SIDE = 2000
     }
 }
