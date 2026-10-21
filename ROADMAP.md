@@ -112,8 +112,11 @@ benchmark it belongs to, committed and pushed, released only when everything is 
 - 🟡 **Page detection on any counter.** A small learned page finder, trained on drawn scenes
   (`tools/page-finder`), now steps in when the edge search finds nothing (2026-10-21): 192 of
   240 on the off-white benchmark (was 164), no new outlines on the 177 older scenes. Still to
-  do: real photos in the benchmark, and letting the finder overrule a classical outline that
-  is slightly off (most of the remaining misses). Target: 225 of 240.
+  do: real photos in the benchmark. Tried 2026-10-21 and dropped: letting the finder overrule
+  the edge search's outline when they disagree (it lost the second of two sheets) or when the
+  outline takes in what the finder calls desk (its 48×64 mask can't tell: wrong and right
+  outlines score the same). Of the 31 wrong outlines most are near misses, 2 to 5% off, which
+  is edge refinement, not finding. Now 190 of 240. Target: 225 of 240.
 - **Auto filter parity.** Side-by-side test set against our own baseline: whiter paper, no grey
   cast, crisp but not crunchy text, colour kept where it matters. Add a "No shadow" style
   option if Auto can't cover both.
