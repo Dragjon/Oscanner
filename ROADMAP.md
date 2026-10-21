@@ -30,7 +30,7 @@ are not layout references (`PLAN.md` §1 still applies to how we build).
 | ID Photo Maker (passport photo sizes, background colour) | ❌ |
 | Mega Scan (stitch a large object from many shots) | ❌ (⚠ patents) |
 | Import images | ✅ |
-| Import files (PDF, Word, Excel, PPT into the library) | ❌ **important gap** |
+| Import files (PDF, Word, Excel, PPT into the library) | ✅ PDFs and pictures; ❌ Office files |
 
 ### Clean-up and enhance
 | CamScanner | Oscanner |
@@ -49,9 +49,9 @@ are not layout references (`PLAN.md` §1 still applies to how we build).
 |---|---|
 | OCR, extract text, searchable PDF (paid) | ✅ free; PP-OCR for English, Tesseract for others |
 | To Word | 🟡 DOCX export of the text, no layout |
-| To Excel (tables) | ❌ |
+| To Excel (tables) | ✅ from the text, by layout |
 | To PPT | ❌ |
-| PDF to images, PDF to long image | 🟡 share as images; ❌ long image |
+| PDF to images, PDF to long image | ✅ |
 | Photo translation keeping the layout; text translation | ❌ |
 | Markdown view and edit | ❌ (low value) |
 
@@ -59,8 +59,8 @@ are not layout references (`PLAN.md` §1 still applies to how we build).
 | CamScanner | Oscanner |
 |---|---|
 | Sign, annotate, add watermark | ✅ |
-| Merge, extract pages, reorder, rotate, delete | ✅ (merge works on Oscanner documents only) |
-| Compress | 🟡 PDF quality setting; no "compress this PDF" |
+| Merge, extract pages, reorder, rotate, delete | ✅ (imported PDFs too) |
+| Compress | ✅ "Share a smaller PDF" |
 | Lock (password) | ✅ PDF password and app lock |
 | Tags, folders, search by title, tag and text | ✅ |
 | Print | ✅ |
@@ -129,7 +129,9 @@ benchmark it belongs to, committed and pushed, released only when everything is 
 - ✅ **Long image** export: pages stacked into one tall picture (2026-10-21).
 
 ### 3.3 Office and language
-- **Tables to Excel**: find table lines and cells (rules plus aligned text), fill an XLSX.
+- ✅ **Tables to Excel** (2026-10-21): Text → Export → Spreadsheet places read words in rows
+  and columns by where they sit; numbers stay numbers. Ruled tables with cells that wrap onto
+  two lines are still to do.
 - **Better Word export**: paragraphs, headings and line breaks from the page's layout; images
   kept in place.
 - **Slides to PowerPoint**: each page as a slide, its text as a hidden layer for search.
