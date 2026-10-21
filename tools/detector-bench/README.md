@@ -13,4 +13,5 @@ carpet, plain), each with its true outline, for measuring `DocumentDetector`.
 3. `python score.py scenes` counts, per surface, outlines right (every corner within 2% of the
    frame), wrong, and missed; `python show.py scenes out.png wrong|missed [kind]` draws them.
 
-On 2026-10-21 the detector got 164 of 240 right (38 of the 60 photo scenes).
+On 2026-10-21 the detector got 164 of 240 right (38 of the 60 photo scenes); with the page
+finder (`../page-finder`) 192 (45), and no new outlines on the older scenes.

@@ -10,7 +10,8 @@ follows, in [`PLAN.md`](PLAN.md).
 
 ## What it does
 
-- **Scan**: live page detection with auto-capture, a glare warning, batch scanning, crop with a
+- **Scan**: live page detection (with a small learned page finder for white pages on pale or busy
+  surfaces) with auto-capture, a glare warning, batch scanning, crop with a
   magnifier, and the looks Original, Auto, Bright, Gray, Ink and Board, with shadow and grain
   removal and neutral paper under tinted light. Curved pages are flattened; photos of screens can
   have their moiré patterns reduced. Modes for ID cards (printed at true size), books (split at
@@ -60,7 +61,7 @@ look, sliders, marks, clean-up), and what you see is a render that can always be
 
 ## Not done yet
 
-- Model-based clean-up (LaMa inpainting, a handwriting classifier) and a learned page detector
+- Model-based clean-up (LaMa inpainting, a handwriting classifier)
 - Translation (Bergamot), pending a licence check of the language models
 - App-level encryption at rest (Android's file-based encryption protects data meanwhile)
 - Source builds of OpenCV, Tesseract and ONNX Runtime for F-Droid; a baseline profile for faster cold start

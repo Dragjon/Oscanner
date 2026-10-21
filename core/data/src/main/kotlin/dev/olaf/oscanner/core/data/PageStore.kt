@@ -9,6 +9,8 @@ import dev.olaf.oscanner.core.data.db.OscannerDatabase
 import dev.olaf.oscanner.core.data.db.PageEntity
 import dev.olaf.oscanner.core.imaging.BookSplitter
 import dev.olaf.oscanner.core.imaging.DocumentDetector
+import dev.olaf.oscanner.core.imaging.PageFinder
+import dev.olaf.oscanner.core.imaging.PageNet
 import dev.olaf.oscanner.core.imaging.PageRenderer
 import dev.olaf.oscanner.core.imaging.QuadGeometry
 import dev.olaf.oscanner.core.model.Area
@@ -512,10 +514,15 @@ class PageStore(
         detect(preview, kind).also { preview.recycle() }
     }
 
+    // Kept for the app's life and used by one detection at a time: its model takes a moment to load.
+    private val pageNet by lazy { runCatching { PageNet(context) }.getOrNull() }
+
     private fun detect(preview: android.graphics.Bitmap, kind: DocumentKind): Quad? = runCatching {
+        val finder = pageNet
         val detector = DocumentDetector(
             angleTolerance = if (kind == DocumentKind.Whiteboard) 50.0 else 35.0,
             keepSpreads = kind == DocumentKind.Book,
+            finder = finder?.let { net -> PageFinder { gray -> synchronized(net) { net.pageMask(gray) } } },
         )
         detector.detect(preview).also { detector.release() }
     }.getOrNull()
