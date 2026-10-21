@@ -10,6 +10,7 @@ import dev.olaf.oscanner.core.data.db.OscannerDatabase
 import dev.olaf.oscanner.core.data.db.PageEntity
 import dev.olaf.oscanner.core.imaging.BookSplitter
 import dev.olaf.oscanner.core.imaging.DocumentDetector
+import dev.olaf.oscanner.core.imaging.Figures
 import dev.olaf.oscanner.core.imaging.PageFinder
 import dev.olaf.oscanner.core.imaging.PageNet
 import dev.olaf.oscanner.core.imaging.PageRenderer
@@ -28,6 +29,13 @@ import dev.olaf.oscanner.core.model.TextMark
 import dev.olaf.oscanner.core.model.Quad
 import dev.olaf.oscanner.core.model.WordBox
 import dev.olaf.oscanner.core.pdf.DocxWriter
+import dev.olaf.oscanner.core.pdf.LayoutBlock
+import dev.olaf.oscanner.core.pdf.LayoutParagraph
+import dev.olaf.oscanner.core.pdf.LayoutPicture
+import dev.olaf.oscanner.core.pdf.PageLayout
+import dev.olaf.oscanner.core.pdf.ParagraphStyle
+import dev.olaf.oscanner.core.pdf.PptxSlide
+import dev.olaf.oscanner.core.pdf.PptxWriter
 import dev.olaf.oscanner.core.pdf.JpegPdfWriter
 import dev.olaf.oscanner.core.pdf.PdfPage
 import dev.olaf.oscanner.core.pdf.PdfPageSize
@@ -654,13 +662,89 @@ class PageStore(
         }
     }
 
-    /** The recognized text as a Word document in the share cache: title, then one section per page. */
+    /**
+     * The document as a Word file in the share cache: the title, then each read page rebuilt
+     * from where its words sit (paragraphs, headings, centred lines, letter sizes, see
+     * [PageLayout]), with the page's pictures cut out and put back in reading order.
+     */
     suspend fun exportDocx(documentId: Long): File {
+        awaitRenders(documentId)
         val title = db.documents().getRow(documentId)?.title ?: "Scan"
-        val pages = db.pages().forDocument(documentId).mapNotNull { it.ocrText?.takeIf(String::isNotBlank) }
+        val pages = db.pages().forDocument(documentId).mapNotNull { page -> withContext(Dispatchers.Default) { layout(page) } }
+        require(pages.isNotEmpty()) { "No page has been read yet" }
         return withContext(Dispatchers.IO) {
             File(exportsDir.apply { mkdirs() }, "${safeName(title)}.docx").apply {
-                outputStream().buffered().use { DocxWriter.write(title, pages, it) }
+                outputStream().buffered().use { DocxWriter.writeLayout(title, pages, it) }
+            }
+        }
+    }
+
+    /** One page's paragraphs and pictures in reading order; null if it hasn't been read. */
+    private fun layout(page: PageEntity): List<LayoutBlock>? {
+        val words = visibleWords(page)
+        if (words.isEmpty()) {
+            // Pages read before word boxes were kept: their text, as plain paragraphs. Not when
+            // parts are blacked out, as the text would still hold them.
+            val text = page.ocrText?.takeIf { it.isNotBlank() && EditsJson.read(page.editsJson).redactions.isEmpty() } ?: return null
+            return DocxWriter.paragraphs(text).map { LayoutParagraph(it, ParagraphStyle.Body, false, 1f, 0f) }
+        }
+        val render = page.renderPath?.let(::File)?.takeIf(File::exists)?.let { android.graphics.BitmapFactory.decodeFile(it.path) }
+        val areas = render?.let { bitmap ->
+            runCatching { Figures.find(bitmap, words.map { android.graphics.RectF(it.left, it.top, it.right, it.bottom) }) }
+                .onFailure { Log.w(TAG, "Couldn't find the pictures on page ${page.id}", it) }.getOrNull()
+        }.orEmpty()
+        val pictures = areas.map { area ->
+            val bitmap = render!!
+            val x = (area.left * bitmap.width).toInt().coerceIn(0, bitmap.width - 1)
+            val y = (area.top * bitmap.height).toInt().coerceIn(0, bitmap.height - 1)
+            val w = ((area.right - area.left) * bitmap.width).toInt().coerceIn(1, bitmap.width - x)
+            val h = ((area.bottom - area.top) * bitmap.height).toInt().coerceIn(1, bitmap.height - y)
+            val crop = android.graphics.Bitmap.createBitmap(bitmap, x, y, w, h)
+            val jpeg = java.io.ByteArrayOutputStream().also { crop.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, it) }.toByteArray()
+            LayoutPicture(jpeg, crop.width, crop.height, area.right - area.left, area.top).also { crop.recycle() }
+        }
+        render?.recycle()
+        // Words inside a picture (a chart's labels) are part of it.
+        val text = words.filterNot { w ->
+            val cx = (w.left + w.right) / 2
+            val cy = (w.top + w.bottom) / 2
+            areas.any { it.contains(cx, cy) }
+        }
+        val blocks = mutableListOf<LayoutBlock>()
+        blocks += PageLayout.paragraphs(text)
+        for (picture in pictures) {
+            val at = blocks.indexOfFirst { it.top > picture.top }.takeIf { it >= 0 } ?: blocks.size
+            blocks.add(at, picture)
+        }
+        return blocks
+    }
+
+    /**
+     * The document as a PowerPoint deck: each finished page fills a slide, with its text behind
+     * the picture so the deck can be searched. Covered areas stay out of the text.
+     */
+    suspend fun exportPptx(documentId: Long): File {
+        awaitRenders(documentId)
+        val title = db.documents().getRow(documentId)?.title ?: "Scan"
+        val watermark = settings.settings.first().watermark
+        val pages = db.pages().forDocument(documentId)
+        return withContext(Dispatchers.IO) {
+            val temp = File(context.cacheDir, "pptx-${UUID.randomUUID()}").apply { mkdirs() }
+            try {
+                val slides = pages.mapNotNull { page ->
+                    val render = page.renderPath?.let(::File)?.takeIf(File::exists) ?: return@mapNotNull null
+                    val jpeg = compress(render, PdfQuality.Balanced, watermark, temp)
+                    val size = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        .also { android.graphics.BitmapFactory.decodeFile(jpeg.path, it) }
+                    val text = PageLayout.paragraphs(visibleWords(page)).joinToString("\n") { it.text }
+                    PptxSlide(jpeg.readBytes(), size.outWidth, size.outHeight, text)
+                }
+                require(slides.isNotEmpty()) { "Nothing to export" }
+                File(exportsDir.apply { mkdirs() }, "${safeName(title)}.pptx").apply {
+                    outputStream().buffered().use { PptxWriter.write(title, slides, it) }
+                }
+            } finally {
+                temp.deleteRecursively()
             }
         }
     }

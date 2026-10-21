@@ -38,6 +38,8 @@
     <string name="document_share_images_description">One JPEG picture per page</string>
     <string name="document_share_long">Share as one long picture</string>
     <string name="document_share_long_description">Every page, one under the next</string>
+    <string name="document_share_slides">Share as slides</string>
+    <string name="document_share_slides_description">A PowerPoint file, one page to a slide, its text searchable</string>
     <string name="document_scan_more">Scan more pages</string>
     <string name="document_scan_more_description">Take pictures and add them to the end</string>
     <string name="document_import_more">Add from photos</string>

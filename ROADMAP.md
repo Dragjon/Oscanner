@@ -48,9 +48,9 @@ are not layout references (`PLAN.md` §1 still applies to how we build).
 | CamScanner | Oscanner |
 |---|---|
 | OCR, extract text, searchable PDF (paid) | ✅ free; PP-OCR for English, Tesseract for others |
-| To Word | 🟡 DOCX export of the text, no layout |
+| To Word | ✅ headings, paragraphs and pictures rebuilt from the page |
 | To Excel (tables) | ✅ from the text, by layout |
-| To PPT | ❌ |
+| To PPT | ✅ a page to a slide, text searchable |
 | PDF to images, PDF to long image | ✅ |
 | Photo translation keeping the layout; text translation | ❌ |
 | Markdown view and edit | ❌ (low value) |
@@ -133,9 +133,11 @@ benchmark it belongs to, committed and pushed, released only when everything is 
 - ✅ **Tables to Excel** (2026-10-21): Text → Export → Spreadsheet places read words in rows
   and columns by where they sit; numbers stay numbers. Ruled tables with cells that wrap onto
   two lines are still to do.
-- **Better Word export**: paragraphs, headings and line breaks from the page's layout; images
-  kept in place.
-- **Slides to PowerPoint**: each page as a slide, its text as a hidden layer for search.
+- ✅ **Better Word export** (2026-10-21): headings, centred lines, paragraphs and letter sizes
+  rebuilt from where the read words sit; pictures (photos, charts, logos) cut from the page and
+  put back in reading order. Columns side by side still come out one after the other.
+- ✅ **Slides to PowerPoint** (2026-10-21): Share → Share as slides; each page fills a slide,
+  its text behind the picture so the deck can be searched.
 - **On-device translation** with downloadable language pairs (Bergamot or another open model,
   pending a licence check), shown side by side and overlaid on the photo.
 

@@ -52,6 +52,7 @@ import androidx.compose.material.icons.rounded.PictureAsPdf
 import androidx.compose.material.icons.rounded.Print
 import androidx.compose.material.icons.rounded.Rectangle
 import androidx.compose.material.icons.rounded.SaveAlt
+import androidx.compose.material.icons.rounded.Slideshow
 import androidx.compose.material.icons.rounded.Sell
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.TextSnippet
@@ -135,6 +136,7 @@ fun DocumentRoute(
             when (event) {
                 is DocumentEvent.SharePdf -> if (!context.share(listOf(event.file), "application/pdf")) snackbar.showSnackbar(noAppText)
                 is DocumentEvent.ShareImages -> if (!context.share(event.files, "image/jpeg")) snackbar.showSnackbar(noAppText)
+                is DocumentEvent.ShareFile -> if (!context.share(listOf(event.file), event.mime)) snackbar.showSnackbar(noAppText)
                 is DocumentEvent.Print -> context.printPdf(event.file, event.title)
                 DocumentEvent.Saved -> snackbar.showSnackbar(savedText)
                 DocumentEvent.Failed -> snackbar.showSnackbar(failedText)
@@ -310,6 +312,7 @@ fun DocumentRoute(
                         if (document.pageCount > 1) {
                             SheetAction(Icons.Rounded.ViewDay, stringResource(R.string.document_share_long), stringResource(R.string.document_share_long_description), act(viewModel::shareLongImage))
                         }
+                        SheetAction(Icons.Rounded.Slideshow, stringResource(R.string.document_share_slides), stringResource(R.string.document_share_slides_description), act(viewModel::shareSlides))
                         SheetSection(stringResource(R.string.document_section_export))
                         SheetAction(Icons.Rounded.SaveAlt, stringResource(R.string.document_save_pdf), stringResource(R.string.document_save_pdf_description), act { saveLauncher.launch("${document.title}.pdf") })
                         SheetAction(Icons.Rounded.Print, stringResource(R.string.document_print), stringResource(R.string.document_print_description), act(viewModel::print))

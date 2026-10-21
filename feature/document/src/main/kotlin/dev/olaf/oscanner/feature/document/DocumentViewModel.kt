@@ -36,10 +36,13 @@ data class DocumentUiState(
 
 enum class Busy { PreparingPdf, PreparingImages, Saving, Importing }
 
+private const val PPTX = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+
 /** Things the screen does with Android APIs once the files are ready. */
 sealed interface DocumentEvent {
     data class SharePdf(val file: File) : DocumentEvent
     data class ShareImages(val files: List<File>) : DocumentEvent
+    data class ShareFile(val file: File, val mime: String) : DocumentEvent
     data class Print(val file: File, val title: String) : DocumentEvent
     data object Saved : DocumentEvent
     data object Failed : DocumentEvent
@@ -75,6 +78,8 @@ class DocumentViewModel(
     fun shareImages() = work(Busy.PreparingImages) { DocumentEvent.ShareImages(store.exportJpegs(documentId)) }
 
     fun shareLongImage() = work(Busy.PreparingImages) { DocumentEvent.ShareImages(listOf(store.exportLongImage(documentId))) }
+
+    fun shareSlides() = work(Busy.PreparingImages) { DocumentEvent.ShareFile(store.exportPptx(documentId), PPTX) }
 
     fun print() = work(Busy.PreparingPdf) {
         DocumentEvent.Print(store.exportPdf(documentId), state.value.document?.title ?: "Scan")
