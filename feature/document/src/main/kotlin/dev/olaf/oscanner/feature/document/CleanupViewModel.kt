@@ -110,6 +110,8 @@ class CleanupViewModel(
 
     fun setRemoveStains(on: Boolean) = edit { it.copy(removeStains = on) }
 
+    fun setFillEdges(on: Boolean) = edit { it.copy(fillEdges = on) }
+
     /** Gives [pageIds] this page's automatic clean-up: each page finds its own handwriting, fingers, show-through and stains. */
     fun applyAutoTo(pageIds: Set<Long>) {
         val edits = _state.value.edits ?: return
@@ -178,4 +180,4 @@ class CleanupViewModel(
 
 /** The same page with no clean-up and no drawn marks: the "before" for comparing. */
 internal fun PageEdits.withoutCleanup() =
-    copy(erase = emptyList(), keep = emptyList(), removePenInk = false, printed = null, removeFingers = false, removeShowThrough = false, removeStains = false, marks = emptyList(), texts = emptyList())
+    copy(erase = emptyList(), keep = emptyList(), removePenInk = false, printed = null, removeFingers = false, removeShowThrough = false, removeStains = false, fillEdges = false, marks = emptyList(), texts = emptyList())

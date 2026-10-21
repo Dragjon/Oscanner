@@ -138,6 +138,8 @@ data class PageEdits(
     val removeShowThrough: Boolean = false,
     /** Clean-up: take the tint of coffee, tea and water stains out, keeping what's under them. */
     val removeStains: Boolean = false,
+    /** Clean-up: bits of desk or background left in the page's corners and along its edges become paper. */
+    val fillEdges: Boolean = false,
     /**
      * Areas blacked out, as outlines in the original photo (normalized upright-image
      * coordinates, like [quad]), so they stay over the same words when the page is re-cropped,
@@ -156,7 +158,7 @@ data class PageEdits(
 ) {
     val adjusted: Boolean get() = brightness != 0f || contrast != 0f || detail != 0f
 
-    val cleaned: Boolean get() = erase.isNotEmpty() || removePenInk || removeFingers || removeShowThrough || removeStains
+    val cleaned: Boolean get() = erase.isNotEmpty() || removePenInk || removeFingers || removeShowThrough || removeStains || fillEdges
 
     /** A quarter turn clockwise, with everything drawn on the page turned along. */
     fun rotatedClockwise(): PageEdits {
@@ -281,7 +283,9 @@ data class ScanFixes(
     val look: PageFilter? = null,
     /** The date and time the photo was taken, printed in a corner like a camera's date stamp. */
     val timestamp: Boolean = false,
+    /** Background showing in a document's corners or along its edges is filled with paper. */
+    val fillEdges: Boolean = false,
 ) {
     /** How many fixes are on, for the camera's button. */
-    val count: Int get() = listOf(removeHandwriting, removeFingers, flatten, descreen, look != null, timestamp).count { it }
+    val count: Int get() = listOf(removeHandwriting, removeFingers, flatten, descreen, look != null, timestamp, fillEdges).count { it }
 }

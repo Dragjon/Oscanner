@@ -12,6 +12,7 @@ import dev.olaf.oscanner.core.imaging.BookSplitter
 import dev.olaf.oscanner.core.imaging.DocumentDetector
 import dev.olaf.oscanner.core.imaging.Figures
 import dev.olaf.oscanner.core.imaging.IdPhoto
+import dev.olaf.oscanner.core.imaging.PageSignature
 import dev.olaf.oscanner.core.imaging.PageFinder
 import dev.olaf.oscanner.core.imaging.PageNet
 import dev.olaf.oscanner.core.imaging.PageRenderer
@@ -163,7 +164,7 @@ class PageStore(
                 if (image.flat) {
                     listOf(Triple(adopt(documentId, image), PageEdits(quad = Quad.Full, filter = PageFilter.Original), true))
                 } else {
-                    prepare(documentId, image, kind).map { (original, edits) -> Triple(original, withFixes(original, edits, fixes), false) }
+                    prepare(documentId, image, kind).map { (original, edits) -> Triple(original, withFixes(original, edits, fixes, kind), false) }
                 }
             }
         }
@@ -194,9 +195,11 @@ class PageStore(
     }
 
     /** The camera's fixes on a new page's edits. Handwriting comes after: it needs the page read. */
-    private fun withFixes(original: File, edits: PageEdits, fixes: ScanFixes): PageEdits {
+    private fun withFixes(original: File, edits: PageEdits, fixes: ScanFixes, kind: DocumentKind): PageEdits {
         var fixed = edits.copy(
             removeFingers = edits.removeFingers || fixes.removeFingers,
+            // Paper pages only: a card's or a slide's own edges are part of it.
+            fillEdges = edits.fillEdges || (fixes.fillEdges && kind in PAPER_KINDS),
             descreen = edits.descreen || fixes.descreen,
             filter = fixes.look ?: edits.filter,
         )
@@ -462,6 +465,7 @@ class PageStore(
                 before.erase != edits.erase || before.keep != edits.keep ||
                 before.removePenInk != edits.removePenInk || before.removeFingers != edits.removeFingers ||
                 before.removeShowThrough != edits.removeShowThrough || before.removeStains != edits.removeStains ||
+                before.fillEdges != edits.fillEdges ||
                 before.redactions != edits.redactions ||
                 before.flatten != edits.flatten || before.curve != edits.curve || before.descreen != edits.descreen
             )
@@ -922,6 +926,19 @@ class PageStore(
         }
     }
 
+    /** The [PageSignature] of the page inside [quad] of the photo [file]; null if it can't be read. */
+    suspend fun signature(file: File, quad: Quad): FloatArray? = withContext(Dispatchers.Default) {
+        runCatching {
+            val photo = PageRenderer.loadUpright(file.path, SIGNATURE_SIDE)
+            PageSignature.of(photo, quad).also { photo.recycle() }
+        }.getOrNull()
+    }
+
+    /** Signatures of [documentId]'s pages as they are, in order; null for a page not rendered yet. */
+    suspend fun pageSignatures(documentId: Long): List<FloatArray?> = db.pages().forDocument(documentId).map { page ->
+        page.renderPath?.let(::File)?.takeIf(File::exists)?.let { signature(it, Quad.Full) }
+    }
+
     suspend fun exportLongImage(documentId: Long): File {
         val pages = exportJpegs(documentId)
         require(pages.isNotEmpty()) { "Nothing to export" }
@@ -991,9 +1008,13 @@ class PageStore(
         private const val SOURCE_SIDE = 4000
         /** ID photos are cut from the photo at up to this size: plenty for 300 dpi. */
         private const val ID_SOURCE_SIDE = 3000
+        /** Plenty for a page's signature, which is a small grid. */
+        private const val SIGNATURE_SIDE = 800
         /** Room left above a question and below it, in its line heights; parts thinner than [MIN_QUESTION] are dropped. */
         private const val QUESTION_PAD = 0.8f
         private const val MIN_QUESTION = 0.02f
+        /** The kinds of scan that are paper with a plain margin, for filling in their edges. */
+        private val PAPER_KINDS = setOf(DocumentKind.Document, DocumentKind.Book, DocumentKind.Whiteboard)
         /** Automatic handwriting removal waits for a page at least this much paper. */
         private const val MIN_PAPER = 0.45
         private const val PAPER_CHECK_SIDE = 800

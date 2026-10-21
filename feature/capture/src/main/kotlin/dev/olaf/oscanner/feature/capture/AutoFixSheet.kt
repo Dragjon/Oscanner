@@ -80,6 +80,9 @@ internal fun AutoFixSheet(fixes: ScanFixes, onChange: (ScanFixes) -> Unit, onDis
             FixSwitch(R.string.capture_fix_descreen, R.string.capture_fix_descreen_description, fixes.descreen) {
                 onChange(fixes.copy(descreen = it))
             }
+            FixSwitch(R.string.capture_fix_edges, R.string.capture_fix_edges_description, fixes.fillEdges) {
+                onChange(fixes.copy(fillEdges = it))
+            }
             FixSwitch(R.string.capture_fix_timestamp, R.string.capture_fix_timestamp_description, fixes.timestamp) {
                 onChange(fixes.copy(timestamp = it))
             }

@@ -47,6 +47,12 @@
     <string name="capture_fix_flatten_description">Lines that bend toward a book\'s spine</string>
     <string name="capture_fix_descreen">Reduce screen patterns</string>
     <string name="capture_fix_descreen_description">For photos of screens and printed pictures</string>
+    <string name="capture_duplicate_left">Already scanned as page %1$d, so it was left out</string>
+    <string name="capture_duplicate_kept">This looks like page %1$d again</string>
+    <string name="capture_duplicate_keep">Keep</string>
+    <string name="capture_duplicate_remove">Remove</string>
+    <string name="capture_fix_edges">Clean corners and edges</string>
+    <string name="capture_fix_edges_description">Desk showing in a page\'s corners or along its edges becomes paper (documents and books)</string>
     <string name="capture_fix_timestamp">Date and time stamp</string>
     <string name="capture_fix_timestamp_description">When the photo was taken, in a corner of the page</string>
     <string name="capture_fix_look">Look</string>

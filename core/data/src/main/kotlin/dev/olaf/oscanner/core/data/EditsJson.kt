@@ -38,6 +38,7 @@ internal object EditsJson {
         .apply { if (edits.removeFingers) put("removeFingers", true) }
         .apply { if (edits.removeShowThrough) put("removeShowThrough", true) }
         .apply { if (edits.removeStains) put("removeStains", true) }
+        .apply { if (edits.fillEdges) put("fillEdges", true) }
         .apply {
             edits.printed?.let { areas ->
                 put("printed", JSONArray().apply { areas.forEach { put(it.left.toDouble()); put(it.top.toDouble()); put(it.right.toDouble()); put(it.bottom.toDouble()) } })
@@ -159,6 +160,7 @@ internal object EditsJson {
             removeFingers = obj.optBoolean("removeFingers"),
             removeShowThrough = obj.optBoolean("removeShowThrough"),
             removeStains = obj.optBoolean("removeStains"),
+            fillEdges = obj.optBoolean("fillEdges"),
             printByLook = obj.optBoolean("printByLook"),
             printed = obj.optJSONArray("printed")?.let { a ->
                 List(a.length() / 4) { i -> Area(a.optDouble(i * 4).toFloat(), a.optDouble(i * 4 + 1).toFloat(), a.optDouble(i * 4 + 2).toFloat(), a.optDouble(i * 4 + 3).toFloat()) }

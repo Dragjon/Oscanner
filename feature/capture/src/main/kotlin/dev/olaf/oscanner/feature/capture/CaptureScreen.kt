@@ -64,7 +64,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -319,6 +321,18 @@ private fun CameraLayer(viewModel: CaptureViewModel, state: CaptureUiState, titl
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     val failedText = stringResource(R.string.capture_failed)
+    val duplicate = state.duplicate
+    val duplicateText = duplicate?.let { stringResource(if (it.left) R.string.capture_duplicate_left else R.string.capture_duplicate_kept, it.page) }
+    val duplicateAction = duplicate?.let { stringResource(if (it.left) R.string.capture_duplicate_keep else R.string.capture_duplicate_remove) }
+    LaunchedEffect(duplicate) {
+        if (duplicate == null || duplicateText == null) return@LaunchedEffect
+        val result = snackbar.showSnackbar(duplicateText, actionLabel = duplicateAction, duration = SnackbarDuration.Long)
+        when {
+            result != SnackbarResult.ActionPerformed -> viewModel.dismissDuplicate()
+            duplicate.left -> viewModel.keepDuplicate()
+            else -> viewModel.removeDuplicate()
+        }
+    }
     val flashAlpha = remember { Animatable(0f) }
 
     val controller = remember {

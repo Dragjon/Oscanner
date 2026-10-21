@@ -33,6 +33,7 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Compare
 import androidx.compose.material.icons.rounded.CopyAll
 import androidx.compose.material.icons.rounded.FlipToBack
+import androidx.compose.material.icons.rounded.CropFree
 import androidx.compose.material.icons.rounded.FrontHand
 import androidx.compose.material.icons.rounded.WaterDrop
 import androidx.compose.material.icons.rounded.Gesture
@@ -202,6 +203,12 @@ fun CleanupRoute(viewModel: CleanupViewModel, onDone: () -> Unit) {
                     stringResource(R.string.document_remove_stains),
                     selected = edits.removeStains,
                     onClick = { viewModel.setRemoveStains(!edits.removeStains) },
+                )
+                ToolbarButton(
+                    Icons.Rounded.CropFree,
+                    stringResource(R.string.document_fill_edges),
+                    selected = edits.fillEdges,
+                    onClick = { viewModel.setFillEdges(!edits.fillEdges) },
                 )
                 if (state.pages.size > 1 && (edits.removePenInk || edits.removeFingers || edits.removeShowThrough || edits.removeStains)) {
                     ToolbarButton(Icons.Rounded.CopyAll, stringResource(R.string.document_cleanup_other_pages_short), selected = null, onClick = { choosingPages = true })

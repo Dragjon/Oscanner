@@ -29,6 +29,7 @@ internal object Cleanup {
     fun apply(rgb: Mat, edits: PageEdits) {
         // Stains are taken out first: what's under them is kept, and then judged like the rest.
         if (edits.removeStains) unstain(rgb)
+        if (edits.fillEdges) fillEdges(rgb)
         val (mask, mend) = plan(rgb, edits)
         if (mask != null) {
             val paper = paperUnder(rgb, mask)
@@ -247,6 +248,77 @@ internal object Cleanup {
         // The outermost strip is where desk or shadow is left after cropping, never handwriting.
         clearMargin(mask, 0.02)
         return mask
+    }
+
+    /**
+     * Background left in a page's corners and along its edges, in place: where the crop took in a
+     * little desk, a corner is folded or torn off, or the page isn't quite square. That is what
+     * differs from the paper, touches the page's edge and stays close to it; a picture printed to
+     * the edge reaches further in, and stays. Filled with paper from around it.
+     */
+    internal fun fillEdges(rgb: Mat) {
+        val w = rgb.cols()
+        val h = rgb.rows()
+        val scale = min(1.0, EDGE_SIDE / max(w, h))
+        val small = Mat()
+        Imgproc.resize(rgb, small, Size(), scale, scale, Imgproc.INTER_AREA)
+        Imgproc.GaussianBlur(small, small, Size(3.0, 3.0), 0.0)
+        val sw = small.cols()
+        val sh = small.rows()
+        // The paper: the brighter half of the page's middle.
+        val middle = small.submat(sh / 5, sh * 4 / 5, sw / 5, sw * 4 / 5)
+        val gray = Mat()
+        Imgproc.cvtColor(middle, gray, Imgproc.COLOR_RGB2GRAY)
+        val bright = Mat()
+        Core.compare(gray, Scalar(medianOf(gray, null).toDouble()), bright, Core.CMP_GE)
+        val paper = Core.mean(middle, bright)
+        listOf(gray, bright, middle).forEach(Mat::release)
+        // Off the paper's color by a clear margin, in brightness or tint.
+        val diff = Mat()
+        Core.absdiff(small, paper, diff)
+        val channels = mutableListOf<Mat>()
+        Core.split(diff, channels)
+        val off = Mat()
+        Core.max(channels[0], channels[1], off)
+        Core.max(off, channels[2], off)
+        channels.forEach(Mat::release)
+        diff.release()
+        small.release()
+        Imgproc.threshold(off, off, EDGE_STEP, 255.0, Imgproc.THRESH_BINARY)
+        val band = max(2.0, min(sw, sh) * EDGE_BAND)
+        val labels = Mat()
+        val stats = Mat()
+        val centroids = Mat()
+        val count = Imgproc.connectedComponentsWithStats(off, labels, stats, centroids, 8, CvType.CV_32S)
+        val keep = BooleanArray(count) { k ->
+            if (k == 0) return@BooleanArray false
+            val x0 = stats.get(k, Imgproc.CC_STAT_LEFT)[0]
+            val y0 = stats.get(k, Imgproc.CC_STAT_TOP)[0]
+            val x1 = x0 + stats.get(k, Imgproc.CC_STAT_WIDTH)[0]
+            val y1 = y0 + stats.get(k, Imgproc.CC_STAT_HEIGHT)[0]
+            val area = stats.get(k, Imgproc.CC_STAT_AREA)[0]
+            val touches = x0 <= 0 || y0 <= 0 || x1 >= sw || y1 >= sh
+            // Every part of it within the band: along one edge (a strip), or in a corner (both ways).
+            val near = (x1 <= band || x0 >= sw - band || y1 <= band || y0 >= sh - band) ||
+                ((x1 <= 2 * band || x0 >= sw - 2 * band) && (y1 <= 2 * band || y0 >= sh - 2 * band))
+            touches && near && area <= EDGE_MOST * sw * sh
+        }
+        val labelPx = IntArray(sw * sh).also { labels.get(0, 0, it) }
+        off.put(0, 0, ByteArray(sw * sh) { if (keep[labelPx[it]]) -1 else 0 })
+        listOf(labels, stats, centroids).forEach(Mat::release)
+        if (Core.countNonZero(off) == 0) {
+            off.release()
+            return
+        }
+        // Over the soft line between desk and paper too.
+        Imgproc.dilate(off, off, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0)))
+        val mask = Mat()
+        Imgproc.resize(off, mask, rgb.size(), 0.0, 0.0, Imgproc.INTER_LINEAR)
+        off.release()
+        Imgproc.threshold(mask, mask, 0.0, 255.0, Imgproc.THRESH_BINARY)
+        val filled = paperUnder(rgb, mask)
+        filled.copyTo(rgb, mask)
+        listOf(filled, mask).forEach(Mat::release)
     }
 
     /**
@@ -835,6 +907,13 @@ internal object Cleanup {
     }
 
     private const val FILL_SIDE = 320.0
+    /** Edges are looked at on a copy this big; off the paper by this many levels in any channel is background. */
+    private const val EDGE_SIDE = 600.0
+    private const val EDGE_STEP = 45.0
+    /** Background reaches at most this share of the page's short side in from its edge (twice that in a corner)... */
+    private const val EDGE_BAND = 0.06
+    /** ...and covers at most this share of it. */
+    private const val EDGE_MOST = 0.06
     /** Stains are looked for on a copy this big on its long side. */
     private const val STAIN_SIDE = 1200.0
     /** No more saturated than this (HSV, 0-255): a highlighter is. */

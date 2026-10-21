@@ -193,6 +193,7 @@
     <string name="document_text_retype">Change this word</string>
     <string name="document_remove_show_through">Show-through</string>
     <string name="document_remove_stains">Stains</string>
+    <string name="document_fill_edges">Edges</string>
     <string name="document_finding_print">Finding the printed text…</string>
     <string name="document_no_print_found">No printed text found here, so all writing counts as handwriting. Paint with Keep over anything to keep.</string>
     <string name="document_brush">Brush</string>

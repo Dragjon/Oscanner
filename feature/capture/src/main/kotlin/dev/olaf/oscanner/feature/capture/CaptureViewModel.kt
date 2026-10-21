@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import dev.olaf.oscanner.core.data.CapturedImage
 import dev.olaf.oscanner.core.data.PageStore
 import dev.olaf.oscanner.core.data.SettingsRepository
+import dev.olaf.oscanner.core.imaging.PageSignature
 import androidx.exifinterface.media.ExifInterface
 import dev.olaf.oscanner.core.model.CameraOrientation
 import dev.olaf.oscanner.core.model.ScanFixes
@@ -70,7 +71,15 @@ data class CaptureUiState(
     /** Fixes applied to every page as it's saved. */
     val fixes: ScanFixes = ScanFixes(),
     val orientation: CameraOrientation = CameraOrientation.Auto,
+    /** The page just taken looks like one taken before; null when it doesn't. */
+    val duplicate: Duplicate? = null,
 )
+
+/**
+ * A capture that looks like page [page] (1-based, counting the document's pages first). Taken
+ * automatically, it was [left] out of the scan; taken with the shutter, it was kept.
+ */
+data class Duplicate(val capture: CapturedImage, val page: Int, val left: Boolean)
 
 /** Where to go once captures are saved: the document and the index of its first new page. */
 data class SavedScan(val documentId: Long, val firstNewPage: Int)
@@ -146,7 +155,10 @@ class CaptureViewModel(
             glareFrames.count { it } >= GLARE_NEEDED
         }
         val result = synchronized(tracker) { tracker.onFrame(quad, sharpness, now, _state.value.autoCapture && !_state.value.reviewing) }
-        if (result.fire && !_state.value.busy) shutter.trySend(Unit)
+        if (result.fire && !_state.value.busy) {
+            autoShot = true
+            shutter.trySend(Unit)
+        }
         val status = when {
             now - capturedAt < CAPTURED_HOLD_MS -> CaptureStatus.Captured
             result.quad == null -> CaptureStatus.Searching
@@ -192,6 +204,8 @@ class CaptureViewModel(
     }
 
     fun onPictureSaved(file: File) {
+        val auto = autoShot
+        autoShot = false
         // The camera turned the photo for how the phone was held; a locked orientation wants
         // it the other way.
         val extra = (deviceTurn - sensedTurn).mod(360)
@@ -211,10 +225,59 @@ class CaptureViewModel(
         // to adjust and Done doesn't have to wait for it.
         val kind = _state.value.mode.kind ?: DocumentKind.Document
         viewModelScope.launch {
-            val found = runCatching { pages.findPage(file, kind) }.getOrNull() ?: return@launch
-            _state.update { s -> s.copy(captures = s.captures.map { if (it.file == file && it.quad == null) it.copy(quad = found) else it }) }
+            val found = runCatching { pages.findPage(file, kind) }.getOrNull()
+            if (found != null) {
+                _state.update { s -> s.copy(captures = s.captures.map { if (it.file == file && it.quad == null) it.copy(quad = found) else it }) }
+            }
+            // No page found in the photo: it's compared whole, or where the live outline was.
+            val outline = found ?: _state.value.captures.firstOrNull { it.file == file }?.liveQuad ?: Quad.Full
+            checkDuplicate(file, outline, auto)
         }
     }
+
+    /**
+     * Compares the page just taken with the ones taken before in this scan, and with the
+     * document's own pages when adding to one. The same page again, taken automatically, is left
+     * out (the camera was likely held over a page already done); taken by hand, it's kept, as it
+     * may be meant as a retake. Either way the screen says so, with a way to change it.
+     */
+    private suspend fun checkDuplicate(file: File, quad: Quad, auto: Boolean) {
+        if (_state.value.mode == CaptureMode.IdCard) return
+        val mine = pages.signature(file, quad) ?: return
+        val existing = documentPages ?: (documentId?.let { pages.pageSignatures(it) } ?: emptyList()).also { documentPages = it }
+        val before = _state.value.captures.takeWhile { it.file != file }
+        val matchExisting = existing.indexOfFirst { it != null && PageSignature.similarity(mine, it) >= PageSignature.SAME }
+        val page = if (matchExisting >= 0) {
+            matchExisting + 1
+        } else {
+            before.indexOfFirst { c -> signatures[c.file]?.let { PageSignature.similarity(mine, it) >= PageSignature.SAME } == true }
+                .takeIf { it >= 0 }?.let { existing.size + it + 1 }
+        }
+        signatures[file] = mine
+        page ?: return
+        val capture = _state.value.captures.firstOrNull { it.file == file } ?: return
+        _state.update { s ->
+            s.copy(
+                captures = if (auto) s.captures.filter { it.file != file } else s.captures,
+                duplicate = Duplicate(capture, page, left = auto),
+            )
+        }
+    }
+
+    /** Puts back a capture that was left out as a repeat. */
+    fun keepDuplicate() = _state.update { s ->
+        val d = s.duplicate ?: return@update s
+        s.copy(captures = if (d.left && s.captures.none { it.file == d.capture.file }) s.captures + d.capture else s.captures, duplicate = null)
+    }
+
+    /** Takes out a capture that was kept though it's a repeat. */
+    fun removeDuplicate() {
+        val d = _state.value.duplicate ?: return
+        _state.update { it.copy(duplicate = null) }
+        if (!d.left) deleteCapture(d.capture.file)
+    }
+
+    fun dismissDuplicate() = _state.update { it.copy(duplicate = null) }
 
     /** Opens the pages taken so far, to fix an outline or drop a page, without ending the scan. */
     fun openPages() = _state.update { if (it.captures.isEmpty()) it else it.copy(reviewing = true) }
@@ -318,6 +381,13 @@ class CaptureViewModel(
         exif.setAttribute(ExifInterface.TAG_ORIENTATION, tag.toString())
         exif.saveAttributes()
     }
+
+    /** The next photo was asked for by auto-capture, not the shutter. */
+    @Volatile private var autoShot = false
+    /** Each capture's page signature, once found. */
+    private val signatures = java.util.concurrent.ConcurrentHashMap<File, FloatArray>()
+    /** The signatures of the document's pages when adding to one, read once. */
+    private var documentPages: List<FloatArray?>? = null
 
     private companion object {
         const val CAPTURED_HOLD_MS = 900L
