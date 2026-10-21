@@ -4,8 +4,10 @@ import dev.olaf.oscanner.core.model.PageFilter
 import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
+import org.opencv.core.Scalar
 import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
+import org.opencv.photo.Photo
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
@@ -19,6 +21,18 @@ internal object Filters {
 
     /** Side length the paper background is estimated at; text strokes vanish at this size. */
     private const val BACKGROUND_SIDE = 400.0
+    /** The estimate this far below the wider paper around it is a shadow or a solid shape... */
+    private const val SUNK = 0.88
+    /** ...a shape when this share of its edge steps by [EDGE_STEP] of the paper's brightness in a pixel or two... */
+    private const val SHARP_SHARE = 0.15
+    private const val EDGE_STEP = 0.25
+    /** ...and it's this much more saturated than the paper around it, or darker than this share of it. */
+    private const val SHAPE_TINT = 35.0
+    private const val SHAPE_DARK = 0.5
+    /** Ink: darker than this on flattened paper (255) is black whatever is around it. */
+    private const val INK_SOLID = 150.0
+    /** Smaller than this (pixels at the estimate's size) and the closing already took care of it. */
+    private const val MIN_SHAPE = 20.0
     /** Grain below this many 8-bit levels is left alone: a clean photo stays untouched. */
     private const val NOISY = 2.0
     private const val NOISE_PATCH = 1024
@@ -88,17 +102,23 @@ internal object Filters {
 
     /** Luminance only, flattened and stretched. Smallest files. */
     private fun gray(rgb: Mat): Mat {
-        val flat = flatten(cleanNoise(toGray(rgb)))
+        val flat = flatten(cleanNoise(toGray(rgb)), rgb)
         applyLut(flat, levels(black = 35, white = 240, gamma = 1.05))
         return sharpen(flat, amount = 0.5)
     }
 
     /** Pure black on white: flattened luminance, Sauvola threshold, then despeckle. */
     private fun ink(rgb: Mat): Mat {
-        val flat = flatten(cleanNoise(toGray(rgb)))
+        val flat = flatten(cleanNoise(toGray(rgb)), rgb)
         val longSide = max(flat.cols(), flat.rows())
         val window = (longSide / 60).coerceAtLeast(15) or 1
         val binary = sauvola(flat, window, k = 0.2, range = 128.0)
+        // Sauvola compares a pixel with its neighbourhood, so the middle of a solid shape is as
+        // light as its surroundings and turns white. What's clearly dark against the paper is ink.
+        val dark = Mat()
+        Core.compare(flat, Scalar(INK_SOLID), dark, Core.CMP_LT)
+        binary.setTo(Scalar(0.0), dark)
+        dark.release()
         flat.release()
         Imgproc.medianBlur(binary, binary, 3)
         return binary
@@ -108,10 +128,11 @@ internal object Filters {
 
     /**
      * Divides the image by its blank-paper estimate so paper becomes white and shadows drop out.
-     * A gray [src] is a temporary and is released; a color one belongs to the caller.
+     * A gray [src] is a temporary and is released; a color one belongs to the caller. [colour] is
+     * the page in color, which tells solid shapes from shadows (see [keepShapesOut]).
      */
-    private fun flatten(src: Mat): Mat {
-        val background = background(src)
+    private fun flatten(src: Mat, colour: Mat = src): Mat {
+        val background = background(src, colour)
         val out = Mat()
         Core.divide(src, background, out, 255.0)
         background.release()
@@ -239,18 +260,90 @@ internal object Filters {
      * Downscale, morphological close (dark text is smaller than the kernel, so it's filled with
      * the surrounding paper), median to smooth, upscale.
      */
-    private fun background(src: Mat): Mat {
+    private fun background(src: Mat, colour: Mat? = null): Mat {
         val scale = min(1.0, BACKGROUND_SIDE / max(src.cols(), src.rows()))
         val small = Mat()
         Imgproc.resize(src, small, Size(), scale, scale, Imgproc.INTER_AREA)
         val kernel = Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(15.0, 15.0))
         Imgproc.morphologyEx(small, small, Imgproc.MORPH_CLOSE, kernel)
         Imgproc.medianBlur(small, small, 9)
+        if (colour != null && colour.channels() == 3) keepShapesOut(small, colour)
         val full = Mat()
         Imgproc.resize(small, full, src.size(), 0.0, 0.0, Imgproc.INTER_LINEAR)
         kernel.release()
         small.release()
         return full
+    }
+
+    /**
+     * A solid shape bigger than the closing (a chart's bar, a black box, a photo) pulls the paper
+     * estimate [paper] down inside it, and dividing by that turns the shape white with only its
+     * outline left. A shadow does the same, and should. They're told apart by their edges and
+     * their color: a shape stops sharply and is colored or very dark; a shadow fades, or is only
+     * a little darker. Over shapes, the estimate is drawn in from the paper around them.
+     */
+    private fun keepShapesOut(paper: Mat, colour: Mat) {
+        val w = paper.cols()
+        val h = paper.rows()
+        val rgb = Mat()
+        Imgproc.resize(colour, rgb, paper.size(), 0.0, 0.0, Imgproc.INTER_AREA)
+        val gray = toGray(rgb)
+        val hsv = Mat()
+        Imgproc.cvtColor(rgb, hsv, Imgproc.COLOR_RGB2HSV)
+        rgb.release()
+        val saturation = Mat()
+        Core.extractChannel(hsv, saturation, 1)
+        hsv.release()
+        val estimate = if (paper.channels() == 1) paper.clone() else toGray(paper)
+        // The paper further out: closed far wider than any shape that matters.
+        val reach = (max(w, h) / 5).coerceAtLeast(31) or 1
+        val wide = Mat()
+        Imgproc.morphologyEx(estimate, wide, Imgproc.MORPH_CLOSE, Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(reach.toDouble(), reach.toDouble())))
+        // Where the estimate sank clearly below that: a shadow or a shape.
+        val lifted = Mat()
+        Core.multiply(estimate, Scalar(1.0 / SUNK), lifted)
+        val sunk = Mat()
+        Core.compare(lifted, wide, sunk, Core.CMP_LT)
+        listOf(lifted, estimate).forEach(Mat::release)
+        val edges = Mat()
+        Imgproc.morphologyEx(gray, edges, Imgproc.MORPH_GRADIENT, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0)))
+
+        val labels = Mat()
+        val stats = Mat()
+        val centroids = Mat()
+        val count = Imgproc.connectedComponentsWithStats(sunk, labels, stats, centroids, 8, CvType.CV_32S)
+        val holes = Mat.zeros(h, w, CvType.CV_8UC1)
+        val part = Mat()
+        val grown = Mat()
+        val shrunk = Mat()
+        val band = Mat()
+        val sharp = Mat()
+        val near = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(5.0, 5.0))
+        for (k in 1 until count) {
+            if (stats.get(k, Imgproc.CC_STAT_AREA)[0] < MIN_SHAPE) continue
+            // At the image's edge it's desk beside an uncropped page, or a shadow coming in.
+            val x = stats.get(k, Imgproc.CC_STAT_LEFT)[0].toInt()
+            val y = stats.get(k, Imgproc.CC_STAT_TOP)[0].toInt()
+            if (x <= 0 || y <= 0 || x + stats.get(k, Imgproc.CC_STAT_WIDTH)[0].toInt() >= w || y + stats.get(k, Imgproc.CC_STAT_HEIGHT)[0].toInt() >= h) continue
+            Core.compare(labels, Scalar(k.toDouble()), part, Core.CMP_EQ)
+            Imgproc.dilate(part, grown, near)
+            Imgproc.erode(part, shrunk, near)
+            Core.subtract(grown, shrunk, band)
+            val level = Core.mean(wide, part).`val`[0].coerceAtLeast(1.0)
+            // Sharp: a good share of the edge band steps by a quarter of the paper's brightness.
+            Core.compare(edges, Scalar(EDGE_STEP * level), sharp, Core.CMP_GT)
+            Core.bitwise_and(sharp, band, sharp)
+            val sharpShare = Core.countNonZero(sharp).toDouble() / Core.countNonZero(band).coerceAtLeast(1)
+            if (sharpShare < SHARP_SHARE) continue
+            val darkness = Core.mean(gray, part).`val`[0] / level
+            // The ring just outside is the paper the shape sits on.
+            Core.subtract(grown, part, band)
+            val tint = Core.mean(saturation, part).`val`[0] - Core.mean(saturation, band).`val`[0]
+            if (tint > SHAPE_TINT || darkness < SHAPE_DARK) Core.bitwise_or(holes, grown, holes)
+        }
+        listOf(labels, stats, centroids, part, grown, shrunk, band, sharp, near, sunk, edges, wide, gray, saturation).forEach(Mat::release)
+        if (Core.countNonZero(holes) > 0) Photo.inpaint(paper, holes, paper, 5.0, Photo.INPAINT_TELEA)
+        holes.release()
     }
 
     /**
