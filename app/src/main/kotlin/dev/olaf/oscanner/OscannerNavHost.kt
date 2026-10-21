@@ -58,6 +58,7 @@ private object Routes {
     const val SETTINGS = "settings"
     const val TRASH = "trash"
     const val LANGUAGES = "languages"
+    const val WELCOME = "welcome"
     const val CAPTURE = "capture?documentId={documentId}"
     const val REVIEW = "review/{documentId}?page={page}&focus={focus}"
     const val DOCUMENT = "document/{documentId}"
@@ -158,9 +159,13 @@ fun OscannerNavHost(
                 versionName = BuildConfig.VERSION_NAME,
                 onBack = { navController.popBackStack() },
                 onOpenLanguages = { navController.navigate(Routes.LANGUAGES) { launchSingleTop = true } },
+                onOpenWelcome = { navController.navigate(Routes.WELCOME) { launchSingleTop = true } },
                 appLockAvailable = appLockAvailable,
                 confirmLock = confirmLock,
             )
+        }
+        composable(Routes.WELCOME) {
+            WelcomeScreen(onDone = { navController.popBackStack() })
         }
         composable(Routes.LANGUAGES) {
             val viewModel: LanguagesViewModel = viewModel(

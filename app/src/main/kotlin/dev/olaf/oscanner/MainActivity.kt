@@ -8,6 +8,8 @@ import android.os.Bundle
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -83,6 +85,8 @@ class MainActivity : FragmentActivity() {
                     settings == null && !greeting -> Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
                     settings == null || greeting -> StartupScreen()
                     lockOn && locked.value -> LockScreen(onUnlock = { appLock.prompt { ok -> if (ok) locked.value = false } })
+                    // The first time the app opens: the tour, once.
+                    settings?.welcomed == false -> WelcomeScreen(onDone = { lifecycleScope.launch { container.settings.setWelcomed() } })
                     else -> OscannerNavHost(
                         container = container,
                         sharedImages = sharedImages.value,

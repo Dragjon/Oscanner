@@ -42,6 +42,7 @@ class SettingsRepository(context: Context) {
                 fillEdges = prefs[FIX_EDGES] ?: false,
             ),
             cameraOrientation = prefs[CAMERA_ORIENTATION].toEnum(CameraOrientation.Auto),
+            welcomed = prefs[WELCOMED] ?: false,
         )
     }
 
@@ -60,6 +61,10 @@ class SettingsRepository(context: Context) {
 
     suspend fun setCameraOrientation(orientation: CameraOrientation) {
         store.edit { it[CAMERA_ORIENTATION] = orientation.name }
+    }
+
+    suspend fun setWelcomed() {
+        store.edit { it[WELCOMED] = true }
     }
 
     suspend fun setAppLock(enabled: Boolean) {
@@ -116,6 +121,7 @@ class SettingsRepository(context: Context) {
         val FIX_LOOK = stringPreferencesKey("fix_look")
         val FIX_TIMESTAMP = booleanPreferencesKey("fix_timestamp")
         val FIX_EDGES = booleanPreferencesKey("fix_edges")
+        val WELCOMED = booleanPreferencesKey("welcomed")
         val CAMERA_ORIENTATION = stringPreferencesKey("camera_orientation")
     }
 }

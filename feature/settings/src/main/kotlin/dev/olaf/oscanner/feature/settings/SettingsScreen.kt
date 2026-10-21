@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Celebration
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.LibraryAdd
 import androidx.compose.material.icons.rounded.Translate
@@ -75,6 +76,8 @@ fun SettingsRoute(
     versionName: String,
     onBack: () -> Unit,
     onOpenLanguages: () -> Unit,
+    /** Shows the welcome tour again. */
+    onOpenWelcome: () -> Unit,
     /** False when this phone has no fingerprint, face or screen lock to use. */
     appLockAvailable: Boolean,
     /** Confirms with the system prompt, then calls back with whether it succeeded. */
@@ -98,6 +101,7 @@ fun SettingsRoute(
         onPdfPageFormatChange = viewModel::onPdfPageFormatChange,
         onPdfQualityChange = viewModel::onPdfQualityChange,
         onWatermarkChange = viewModel::onWatermarkChange,
+        onOpenWelcome = onOpenWelcome,
         appLockAvailable = appLockAvailable,
         onAppLockChange = { enable ->
             // Turning the lock on proves it works first; turning it off also asks, so a passer-by can't.
@@ -126,6 +130,7 @@ fun SettingsScreen(
     onPdfPageFormatChange: (PdfPageFormat) -> Unit,
     onPdfQualityChange: (PdfQuality) -> Unit,
     onWatermarkChange: (String) -> Unit,
+    onOpenWelcome: () -> Unit,
     appLockAvailable: Boolean,
     onAppLockChange: (Boolean) -> Unit,
     onFillSampleLibrary: () -> Unit,
@@ -323,6 +328,14 @@ fun SettingsScreen(
                         color = colors.onSurfaceVariant,
                     )
                 }
+            }
+            item(key = "welcome") {
+                SheetAction(
+                    icon = Icons.Rounded.Celebration,
+                    title = stringResource(R.string.settings_welcome_again),
+                    description = stringResource(R.string.settings_welcome_again_description),
+                    onClick = onOpenWelcome,
+                )
             }
 
             if (showDeveloperTools) {

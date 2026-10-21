@@ -263,6 +263,8 @@ data class AppSettings(
     /** Fixes the camera applies to every new scan. */
     val scanFixes: ScanFixes = ScanFixes(),
     val cameraOrientation: CameraOrientation = CameraOrientation.Auto,
+    /** The welcome tour was seen (or skipped), so it doesn't show on opening again. */
+    val welcomed: Boolean = false,
 )
 
 /** Which way up the camera takes pages: as the phone is held, or always one way. */
