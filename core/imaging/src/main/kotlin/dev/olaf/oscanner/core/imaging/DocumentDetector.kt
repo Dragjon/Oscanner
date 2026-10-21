@@ -137,7 +137,9 @@ class DocumentDetector(
         // page's own edge, looked for further out, and it only counts if that edge is there.
         val rough = fromFinder(gray, width, height) ?: return Detection(null, sharpness)
         val reach = max(REFINE_REACH, (FINDER_REACH * max(gray.cols(), gray.rows())).toInt())
-        val snapped = snapToPaper(toFull(rough), reach) ?: return Detection(null, sharpness)
+        // When its sides don't snap (pages bowing up toward a spine, or a busy cloth along them),
+        // the finder's own outline stands: it already had to be sure all over and fill its shape.
+        val snapped = snapToPaper(toFull(rough), reach) ?: return Detection(inset(rough), sharpness)
         return Detection(inset(toQuad(snapped)), sharpness)
     }
 
@@ -243,11 +245,24 @@ class DocumentDetector(
         return values.isNotEmpty() && values.count { it > FINDER_CERTAIN } >= FINDER_CONFIDENT * values.size
     }
 
+    /**
+     * Whether the page the finder sees runs off the frame: its biggest sure blob reaching the
+     * frame's rim. Another blob at the rim (the next page of a booklet peeking in) doesn't count.
+     */
     private fun touchesEdge(mask: Mat): Boolean {
         val rows = mask.rows()
         val cols = mask.cols()
-        val pixels = pixels(mask)
-        fun sure(x: Int, y: Int) = (pixels[y * cols + x].toInt() and 0xFF) > FINDER_SURE
+        val sureMask = Mat()
+        Imgproc.threshold(mask, sureMask, FINDER_SURE, 255.0, Imgproc.THRESH_BINARY)
+        val labels = Mat()
+        val stats = Mat()
+        val centroids = Mat()
+        val n = Imgproc.connectedComponentsWithStats(sureMask, labels, stats, centroids, 4, CvType.CV_32S)
+        val biggest = (1 until n).maxByOrNull { stats.get(it, Imgproc.CC_STAT_AREA)[0] }
+        val label = IntArray(rows * cols).also { labels.get(0, 0, it) }
+        listOf(sureMask, labels, stats, centroids).forEach(Mat::release)
+        biggest ?: return false
+        fun sure(x: Int, y: Int) = label[y * cols + x] == biggest
         val rim = (0 until cols).count { sure(it, 0) || sure(it, rows - 1) } +
             (0 until rows).count { sure(0, it) || sure(cols - 1, it) }
         return rim > FINDER_EDGE * (rows + cols)

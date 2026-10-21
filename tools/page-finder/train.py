@@ -76,9 +76,9 @@ def iou(logits, y):
 def main():
     epochs = int(sys.argv[1]) if len(sys.argv) > 1 else 8
     X, Y = load(sorted(glob.glob('train*.npz')))
-    Xv, Yv = load(['val.npz'])
-    print('train', len(X), 'val', len(Xv), flush=True)
-    xv, yv = tensors(Xv, Yv)
+    vals = [v for v in ['val.npz', 'valhard.npz'] if glob.glob(v)]
+    sets = [tensors(*load([v])) for v in vals]
+    print('train', len(X), 'val', vals, flush=True)
     net = PageNet()
     if len(sys.argv) > 2 and sys.argv[2] != '-':
         net.load_state_dict(torch.load(sys.argv[2]))
@@ -110,9 +110,12 @@ def main():
             sched.step()
             tot += loss.item() * len(idx)
         net.eval()
+        report = []
         with torch.no_grad():
-            ious = torch.cat([iou(net(xv[i:i + 256]), yv[i:i + 256]) for i in range(0, len(xv), 256)])
-        print(f'epoch {ep} loss {tot / len(X):.4f} | val IoU mean {ious.mean():.3f} | >=0.9 {(ious >= 0.9).float().mean():.3f}', flush=True)
+            for name, (xv, yv) in zip(vals, sets):
+                ious = torch.cat([iou(net(xv[i:i + 256]), yv[i:i + 256]) for i in range(0, len(xv), 256)])
+                report.append(f'{name} IoU mean {ious.mean():.3f} >=0.9 {(ious >= 0.9).float().mean():.3f}')
+        print(f'epoch {ep} loss {tot / len(X):.4f} | ' + ' | '.join(report), flush=True)
         torch.save(net.state_dict(), out)
 
 

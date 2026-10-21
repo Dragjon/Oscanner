@@ -19,3 +19,11 @@ clutter, hands on edges, pages partly out of frame and frames with no page.
 `python masks.py <pagenet.pt|page.onnx> <scenes> <out>` writes the masks for a folder of benchmark
 scenes; with `DET_MASKS=<out>` the detector benchmark uses them in place of the model, so the
 JVM test needs no ONNX Runtime.
+
+Harder scenes (`hard.py`, 2026-10-22), from photos users sent: pages on patterned cloth,
+booklets with the edges of the pages under them showing, curved pages and open spreads.
+`python hard.py 4000 trainhard1.npz 301` (and so on) writes them like `gen.py`; `train.py`
+picks up every `train*.npz`, and reports on `valhard.npz` too when it's there. The shipped
+model was fine-tuned for 4 passes from the one before (`python train.py 4 pagenet.pt 1e-3`) on
+the 30,000 drawn frames plus 16,000 hard ones: held-out hard scenes right (IoU ≥ 0.9) went
+from 88% to 99.5%, the ordinary ones stayed at 99.9%.
