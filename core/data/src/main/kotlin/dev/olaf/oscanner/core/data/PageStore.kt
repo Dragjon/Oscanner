@@ -149,6 +149,8 @@ class PageStore(
                 updatedAt = now,
                 state = ProcessingState.Enhancing.name,
                 kind = kind.name,
+                // An ID card's text is a name and numbers, not a title.
+                autoTitle = kind != DocumentKind.IdCard,
             ),
         )
         addPages(docId, images)

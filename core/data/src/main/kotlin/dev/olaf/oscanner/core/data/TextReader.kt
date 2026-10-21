@@ -134,6 +134,15 @@ class TextReader(
             db.documents().setState(documentId, ProcessingState.Idle.name)
             report(documentId, null)
         }
+        nameAfterHeading(documentId)
+    }
+
+    /** A document still called "Scan …" takes its first page's heading as its name, once read. */
+    private suspend fun nameAfterHeading(documentId: Long) {
+        if (db.documents().hasAutoTitle(documentId) != true) return
+        val first = db.pages().forDocument(documentId).firstOrNull()?.takeIf { it.ocrText != null } ?: return
+        val title = withContext(Dispatchers.Default) { DocumentTitles.fromWords(words(first)) } ?: return
+        db.documents().autoName(documentId, title)
     }
 
     /**

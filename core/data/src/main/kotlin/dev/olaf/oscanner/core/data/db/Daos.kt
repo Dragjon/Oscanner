@@ -78,8 +78,15 @@ interface DocumentDao {
     @Query("UPDATE documents SET state = :state WHERE id = :id")
     suspend fun setState(id: Long, state: String)
 
-    @Query("UPDATE documents SET title = :title, updatedAt = :now WHERE id = :id")
+    @Query("UPDATE documents SET title = :title, updatedAt = :now, autoTitle = 0 WHERE id = :id")
     suspend fun rename(id: Long, title: String, now: Long)
+
+    /** Names a document that still has the name it was made with; does nothing to one renamed since. */
+    @Query("UPDATE documents SET title = :title, autoTitle = 0 WHERE id = :id AND autoTitle = 1")
+    suspend fun autoName(id: Long, title: String)
+
+    @Query("SELECT autoTitle FROM documents WHERE id = :id")
+    suspend fun hasAutoTitle(id: Long): Boolean?
 
     @Query("UPDATE documents SET note = :note WHERE id = :id")
     suspend fun setNote(id: Long, note: String?)
