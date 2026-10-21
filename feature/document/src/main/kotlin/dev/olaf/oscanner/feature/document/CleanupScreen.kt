@@ -34,6 +34,7 @@ import androidx.compose.material.icons.rounded.Compare
 import androidx.compose.material.icons.rounded.CopyAll
 import androidx.compose.material.icons.rounded.FlipToBack
 import androidx.compose.material.icons.rounded.FrontHand
+import androidx.compose.material.icons.rounded.WaterDrop
 import androidx.compose.material.icons.rounded.Gesture
 import androidx.compose.material.icons.rounded.LineWeight
 import androidx.compose.material.icons.rounded.Shield
@@ -196,7 +197,13 @@ fun CleanupRoute(viewModel: CleanupViewModel, onDone: () -> Unit) {
                     selected = edits.removeShowThrough,
                     onClick = { viewModel.setRemoveShowThrough(!edits.removeShowThrough) },
                 )
-                if (state.pages.size > 1 && (edits.removePenInk || edits.removeFingers || edits.removeShowThrough)) {
+                ToolbarButton(
+                    Icons.Rounded.WaterDrop,
+                    stringResource(R.string.document_remove_stains),
+                    selected = edits.removeStains,
+                    onClick = { viewModel.setRemoveStains(!edits.removeStains) },
+                )
+                if (state.pages.size > 1 && (edits.removePenInk || edits.removeFingers || edits.removeShowThrough || edits.removeStains)) {
                     ToolbarButton(Icons.Rounded.CopyAll, stringResource(R.string.document_cleanup_other_pages_short), selected = null, onClick = { choosingPages = true })
                 }
                 VerticalDivider(Modifier.height(36.dp).padding(horizontal = 6.dp), color = colors.outlineVariant)

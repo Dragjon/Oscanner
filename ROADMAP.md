@@ -39,7 +39,7 @@ are not layout references (`PLAN.md` §1 still applies to how we build).
 | Erase handwriting ("Erase Marks") | ✅ print-vs-handwriting network |
 | Smart Erase (brush) | ✅ Erase brush |
 | Remove fingers, moiré, curved-page flattening | ✅ |
-| Remove creases and stains, bleed-through | 🟡 show-through; ❌ creases, stains |
+| Remove creases and stains, bleed-through | ✅ |
 | Restore old photo, Enhance image (colour photos) | ❌ |
 | Mosaic / pixelate, auto-mask text | 🟡 black-out boxes and "find emails / numbers" |
 | Edit text inside the image (retype a word in the page's font) | ❌ |
@@ -117,11 +117,13 @@ benchmark it belongs to, committed and pushed, released only when everything is 
 - **Auto filter parity.** Side-by-side test set against our own baseline: whiter paper, no grey
   cast, crisp but not crunchy text, colour kept where it matters. Add a "No shadow" style
   option if Auto can't cover both.
-- 🟡 **Creases, stains and bleed-through** in Clean up. ✅ Show-through (2026-10-21): Clean up →
+- ✅ **Creases, stains and bleed-through** in Clean up. ✅ Show-through (2026-10-21): Clean up →
   Show-through takes out the back page's print, told from faint ink on the front by its soft
   edges and gray colour; pencil, highlighter and pale photos stay (94% found on a staged page,
-  none of the pencil). Still to do: stains as low-frequency colour blotches, creases as long
-  thin shading lines.
+  none of the pencil); it takes out the shadow of a fold too, though a fold's thin lit edge
+  stays. ✅ Stains (2026-10-21): Clean up → Stains divides out the tint of coffee, tea and
+  water stains, so the print under them stays; highlighter, warm photos and yellowed paper
+  are left alone. A faint outline of a stain's rim can remain.
 
 ### 3.2 Work with files people already have
 - ✅ **Import PDFs** into the library as documents (2026-10-21): from Import → Files, a

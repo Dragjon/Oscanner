@@ -6,7 +6,10 @@ import dev.olaf.oscanner.core.model.PageEdits
 import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
+import org.opencv.core.MatOfFloat
+import org.opencv.core.MatOfInt
 import org.opencv.core.Point
+import org.opencv.core.Rect
 import org.opencv.core.Scalar
 import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
@@ -24,6 +27,8 @@ internal object Cleanup {
 
     /** Fills what [edits] removes, in place, and mends ruled lines writing crossed. */
     fun apply(rgb: Mat, edits: PageEdits) {
+        // Stains are taken out first: what's under them is kept, and then judged like the rest.
+        if (edits.removeStains) unstain(rgb)
         val (mask, mend) = plan(rgb, edits)
         if (mask != null) {
             val paper = paperUnder(rgb, mask)
@@ -242,6 +247,176 @@ internal object Cleanup {
         // The outermost strip is where desk or shadow is left after cropping, never handwriting.
         clearMargin(mask, 0.02)
         return mask
+    }
+
+    /**
+     * Takes coffee, tea and water stains out of [rgb], in place. A stain is a translucent tint:
+     * yellower and a little darker than this page's paper, smooth, and no brighter or more
+     * saturated than a highlighter. It's divided out, so the print under it stays, using the
+     * stain's color close by each pixel (from the clear paper near it; a small window follows its
+     * rim, a wider one reaches between letters). Found on a smaller copy; corrected at full size
+     * only around the stains.
+     */
+    private fun unstain(rgb: Mat) {
+        val side = max(rgb.cols(), rgb.rows())
+        val scale = min(1.0, STAIN_SIDE / side)
+        val small = Mat()
+        Imgproc.resize(rgb, small, Size(), scale, scale, Imgproc.INTER_AREA)
+        val w = small.cols()
+        val h = small.rows()
+        val gray = Mat()
+        Imgproc.cvtColor(small, gray, Imgproc.COLOR_RGB2GRAY)
+        // The paper: the brighter half of the page, whatever its own color.
+        val paperMask = Mat()
+        Core.compare(gray, Scalar(medianOf(gray, null).toDouble()), paperMask, Core.CMP_GE)
+        val paper = Core.mean(small, paperMask)
+        val lab = Mat()
+        Imgproc.cvtColor(small, lab, Imgproc.COLOR_RGB2Lab)
+        val channels = mutableListOf<Mat>()
+        Core.split(lab, channels)
+        val (pl, pa, pb) = channels.map { medianOf(it, paperMask).toDouble() }
+        channels.forEach(Mat::release)
+        val tinted = Mat()
+        Core.inRange(lab, Scalar(0.0, pa - 3, pb + 8), Scalar(pl - 5, 255.0, pb + 44), tinted)
+        lab.release()
+        val hsv = Mat()
+        Imgproc.cvtColor(small, hsv, Imgproc.COLOR_RGB2HSV)
+        val warm = Mat()
+        Core.inRange(hsv, Scalar(5.0, 0.0, 0.0), Scalar(25.0, STAIN_SATURATION, 255.0), warm)
+        hsv.release()
+        Core.bitwise_and(tinted, warm, tinted)
+        warm.release()
+        // Ink: dark against the paper.
+        val ink = Mat()
+        Core.compare(gray, Scalar(INK_SHARE * Core.mean(gray, paperMask).`val`[0]), ink, Core.CMP_LT)
+        paperMask.release()
+        Core.subtract(tinted, ink, tinted)
+        // Smooth: a stain has no texture of its own, ink aside.
+        val k = (max(9, max(w, h) / 150) or 1).toDouble()
+        val clear = Mat()
+        Core.bitwise_not(ink, clear)
+        val m = Mat()
+        clear.convertTo(m, CvType.CV_32F, 1.0 / 255)
+        val lum = Mat()
+        gray.convertTo(lum, CvType.CV_32F)
+        gray.release()
+        val sum = Mat()
+        val sq = Mat()
+        val count = Mat()
+        Core.multiply(lum, m, sum)
+        Core.multiply(sum, lum, sq)
+        Imgproc.boxFilter(sum, sum, -1, Size(k, k), Point(-1.0, -1.0), false)
+        Imgproc.boxFilter(sq, sq, -1, Size(k, k), Point(-1.0, -1.0), false)
+        Imgproc.boxFilter(m, count, -1, Size(k, k), Point(-1.0, -1.0), false)
+        Core.max(count, Scalar(1e-3), count)
+        Core.divide(sum, count, sum)
+        Core.divide(sq, count, sq)
+        Core.multiply(sum, sum, sum)
+        Core.subtract(sq, sum, sq)
+        val smooth = Mat()
+        Core.compare(sq, Scalar(STAIN_TEXTURE * STAIN_TEXTURE), smooth, Core.CMP_LT)
+        listOf(m, lum, sum, sq, count, clear).forEach(Mat::release)
+        Core.bitwise_and(tinted, smooth, tinted)
+        smooth.release()
+        // Whole blotches: closed over the text inside them, and big enough to be a stain.
+        Imgproc.morphologyEx(tinted, tinted, Imgproc.MORPH_OPEN, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(5.0, 5.0)))
+        Imgproc.morphologyEx(tinted, tinted, Imgproc.MORPH_CLOSE, Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(2 * k + 1, 2 * k + 1)))
+        val labels = Mat()
+        val stats = Mat()
+        val centroids = Mat()
+        val n = Imgproc.connectedComponentsWithStats(tinted, labels, stats, centroids, 8, CvType.CV_32S)
+        val least = (max(w, h) * STAIN_SIZE).let { it * it }
+        val region = Mat.zeros(h, w, CvType.CV_8UC1)
+        val one = Mat()
+        for (c in 1 until n) {
+            if (stats.get(c, Imgproc.CC_STAT_AREA)[0] < least) continue
+            Core.compare(labels, Scalar(c.toDouble()), one, Core.CMP_EQ)
+            Core.bitwise_or(region, one, region)
+        }
+        listOf(labels, stats, centroids, one, tinted, small).forEach(Mat::release)
+        if (Core.countNonZero(region) == 0) {
+            listOf(region, ink).forEach(Mat::release)
+            return
+        }
+        // Well past its edge: correcting clear paper changes nothing, and the soft rim is stain too.
+        val reach = (3 * k.toInt() or 1).toDouble()
+        Imgproc.dilate(region, region, Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(reach, reach)))
+
+        // At full size, around the stains only.
+        val full = Mat()
+        Imgproc.resize(region, full, rgb.size(), 0.0, 0.0, Imgproc.INTER_NEAREST)
+        val fullInk = Mat()
+        Imgproc.resize(ink, fullInk, rgb.size(), 0.0, 0.0, Imgproc.INTER_NEAREST)
+        listOf(region, ink).forEach(Mat::release)
+        val kFull = (k / scale).toInt() or 1
+        val box = Imgproc.boundingRect(full).let { r ->
+            val x0 = max(0, r.x - kFull)
+            val y0 = max(0, r.y - kFull)
+            Rect(x0, y0, min(rgb.cols(), r.x + r.width + kFull) - x0, min(rgb.rows(), r.y + r.height + kFull) - y0)
+        }
+        val part = rgb.submat(box)
+        val inside = full.submat(box)
+        // The clear paper (not ink, nor its soft edge) the stain's color is read from.
+        val clearFull = Mat()
+        Imgproc.dilate(fullInk.submat(box), clearFull, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0)))
+        Core.bitwise_not(clearFull, clearFull)
+        fullInk.release()
+        val weight = Mat()
+        clearFull.convertTo(weight, CvType.CV_32F, 1.0 / 255)
+        clearFull.release()
+        val colour = Mat()
+        part.convertTo(colour, CvType.CV_32FC3)
+        val weighted = Mat()
+        val weight3 = Mat()
+        Imgproc.cvtColor(weight, weight3, Imgproc.COLOR_GRAY2RGB)
+        Core.multiply(colour, weight3, weighted)
+        weight3.release()
+        fun tintOver(window: Double): Pair<Mat, Mat> {
+            val num = Mat()
+            val den = Mat()
+            Imgproc.boxFilter(weighted, num, -1, Size(window, window), Point(-1.0, -1.0), false)
+            Imgproc.boxFilter(weight, den, -1, Size(window, window), Point(-1.0, -1.0), false)
+            val den3 = Mat()
+            Core.max(den, Scalar(1e-3), den3)
+            Imgproc.cvtColor(den3, den3, Imgproc.COLOR_GRAY2RGB)
+            Core.divide(num, den3, num)
+            den3.release()
+            return num to den
+        }
+        val (tint, _) = tintOver(kFull.toDouble())
+        val (near, nearCount) = tintOver(NEAR_WINDOW)
+        val close = Mat()
+        Core.compare(nearCount, Scalar(NEAR_CLEAR), close, Core.CMP_GE)
+        near.copyTo(tint, close)
+        listOf(near, nearCount, close, weighted, weight).forEach(Mat::release)
+        // gain = paper / tint, faded in at the region's edge so there's no seam.
+        full.release()
+        Core.max(tint, Scalar(1.0, 1.0, 1.0), tint)
+        val gain = Mat(tint.size(), CvType.CV_32FC3, paper)
+        Core.divide(gain, tint, gain)
+        tint.release()
+        val soft = Mat()
+        inside.convertTo(soft, CvType.CV_32F, 1.0 / 255)
+        Imgproc.GaussianBlur(soft, soft, Size(0.0, 0.0), kFull / 3.0)
+        Imgproc.cvtColor(soft, soft, Imgproc.COLOR_GRAY2RGB)
+        Core.subtract(gain, Scalar(1.0, 1.0, 1.0), gain)
+        Core.multiply(gain, soft, gain)
+        Core.add(gain, Scalar(1.0, 1.0, 1.0), gain)
+        Core.multiply(colour, gain, colour)
+        colour.convertTo(part, CvType.CV_8UC3)
+        listOf(soft, gain, colour, inside, part).forEach(Mat::release)
+    }
+
+    /** The middle value of an 8-bit [channel], over [mask] if given. */
+    private fun medianOf(channel: Mat, mask: Mat?): Int {
+        val hist = Mat()
+        Imgproc.calcHist(listOf(channel), MatOfInt(0), mask ?: Mat(), hist, MatOfInt(256), MatOfFloat(0f, 256f))
+        val counts = FloatArray(256).also { hist.get(0, 0, it) }
+        hist.release()
+        val half = counts.sum() / 2
+        var seen = 0f
+        counts.forEachIndexed { i, c -> seen += c; if (seen >= half) return i }
+        return 255
     }
 
     /**
@@ -660,6 +835,19 @@ internal object Cleanup {
     }
 
     private const val FILL_SIDE = 320.0
+    /** Stains are looked for on a copy this big on its long side. */
+    private const val STAIN_SIDE = 1200.0
+    /** No more saturated than this (HSV, 0-255): a highlighter is. */
+    private const val STAIN_SATURATION = 110.0
+    /** Local spread of brightness (gray levels) below which an area is smooth. */
+    private const val STAIN_TEXTURE = 10.0
+    /** A stain is at least this share of the page's long side, squared, in area. */
+    private const val STAIN_SIZE = 0.01
+    /** Darker than this share of the paper is ink. */
+    private const val INK_SHARE = 0.55
+    /** The small window that follows a stain's rim, and how much clear paper it needs. */
+    private const val NEAR_WINDOW = 5.0
+    private const val NEAR_CLEAR = 8.0
     /** Highlighter: at least this saturated (HSV, 0-255) and this light (gray level). */
     private const val HIGHLIGHT_SATURATION = 70.0
     private const val HIGHLIGHT_LIGHTNESS = 170.0

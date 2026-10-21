@@ -222,15 +222,19 @@ class PageStore(
     }
 
     /**
-     * Turns the automatic clean-ups on for [pageIds] as well: fingers and show-through straight
-     * away, handwriting once each page's print is found.
+     * Turns the automatic clean-ups on for [pageIds] as well: fingers, show-through and stains
+     * straight away, handwriting once each page's print is found.
      */
-    fun autoCleanup(pageIds: List<Long>, handwriting: Boolean, fingers: Boolean, showThrough: Boolean = false) {
+    fun autoCleanup(pageIds: List<Long>, handwriting: Boolean, fingers: Boolean, showThrough: Boolean = false, stains: Boolean = false) {
         scope.launch {
-            if (fingers || showThrough) {
+            if (fingers || showThrough || stains) {
                 for (id in pageIds) {
                     val edits = db.pages().get(id)?.let { EditsJson.read(it.editsJson) } ?: continue
-                    val wanted = edits.copy(removeFingers = edits.removeFingers || fingers, removeShowThrough = edits.removeShowThrough || showThrough)
+                    val wanted = edits.copy(
+                        removeFingers = edits.removeFingers || fingers,
+                        removeShowThrough = edits.removeShowThrough || showThrough,
+                        removeStains = edits.removeStains || stains,
+                    )
                     if (wanted != edits) setEdits(id, wanted)
                 }
             }
@@ -374,7 +378,7 @@ class PageStore(
             before.quad != edits.quad || before.rotation != edits.rotation ||
                 before.erase != edits.erase || before.keep != edits.keep ||
                 before.removePenInk != edits.removePenInk || before.removeFingers != edits.removeFingers ||
-                before.removeShowThrough != edits.removeShowThrough ||
+                before.removeShowThrough != edits.removeShowThrough || before.removeStains != edits.removeStains ||
                 before.redactions != edits.redactions ||
                 before.flatten != edits.flatten || before.curve != edits.curve || before.descreen != edits.descreen
             )

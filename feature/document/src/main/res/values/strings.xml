@@ -156,7 +156,7 @@
     <string name="document_signature_place">Place</string>
     <string name="document_signature_place_hint">Drag the signature into place. Size:</string>
     <string name="document_cleanup">Clean up</string>
-    <string name="document_cleanup_description">Erase things, remove handwriting, fingers or show-through</string>
+    <string name="document_cleanup_description">Erase things, remove handwriting, fingers, show-through or stains</string>
     <string name="document_cleanup_hint">What you see is the result. Tinted areas are filled with blank paper.</string>
     <string name="document_cleanup_auto">Remove automatically</string>
     <string name="document_remove_handwriting">Handwriting</string>
@@ -164,6 +164,7 @@
     <string name="document_remove_fingers">Fingers</string>
     <string name="document_remove_fingers_description">Hands holding the page</string>
     <string name="document_remove_show_through">Show-through</string>
+    <string name="document_remove_stains">Stains</string>
     <string name="document_finding_print">Finding the printed text…</string>
     <string name="document_no_print_found">No printed text found here, so all writing counts as handwriting. Paint with Keep over anything to keep.</string>
     <string name="document_brush">Brush</string>
