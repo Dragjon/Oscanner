@@ -79,7 +79,7 @@ class DocumentDetector(
      * the page is looked for near there, on weaker evidence. Telling whether a page is still
      * where it was is easier than finding it, so a faint page stays found while the camera moves.
      */
-    fun detect(gray: Mat, prior: Quad? = null): Detection {
+    fun detect(gray: Mat, prior: Quad? = null, search: Boolean = true): Detection {
         val sharpness = sharpness(gray)
         val scale = SEARCH_SIDE.toDouble() / max(gray.cols(), gray.rows())
         Imgproc.resize(gray, small, Size(), scale, scale, Imgproc.INTER_AREA)
@@ -104,7 +104,8 @@ class DocumentDetector(
         candidates += contourCandidates(mask)
         candidates += lineCandidates(width, height)
 
-        val valid = candidates.mapNotNull { check(it, width, height) }
+        // Not searching: only the prior, snapped onto the page's edge (see [detect] for photos).
+        val valid = if (search) candidates.mapNotNull { check(it, width, height) } else emptyList()
         val found = valid
             .filter { outer ->
                 keepSpreads || valid.none { inner ->
@@ -140,8 +141,14 @@ class DocumentDetector(
         return Detection(inset(toQuad(snapped)), sharpness)
     }
 
-    /** Finds the page in a still photo; returns null when nothing page-shaped is there. */
-    fun detect(bitmap: Bitmap): Quad? {
+    /**
+     * Finds the page in a still photo; null when nothing page-shaped is there. [seen] is where the
+     * camera showed the page as the photo was taken: that outline held still on the screen, so
+     * it's trusted over what the photo alone suggests. The photo's own outline is kept only when
+     * it agrees; otherwise the camera's is snapped onto the page's edge in the photo, or kept as
+     * it was.
+     */
+    fun detect(bitmap: Bitmap, seen: Quad? = null): Quad? {
         val scale = DETECT_SIDE.toDouble() / max(bitmap.width, bitmap.height)
         val rgba = Mat()
         Utils.bitmapToMat(bitmap, rgba)
@@ -149,7 +156,14 @@ class DocumentDetector(
         Imgproc.cvtColor(rgba, gray, Imgproc.COLOR_RGBA2GRAY)
         rgba.release()
         if (scale < 1.0) Imgproc.resize(gray, gray, Size(), scale, scale, Imgproc.INTER_AREA)
-        return detect(gray).quad.also { gray.release() }
+        try {
+            val found = detect(gray).quad
+            if (seen == null) return found
+            if (found != null && QuadGeometry.iou(found, seen) >= AGREES_WITH_CAMERA) return found
+            return detect(gray, prior = seen, search = false).quad ?: seen
+        } finally {
+            gray.release()
+        }
     }
 
     fun release() {
@@ -374,6 +388,11 @@ class DocumentDetector(
         if (angles.any { abs(it - 90.0) > angleTolerance }) return null
 
         val corners = quad.corners.map { P(it.x.toDouble() * width, it.y.toDouble() * height) }
+        // A sliver isn't a page: the margin strip beside a booklet's text, a ruler. Paper is
+        // about 1.4 long to wide; a long receipt reaches 4.
+        val across = (hypot(corners[1].x - corners[0].x, corners[1].y - corners[0].y) + hypot(corners[2].x - corners[3].x, corners[2].y - corners[3].y)) / 2
+        val down = (hypot(corners[3].x - corners[0].x, corners[3].y - corners[0].y) + hypot(corners[2].x - corners[1].x, corners[2].y - corners[1].y)) / 2
+        if (max(across, down) > MAX_SIDE_RATIO * min(across, down)) return null
         val sides = sides(corners)
         val support = sides.map { (a, b, inward) -> raw.support(a, b, inward) }
         val shares = support.map { it.share }
@@ -717,6 +736,9 @@ class DocumentDetector(
     companion object {
         /** Pages smaller than this share of the frame are ignored. */
         const val MIN_AREA_RATIO = 0.08
+        private const val MAX_SIDE_RATIO = 5.0
+        /** A photo's own outline overlapping the camera's this much is the same page, better placed. */
+        private const val AGREES_WITH_CAMERA = 0.9
         /** How sure the [PageFinder] must be (0..255) that a spot is page. */
         private const val FINDER_SURE = 127.0
         private const val SQRT2 = 1.4142135623730951

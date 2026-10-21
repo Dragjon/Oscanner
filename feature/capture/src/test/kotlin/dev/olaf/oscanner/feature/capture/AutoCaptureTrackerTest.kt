@@ -64,6 +64,17 @@ class AutoCaptureTrackerTest {
     }
 
     @Test
+    fun inBookModeOnePageDoesNotReplaceTheSpreadAtOnce() {
+        val tracker = AutoCaptureTracker().apply { steadySize = true }
+        tracker.feed(page, 0, 300)
+        // The left page alone: half the spread.
+        val left = Quad(Corner(0.2f, 0.2f), Corner(0.5f, 0.2f), Corner(0.5f, 0.8f), Corner(0.2f, 0.8f))
+        assertEquals(page, tracker.onFrame(left, 100.0, 350, true).quad)
+        assertEquals(page, tracker.onFrame(left, 100.0, 400, true).quad)
+        assertEquals(page, tracker.onFrame(page, 100.0, 450, true).quad)
+    }
+
+    @Test
     fun aTinyWobbleLeavesTheOutlineStill() {
         val tracker = AutoCaptureTracker()
         tracker.feed(page, 0, 300)

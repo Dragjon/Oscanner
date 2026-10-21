@@ -615,7 +615,7 @@ class PageStore(
         }
         PageRenderer.ensureLoaded()
         val preview = runCatching { PageRenderer.loadUpright(original.path, DETECT_SIDE) }.getOrNull()
-        val quad = image.quad ?: preview?.let { detect(it, kind) } ?: image.liveQuad ?: Quad.Full
+        val quad = image.quad ?: preview?.let { detect(it, kind, image.liveQuad) } ?: image.liveQuad ?: Quad.Full
 
         return when (kind) {
             DocumentKind.Document -> listOf(original to PageEdits(quad = quad))
@@ -643,23 +643,24 @@ class PageStore(
     }
 
     /** Finds the page in a photo the way saving would; null when nothing page-shaped is there. */
-    suspend fun findPage(file: File, kind: DocumentKind): Quad? = withContext(Dispatchers.Default) {
+    /** The page's outline in the photo [file]; [seen] is where the camera showed it at capture. */
+    suspend fun findPage(file: File, kind: DocumentKind, seen: Quad? = null): Quad? = withContext(Dispatchers.Default) {
         PageRenderer.ensureLoaded()
         val preview = runCatching { PageRenderer.loadUpright(file.path, DETECT_SIDE) }.getOrNull() ?: return@withContext null
-        detect(preview, kind).also { preview.recycle() }
+        detect(preview, kind, seen).also { preview.recycle() }
     }
 
     // Kept for the app's life and used by one detection at a time: its model takes a moment to load.
     private val pageNet by lazy { runCatching { PageNet(context) }.getOrNull() }
 
-    private fun detect(preview: android.graphics.Bitmap, kind: DocumentKind): Quad? = runCatching {
+    private fun detect(preview: android.graphics.Bitmap, kind: DocumentKind, seen: Quad? = null): Quad? = runCatching {
         val finder = pageNet
         val detector = DocumentDetector(
             angleTolerance = if (kind == DocumentKind.Whiteboard || kind == DocumentKind.Slides) 50.0 else 35.0,
             keepSpreads = kind == DocumentKind.Book,
             finder = finder?.let { net -> PageFinder { gray -> synchronized(net) { net.pageMask(gray) } } },
         )
-        detector.detect(preview).also { detector.release() }
+        detector.detect(preview, seen).also { detector.release() }
     }.getOrNull()
 
     private fun newOriginal(documentId: Long): File =

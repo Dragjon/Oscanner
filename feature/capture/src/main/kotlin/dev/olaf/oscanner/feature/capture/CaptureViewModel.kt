@@ -154,6 +154,7 @@ class CaptureViewModel(
             if (glareFrames.size > GLARE_WINDOW) glareFrames.removeFirst()
             glareFrames.count { it } >= GLARE_NEEDED
         }
+        tracker.steadySize = _state.value.mode == CaptureMode.Book
         val result = synchronized(tracker) { tracker.onFrame(quad, sharpness, now, _state.value.autoCapture && !_state.value.reviewing) }
         if (result.fire && !_state.value.busy) {
             autoShot = true
@@ -218,14 +219,18 @@ class CaptureViewModel(
                 status = CaptureStatus.Captured,
                 // The live outline is in screen coordinates, which match the photo only when the
                 // phone is upright; turned, the outline found in the photo itself is used.
-                captures = it.captures + CapturedImage(file, liveQuad = it.quad.takeIf { deviceTurn == 0 }),
+                captures = it.captures + CapturedImage(
+                    file,
+                    liveQuad = it.quad.takeIf { deviceTurn == 0 }?.let { q -> photoAspect(file)?.let { pa -> FrameToPhoto.map(q, it.frameAspect, pa) } },
+                ),
             )
         }
         // Find the page in the full photo now, while the next one is lined up, so it's ready
         // to adjust and Done doesn't have to wait for it.
         val kind = _state.value.mode.kind ?: DocumentKind.Document
         viewModelScope.launch {
-            val found = runCatching { pages.findPage(file, kind) }.getOrNull()
+            val seen = _state.value.captures.firstOrNull { it.file == file }?.liveQuad
+            val found = runCatching { pages.findPage(file, kind, seen) }.getOrNull()
             if (found != null) {
                 _state.update { s -> s.copy(captures = s.captures.map { if (it.file == file && it.quad == null) it.copy(quad = found) else it }) }
             }
@@ -367,6 +372,16 @@ class CaptureViewModel(
         val dir = sessionDir
         Thread { dir.deleteRecursively() }.start()
     }
+
+    /** The photo's width ÷ height as it stands upright, or null if it can't be read. */
+    private fun photoAspect(file: File): Float? = runCatching {
+        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeFile(file.path, bounds)
+        val turned = ExifInterface(file).rotationDegrees % 180 != 0
+        val w = if (turned) bounds.outHeight else bounds.outWidth
+        val h = if (turned) bounds.outWidth else bounds.outHeight
+        (w.toFloat() / h).takeIf { it.isFinite() && it > 0f }
+    }.getOrNull()
 
     /** Turns [file] clockwise by [degrees] by its EXIF orientation, without re-encoding it. */
     private fun turnPhoto(file: File, degrees: Int) {

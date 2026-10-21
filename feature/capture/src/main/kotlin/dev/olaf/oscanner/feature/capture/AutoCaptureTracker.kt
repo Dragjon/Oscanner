@@ -35,6 +35,12 @@ class AutoCaptureTracker(
     private val growFrames: Int = 3,
     private val still: Float = 0.006f,
 ) {
+    /**
+     * Book mode: a spread and one of its pages are both good outlines, and a frame can find
+     * either. Then an outline inside the shown one needs [growFrames] too, so it doesn't flick.
+     */
+    @Volatile var steadySize = false
+
     private var smoothed: Quad? = null
     /** A detection that disagrees with [smoothed], waiting for the next frames to confirm it. */
     private var pending: Quad? = null
@@ -51,7 +57,7 @@ class AutoCaptureTracker(
             return TrackerState(smoothed, 0f, fire = false)
         }
         val shown = smoothed
-        val grows = shown != null && grows(shown, detected)
+        val grows = shown != null && (grows(shown, detected) || (steadySize && grows(detected, shown)))
         if (shown == null || grows || QuadGeometry.iou(shown, detected) < AGREE_IOU) {
             val candidate = pending
             pendingFrames = if (candidate != null && QuadGeometry.iou(candidate, detected) >= AGREE_IOU) pendingFrames + 1 else 1

@@ -7,7 +7,8 @@
     <string name="capture_status_captured">Captured</string>
     <string name="capture_status_card_front">Show the front of the card</string>
     <string name="capture_status_card_back">Now turn it over: the back</string>
-    <string name="capture_status_book">Fit both open pages in view</string>
+    <string name="capture_status_book">Lay the book open, both pages in view</string>
+    <string name="capture_status_book_found">Hold steady: two pages, split at the spine</string>
     <string name="capture_status_board">Looking for the board…</string>
     <string name="capture_status_slides">Fit the whole slide or screen in view</string>
     <string name="capture_status_code">Point at a QR code or barcode</string>

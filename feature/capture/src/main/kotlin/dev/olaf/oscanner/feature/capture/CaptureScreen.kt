@@ -88,6 +88,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -419,7 +420,7 @@ private fun CameraLayer(viewModel: CaptureViewModel, state: CaptureUiState, titl
             modifier = Modifier.fillMaxSize(),
         )
         if (state.mode != CaptureMode.Code) {
-            QuadOverlay(quad = state.quad, frameAspect = state.frameAspect, modifier = Modifier.fillMaxSize())
+            QuadOverlay(quad = state.quad, frameAspect = state.frameAspect, modifier = Modifier.fillMaxSize(), spine = state.mode == CaptureMode.Book)
         }
         Box(
             Modifier
@@ -454,6 +455,7 @@ private fun statusText(state: CaptureUiState): String = when {
     state.mode == CaptureMode.Code -> stringResource(R.string.capture_status_code)
     state.status == CaptureStatus.Captured -> stringResource(R.string.capture_status_captured)
     state.glare -> stringResource(R.string.capture_status_glare)
+    state.status == CaptureStatus.HoldSteady && state.mode == CaptureMode.Book -> stringResource(R.string.capture_status_book_found)
     state.status == CaptureStatus.HoldSteady -> stringResource(R.string.capture_status_hold)
     state.mode == CaptureMode.IdCard && state.captures.isEmpty() -> stringResource(R.string.capture_status_card_front)
     state.mode == CaptureMode.IdCard -> stringResource(R.string.capture_status_card_back)
@@ -969,7 +971,7 @@ private fun DoneButton(count: Int, saving: Boolean, onClick: () -> Unit, modifie
 
 /** Paper-white outline of the detected page: status, not an action, so never orange. */
 @Composable
-private fun QuadOverlay(quad: Quad?, frameAspect: Float, modifier: Modifier = Modifier) {
+private fun QuadOverlay(quad: Quad?, frameAspect: Float, modifier: Modifier = Modifier, spine: Boolean = false) {
     val color = LocalOscannerExtras.current.detectionQuad
     Canvas(modifier) {
         val q = quad ?: return@Canvas
@@ -990,6 +992,13 @@ private fun QuadOverlay(quad: Quad?, frameAspect: Float, modifier: Modifier = Mo
         drawPath(path, color.copy(alpha = 0.12f))
         drawPath(path, color, style = Stroke(2.dp.toPx(), join = StrokeJoin.Round))
         points.forEach { drawCircle(color, radius = 5.dp.toPx(), center = it) }
+        if (spine) {
+            // Book mode: where the spread will be cut into two pages.
+            val top = Offset((points[0].x + points[1].x) / 2, (points[0].y + points[1].y) / 2)
+            val bottom = Offset((points[3].x + points[2].x) / 2, (points[3].y + points[2].y) / 2)
+            val dash = 6.dp.toPx()
+            drawLine(color, top, bottom, strokeWidth = 2.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(dash, dash)))
+        }
     }
 }
 
