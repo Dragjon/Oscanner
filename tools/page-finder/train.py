@@ -76,7 +76,7 @@ def iou(logits, y):
 def main():
     epochs = int(sys.argv[1]) if len(sys.argv) > 1 else 8
     X, Y = load(sorted(glob.glob('train*.npz')))
-    vals = [v for v in ['val.npz', 'valhard.npz'] if glob.glob(v)]
+    vals = [v for v in ['val.npz', 'valhard.npz', 'valcard.npz', 'valdecoy.npz'] if glob.glob(v)]
     sets = [tensors(*load([v])) for v in vals]
     print('train', len(X), 'val', vals, flush=True)
     net = PageNet()

@@ -13,14 +13,15 @@ import kotlin.math.exp
 
 /**
  * A small network trained for Oscanner on drawn scenes of pages on surfaces of every kind: it
- * looks at the frame squeezed to 96x128 in gray and marks the page, at 48x64. Not thread-safe:
- * one per thread, like the detector it helps.
+ * looks at the frame squeezed to 96x128 in gray and marks the page, at 48x64. [model] is the
+ * page finder, or with [CARDS] the same network trained to mark ID cards. Not thread-safe: one
+ * per thread, like the detector it helps.
  */
-class PageNet(context: Context) : PageFinder, AutoCloseable {
+class PageNet(context: Context, model: String = PAGES) : PageFinder, AutoCloseable {
 
     private val env = OrtEnvironment.getEnvironment()
     private val session = env.createSession(
-        context.assets.open("detect/page.onnx").use { it.readBytes() },
+        context.assets.open(model).use { it.readBytes() },
         OrtSession.SessionOptions().apply {
             setIntraOpNumThreads(2)
             setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
@@ -54,8 +55,10 @@ class PageNet(context: Context) : PageFinder, AutoCloseable {
         small.release()
     }
 
-    private companion object {
-        const val IN_W = 96
-        const val IN_H = 128
+    companion object {
+        const val PAGES = "detect/page.onnx"
+        const val CARDS = "detect/card.onnx"
+        private const val IN_W = 96
+        private const val IN_H = 128
     }
 }

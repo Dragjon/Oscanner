@@ -66,6 +66,15 @@ class DocumentDetector(
     private val finder: PageFinder? = null,
 ) {
 
+    /**
+     * How far from square a corner may look. A card is held flat under the phone to be scanned:
+     * an outline leaning further is a shelf or a box seen from the side.
+     */
+    private val squareness = if (cards) min(angleTolerance, CARD_ANGLE) else angleTolerance
+
+        /** The smallest share of the frame a page, or a card, can take. */
+    private val smallest = if (cards) CARD_MIN_AREA else MIN_AREA_RATIO
+
     private val small = Mat()
     private val plain = Mat()
     private val edges = Mat()
@@ -88,6 +97,7 @@ class DocumentDetector(
      * where it was is easier than finding it, so a faint page stays found while the camera moves.
      */
     fun detect(gray: Mat, prior: Quad? = null, search: Boolean = true): Detection {
+        frameStamp++
         val sharpness = sharpness(gray)
         // A page found in the frame before is looked for where it was first: snapping its sides
         // onto the edges near there takes a fraction of the time of a search, so the outline
@@ -121,6 +131,9 @@ class DocumentDetector(
 
         // Not searching: only the prior, snapped onto the page's edge (see [detect] for photos).
         // The three masks often trace the same outline; each is checked once.
+        // A card's thin edge passes for one in a busy cloth too: the card finder says where a
+        // card can be at all.
+        cardWhere = if (cards && search && finder != null) finderMask(gray) else null
         val valid = if (search) candidates.distinct().mapNotNull { check(it, width, height) } else emptyList()
         val found = valid
             .filter { outer ->
@@ -152,6 +165,16 @@ class DocumentDetector(
                 }
                 if (spread != null && isSpreadOf(spread, outline)) return Detection(spread, sharpness)
             }
+            // A card: where the finder, trained on cards, sees one the edge search outlined
+            // something else (its band or photo, or a patch of cloth beside a card whose edges
+            // are too faint), the finder's card it is.
+            if (cards && finder != null) {
+                val card = fromFinder(gray, width, height)?.let { rough ->
+                    val reach = max(REFINE_REACH, (FINDER_REACH * max(gray.cols(), gray.rows())).toInt())
+                    snapToPaper(toFull(rough), reach)?.let { inset(toQuad(it)) } ?: inset(rough)
+                }
+                if (card != null && QuadGeometry.iou(card, outline) < CARD_AGREES) return Detection(card, sharpness)
+            }
             return Detection(outline, sharpness)
         }
         if (prior != null) {
@@ -181,7 +204,17 @@ class DocumentDetector(
         val followed = snapToPaper(corners, reach, maxMove = 1.5 * reach, nearest = true)
             ?.let(::refine)
             ?.let { points -> QuadGeometry.order(points.map { Corner((it.x / gray.cols()).toFloat(), (it.y / gray.rows()).toFloat()) }) }
-        return followed?.takeIf(::plausible)?.let(::inset)
+        return followed?.takeIf(::plausible)?.let(::inset)?.takeIf { stillACard(gray, it) }
+    }
+
+    /**
+     * Whether the card finder still sees a card in [quad] in this frame, when there's one: a card
+     * followed from frame to frame mustn't become whatever its edges snapped onto instead.
+     */
+    private fun stillACard(gray: Mat, quad: Quad): Boolean {
+        if (!cards || finder == null) return true
+        cardWhere = finderMask(gray)
+        return coveredByCard(quad.corners.map { P(it.x.toDouble(), it.y.toDouble()) }, 1, 1)
     }
 
     /**
@@ -220,6 +253,9 @@ class DocumentDetector(
 
     fun release() {
         listOf(small, plain, edges, plainEdges, mask, lines, laplacian, closeText, closeGaps).forEach(Mat::release)
+        mask48?.release()
+        mask48 = null
+        cardWhere = null
         listOf(raw, filled, full).forEach(Field::release)
     }
 
@@ -228,9 +264,85 @@ class DocumentDetector(
      * small-frame terms, if it's page-shaped. Its sides needn't show as edges (that's why it was
      * asked), but it must be a sensible quadrilateral, not touching two frame edges.
      */
+    /** The finder's mask for [gray], asked once per frame; a copy, for the caller to release. */
+    private fun finderMask(gray: Mat): Mat? {
+        if (maskFor !== gray || maskStamp != frameStamp) {
+            mask48?.release()
+            mask48 = finder?.pageMask(gray)
+            maskFor = gray
+            maskStamp = frameStamp
+        }
+        return mask48?.clone()
+    }
+
+    private var mask48: Mat? = null
+    private var maskFor: Mat? = null
+    private var maskStamp = 0L
+    private var frameStamp = 0L
+
+    /** The card finder's mask this frame, as a grid of bytes, when it's asked; see [coveredByCard]. */
+    private var cardWhere: Mat? = null
+        set(value) {
+            field?.release()
+            field = value
+            cardBytes = value?.let { m -> ByteArray(m.cols() * m.rows()).also { m.get(0, 0, it) } }
+        }
+    private var cardBytes: ByteArray? = null
+
+    /** Whether the card finder marks most of the inside of [corners] (small-frame pixels) as card. */
+    private fun coveredByCard(corners: List<P>, width: Int, height: Int): Boolean {
+        val m = cardWhere ?: return true
+        val bytes = cardBytes ?: return true
+        var inside = 0
+        var total = 0
+        for (i in 0 until COVER_GRID) for (j in 0 until COVER_GRID) {
+            val u = 0.15 + 0.7 * i / (COVER_GRID - 1)
+            val v = 0.15 + 0.7 * j / (COVER_GRID - 1)
+            val tx = corners[0].x + (corners[1].x - corners[0].x) * u
+            val ty = corners[0].y + (corners[1].y - corners[0].y) * u
+            val bx = corners[3].x + (corners[2].x - corners[3].x) * u
+            val by = corners[3].y + (corners[2].y - corners[3].y) * u
+            val mx = ((tx + (bx - tx) * v) / width * m.cols()).toInt().coerceIn(0, m.cols() - 1)
+            val my = ((ty + (by - ty) * v) / height * m.rows()).toInt().coerceIn(0, m.rows() - 1)
+            total++
+            if ((bytes[my * m.cols() + mx].toInt() and 0xFF) > FINDER_SURE) inside++
+        }
+        return inside >= CARD_COVERED * total
+    }
+
+    /**
+     * How well [corners] (small-frame pixels) match the card finder's mask: their overlap over
+     * their union, counted on the mask's own grid; 1 without a finder.
+     */
+    private fun cardMatch(corners: List<P>, width: Int, height: Int): Double {
+        val m = cardWhere ?: return 1.0
+        val bytes = cardBytes ?: return 1.0
+        val cols = m.cols()
+        val rows = m.rows()
+        val q = corners.map { P(it.x / width * cols, it.y / height * rows) }
+        val orientation = if ((q[1].x - q[0].x) * (q[2].y - q[0].y) - (q[1].y - q[0].y) * (q[2].x - q[0].x) >= 0) 1.0 else -1.0
+        fun inQuad(x: Double, y: Double) = (0 until 4).all { i ->
+            val a = q[i]
+            val b = q[(i + 1) % 4]
+            orientation * ((b.x - a.x) * (y - a.y) - (b.y - a.y) * (x - a.x)) >= 0
+        }
+        var marked = 0
+        var both = 0
+        var quad = 0
+        for (y in 0 until rows) for (x in 0 until cols) {
+            val card = (bytes[y * cols + x].toInt() and 0xFF) > FINDER_SURE
+            val inside = inQuad(x + 0.5, y + 0.5)
+            if (card) marked++
+            if (inside) quad++
+            if (card && inside) both++
+        }
+        val union = marked + quad - both
+        return if (union == 0) 0.0 else both.toDouble() / union
+    }
+
     private fun fromFinder(gray: Mat, width: Int, height: Int): Quad? {
         val finder = finder ?: return null
-        val sure = finder.pageMask(gray) ?: return null
+        val sure = finderMask(gray) ?: return null
         // Half a cell of the mask: its outline sits about that far inside the page's true edge.
         val cell = 0.5 * max(width.toDouble() / sure.cols(), height.toDouble() / sure.rows())
         // A page running off the frame can't be outlined: the mask would reach the frame's edge.
@@ -249,7 +361,7 @@ class DocumentDetector(
         listOf(big, hierarchy).forEach(Mat::release)
         val largest = contours.maxByOrNull { Imgproc.contourArea(it) }
         val blob = largest?.let { Imgproc.contourArea(it) } ?: 0.0
-        val points = largest?.takeIf { blob >= width * height * MIN_AREA_RATIO }?.let { fitFour(hull(it)) }
+        val points = largest?.takeIf { blob >= width * height * smallest }?.let { fitFour(hull(it)) }
         contours.forEach(Mat::release)
         points ?: return null
         // A ragged blob (a bright patch, a lamp's glow) fills its four-corner fit poorly; a page fills it.
@@ -263,9 +375,15 @@ class DocumentDetector(
         val quad = QuadGeometry.order(grown.map { Corner((it.x / width).toFloat(), (it.y / height).toFloat()) })
         if (!QuadGeometry.isConvex(quad)) return null
         val area = QuadGeometry.area(quad.corners)
-        if (area < MIN_AREA_RATIO || area > 0.98) return null
+        if (area < smallest || area > 0.98) return null
         if (quad.corners.count { it.x < BORDER || it.x > 1 - BORDER || it.y < BORDER || it.y > 1 - BORDER } >= 2) return null
-        if (QuadGeometry.angles(quad).any { abs(it - 90.0) > angleTolerance }) return null
+        if (QuadGeometry.angles(quad).any { abs(it - 90.0) > squareness }) return null
+        if (cards) {
+            val c = quad.corners.map { P(it.x.toDouble() * width, it.y.toDouble() * height) }
+            val across = (hypot(c[1].x - c[0].x, c[1].y - c[0].y) + hypot(c[2].x - c[3].x, c[2].y - c[3].y)) / 2
+            val down = (hypot(c[3].x - c[0].x, c[3].y - c[0].y) + hypot(c[2].x - c[1].x, c[2].y - c[1].y)) / 2
+            cardShape(max(across, down) / min(across, down)) ?: return null
+        }
         return quad
     }
 
@@ -302,7 +420,10 @@ class DocumentDetector(
 
     private fun confident(mask: Mat): Boolean {
         val values = pixels(mask).map { it.toInt() and 0xFF }.filter { it > FINDER_SURE }
-        return values.isNotEmpty() && values.count { it > FINDER_CERTAIN } >= FINDER_CONFIDENT * values.size
+        // The card finder is surest in a card's middle and less so out to its rim, more of it on a
+        // small card: it needs to be near certain over less of what it marks.
+        val share = if (cards) CARD_CONFIDENT else FINDER_CONFIDENT
+        return values.isNotEmpty() && values.count { it > FINDER_CERTAIN } >= share * values.size
     }
 
     /**
@@ -335,8 +456,11 @@ class DocumentDetector(
      * Whether the full frame steps down across (x, y) going against (nx, ny): the middle of a
      * few pixels just outside is darker than the middle of a few just inside.
      */
-    private fun isStepAt(x: Double, y: Double, nx: Double, ny: Double): Boolean =
-        middle(x, y, nx, ny, STEP_NEAR) - middle(x, y, nx, ny, -STEP_FAR) >= STEP_MIN_LEVELS
+    private fun isStepAt(x: Double, y: Double, nx: Double, ny: Double): Boolean {
+        val step = middle(x, y, nx, ny, STEP_NEAR) - middle(x, y, nx, ny, -STEP_FAR)
+        // A card can be darker than what it lies on as well as lighter.
+        return (if (cards) abs(step) else step) >= STEP_MIN_LEVELS
+    }
 
     private val window = IntArray(STEP_FAR - STEP_NEAR + 1)
 
@@ -358,9 +482,9 @@ class DocumentDetector(
     private fun plausible(quad: Quad): Boolean {
         if (!QuadGeometry.isConvex(quad)) return false
         val area = QuadGeometry.area(quad.corners)
-        if (area < MIN_AREA_RATIO || area > 0.98) return false
+        if (area < smallest || area > 0.98) return false
         if (quad.corners.count { it.x < BORDER || it.x > 1 - BORDER || it.y < BORDER || it.y > 1 - BORDER } >= 2) return false
-        return QuadGeometry.angles(quad).none { abs(it - 90.0) > angleTolerance }
+        return QuadGeometry.angles(quad).none { abs(it - 90.0) > squareness }
     }
 
     /** Variance of the Laplacian: low when the frame is blurred by motion or focus. */
@@ -385,7 +509,7 @@ class DocumentDetector(
         val hierarchy = Mat()
         Imgproc.findContours(mask, contours, hierarchy, Imgproc.RETR_LIST, Imgproc.CHAIN_APPROX_SIMPLE)
         hierarchy.release()
-        val minArea = mask.total() * MIN_AREA_RATIO * 0.7
+        val minArea = mask.total() * smallest * 0.7
         val result = contours
             .map { it to Imgproc.contourArea(it) }
             .filter { it.second >= minArea }
@@ -429,13 +553,16 @@ class DocumentDetector(
      * strung through text or wood grain, not along a sheet.
      */
     private fun lineCandidates(width: Int, height: Int): List<List<P>> {
-        Imgproc.HoughLinesP(plainEdges, lines, 1.0, PI / 180, 20, min(width, height) * 0.15, 5.0)
+        // A card's edge may be only a thin line, which filling in text takes away: for cards the
+        // edges of the frame as it is count too.
+        val source = if (cards) mask.also { Core.bitwise_or(plainEdges, edges, it) } else plainEdges
+        Imgproc.HoughLinesP(source, lines, 1.0, PI / 180, 20, min(width, height) * 0.15, 5.0)
         val merged = mutableListOf<Line>()
         for (i in 0 until lines.rows()) {
             val s = lines.get(i, 0)
             val a = P(s[0], s[1])
             val b = P(s[2], s[3])
-            if (raw.support(a, b, P(b.y - a.y, a.x - b.x)).share < 0.7) continue
+            if (raw.support(a, b, P(b.y - a.y, a.x - b.x), either = cards).share < 0.7) continue
             var theta = atan2(b.y - a.y, b.x - a.x) % PI
             if (theta < 0) theta += PI
             val rho = -a.x * sin(theta) + a.y * cos(theta)
@@ -469,13 +596,13 @@ class DocumentDetector(
         val quad = QuadGeometry.order(points.map { Corner((it.x / width).toFloat(), (it.y / height).toFloat()) })
         if (!QuadGeometry.isConvex(quad)) return null
         val area = QuadGeometry.area(quad.corners)
-        if (area < MIN_AREA_RATIO || area > 0.98) return null
+        if (area < smallest || area > 0.98) return null
         // Two corners on the frame edge means the shape runs out of view: a wall, a table, or
         // a page that isn't fully in the picture. None of those can be scanned whole.
         val onBorder = quad.corners.count { it.x < BORDER || it.x > 1 - BORDER || it.y < BORDER || it.y > 1 - BORDER }
         if (onBorder >= 2) return null
         val angles = QuadGeometry.angles(quad)
-        if (angles.any { abs(it - 90.0) > angleTolerance }) return null
+        if (angles.any { abs(it - 90.0) > squareness }) return null
 
         val corners = quad.corners.map { P(it.x.toDouble() * width, it.y.toDouble() * height) }
         // A sliver isn't a page: the margin strip beside a booklet's text, a ruler. Paper is
@@ -484,6 +611,13 @@ class DocumentDetector(
         val down = (hypot(corners[3].x - corners[0].x, corners[3].y - corners[0].y) + hypot(corners[2].x - corners[1].x, corners[2].y - corners[1].y)) / 2
         if (max(across, down) > MAX_SIDE_RATIO * min(across, down)) return null
         val shape = if (cards) cardShape(max(across, down) / min(across, down)) ?: return null else 1.0
+        if (cards && !coveredByCard(corners, width, height)) return null
+        // Among cards, the outline that best matches where the finder sees the card: the whole
+        // card, band and all, over the part below its band or a run along its photo's edge.
+        val match = if (cards) cardMatch(corners, width, height) else 1.0
+        // Where the finder clearly sees this card, its word stands for the edges' on the sides
+        // that hardly show: a band as bright as the desk beyond it, a card as bright as its sheet.
+        val vouched = cards && cardWhere != null && match >= CARD_VOUCHED
         val sides = sides(corners)
         // Most candidates fail on a side or two, so each side is measured only if the ones before passed.
         val support = ArrayList<Support>(4)
@@ -508,16 +642,24 @@ class DocumentDetector(
         for (i in 0 until 4) {
             val (a, b, inward) = sides[i]
             filledShares[i] = filled.support(a, b, inward, either = cards).share
-            if (filledShares[i] < SIDE_MIN && !sure(i)) return null
+            // A card's thin edge line is filled in with the text: cards go by the frame as it is.
+            if (!cards && filledShares[i] < SIDE_MIN && !sure(i)) return null
         }
         val filledMin = filledShares.min()
-        val steps = sides.indices.count { i -> val (a, b, inward) = sides[i]; filled.isStep(a, b, inward) || sure(i) }
+        val steps = sides.indices.count { i ->
+            val (a, b, inward) = sides[i]
+            filled.isStep(a, b, inward) || sure(i) || (cards && (raw.isStep(a, b, inward) || raw.isLine(a, b, inward)))
+        }
         // One side may be a soft fold, like a book's gutter.
-        if (steps < 3) return null
+        if (steps < if (vouched) 2 else 3) return null
+        // A card's sides all show along their whole length, as a step however soft or a thin
+        // line, at one place across them; a run through a flecked counter or a printed cloth,
+        // taken along its length, evens out.
+        if (cards && !vouched && sides.any { (a, b, inward) -> raw.slope(a, b, inward) < CARD_EDGE }) return null
 
-        val skew = angles.sumOf { abs(it - 90.0) } / 4 / angleTolerance
+        val skew = angles.sumOf { abs(it - 90.0) } / 4 / squareness
         val mean = shares.average()
-        val score = mean * mean * shares.min() * shares.min() * area * (1.0 - 0.5 * skew) * shape *
+        val score = mean * mean * shares.min() * shares.min() * area * (1.0 - 0.5 * skew) * shape * match * match * match * match *
             if (support[0].polarity > 0) 1.0 else DARK_PAGE
         val whole = steps == 4 && min(shares.min(), filledMin) >= WHOLE
         return Candidate(quad, area, support[0].polarity, score, whole)
@@ -637,7 +779,7 @@ class DocumentDetector(
                 val t = 0.08 + 0.84 * s / (n - 1)
                 val x0 = a.x + dx * t
                 val y0 = a.y + dy * t
-                for (k in g.indices) g[k] = full.gradient(x0 + nx * (k - reach), y0 + ny * (k - reach), nx, ny)
+                for (k in g.indices) g[k] = full.gradient(x0 + nx * (k - reach), y0 + ny * (k - reach), nx, ny).let { if (cards) abs(it) else it }
                 val best = g.max()
                 if (best >= FINDER_GRAD) {
                     // The page's own edge is the outermost one: lines printed on it are further in.
@@ -852,6 +994,42 @@ class DocumentDetector(
          * light falling off over a wall or carpet makes a ramp.
          */
         fun isStep(a: P, b: P, inward: P): Boolean {
+            val profile = profile(a, b, inward)
+            val contrast = abs(profile.last() - profile.first())
+            var steepest = 0.0
+            for (j in 0 until profile.size - 2) steepest = max(steepest, abs(profile[j + 2] - profile[j]))
+            // White paper on a light counter can sit only ten or so levels above it; its edge is
+            // still a step if it changes almost all at once. Only paper lighter than what it's
+            // on: a faint darker shape is far more often a door or a cupboard than a page.
+            val lighterInside = profile.last() > profile.first()
+            return (contrast >= MIN_CONTRAST && steepest >= STEEP * contrast) ||
+                (lighterInside && contrast >= FAINT_CONTRAST && steepest >= FAINT_STEEP * contrast)
+        }
+
+        /**
+         * Whether side a→b runs along a thin dark line, as bright on either side of it: the edge
+         * of a card as bright as what it lies on, where only its thickness and shadow show.
+         */
+        fun isLine(a: P, b: P, inward: P): Boolean {
+            val profile = profile(a, b, inward)
+            val outside = (profile[0] + profile[1] + profile[2]) / 3
+            val inside = (profile[profile.size - 1] + profile[profile.size - 2] + profile[profile.size - 3]) / 3
+            var valley = Double.MAX_VALUE
+            for (j in STEP_REACH - LINE_HALF..STEP_REACH + LINE_HALF) valley = min(valley, profile[j])
+            val depth = min(outside, inside) - valley
+            return depth >= LINE_DEPTH && abs(outside - inside) < depth
+        }
+
+        /** The steepest change across side a→b, over two pixels, taken along its length. */
+        fun slope(a: P, b: P, inward: P): Double {
+            val profile = profile(a, b, inward)
+            var steepest = 0.0
+            for (j in 0 until profile.size - 2) steepest = max(steepest, abs(profile[j + 2] - profile[j]))
+            return steepest
+        }
+
+        /** The cross-section of side a→b averaged along it, from outside (first) to inside. */
+        private fun profile(a: P, b: P, inward: P): DoubleArray {
             val dx = b.x - a.x
             val dy = b.y - a.y
             val length = hypot(dx, dy)
@@ -873,15 +1051,7 @@ class DocumentDetector(
                 }
             }
             for (j in profile.indices) profile[j] /= n
-            val contrast = abs(profile.last() - profile.first())
-            var steepest = 0.0
-            for (j in 0 until profile.size - 2) steepest = max(steepest, abs(profile[j + 2] - profile[j]))
-            // White paper on a light counter can sit only ten or so levels above it; its edge is
-            // still a step if it changes almost all at once. Only paper lighter than what it's
-            // on: a faint darker shape is far more often a door or a cupboard than a page.
-            val lighterInside = profile.last() > profile.first()
-            return (contrast >= MIN_CONTRAST && steepest >= STEEP * contrast) ||
-                (lighterInside && contrast >= FAINT_CONTRAST && steepest >= FAINT_STEEP * contrast)
+            return profile
         }
 
         fun release() {
@@ -899,6 +1069,15 @@ class DocumentDetector(
         private const val CARD_RATIO_MIN = 1.2
         private const val CARD_RATIO_MAX = 2.1
         private const val CARD_SPREAD = 0.12
+        /** A card can take this little of the frame; the finder's card and the edge search's agree this much. */
+        private const val CARD_MIN_AREA = 0.03
+        private const val CARD_AGREES = 0.75
+        private const val CARD_ANGLE = 20.0
+        /** An outline counts as a card when the card finder marks this share of its inside, on a grid this fine. */
+        private const val CARD_COVERED = 0.7
+        private const val COVER_GRID = 8
+        /** An outline matching the card finder's mask this well needs only two of its sides to show. */
+        private const val CARD_VOUCHED = 0.7
         /** A spread is this many times one page's area, and holds this share of it. */
         private const val SPREAD_MIN = 1.6
         private const val SPREAD_MAX = 2.6
@@ -934,6 +1113,7 @@ class DocumentDetector(
         /** Most of a page's mask is near certain (above 230 of 255); a light patch's isn't. */
         private const val FINDER_CERTAIN = 230
         private const val FINDER_CONFIDENT = 0.75
+        private const val CARD_CONFIDENT = 0.6
         private const val DETECT_SIDE = 640
         /** The long side of the frame the search runs on. Text at this size is a gray haze. */
         private const val SEARCH_SIDE = 256.0
@@ -960,6 +1140,11 @@ class DocumentDetector(
         /** A fainter step counts when it's this sharp. */
         private const val FAINT_CONTRAST = 10.0
         private const val FAINT_STEEP = 0.6
+        /** A card's edge line: this many pixels either side of the side, this much darker than both. */
+        private const val LINE_HALF = 2
+        private const val LINE_DEPTH = 8.0
+        /** Each side of a card changes this much over two pixels, taken along its length. */
+        private const val CARD_EDGE = 8.0
         /** An inner sheet this well outlined, at most this share of an outer one, splits it. */
         private const val WHOLE = 0.9
         private const val UNION_SHARE = 0.85

@@ -629,14 +629,15 @@ class PageStore(
                 listOf(original to PageEdits(quad = quad, filter = PageFilter.Original, descreen = true, contrast = SLIDE_CONTRAST, aspect = shape))
             }
             // Cards are photos and colored backgrounds, which Auto would bleach to "paper" white.
-            DocumentKind.IdCard -> listOf(original to PageEdits(quad = quad, filter = PageFilter.Original, aspect = ID1_ASPECT))
+            // A card often lies turned in the photo: its text says which way up it goes.
+            DocumentKind.IdCard -> listOf(original to PageEdits(quad = quad, filter = PageFilter.Original, aspect = ID1_ASPECT, rotation = textTurn(original, quad) ?: 0))
             DocumentKind.Book -> {
                 val halves = preview?.let { runCatching { BookSplitter.split(it, quad) }.getOrNull() }
                     ?: QuadGeometry.splitInHalf(quad)
                 // A book photographed turned, or upside down, has its pages turned too: its text
                 // says which way up it is, and the pages are turned to match and put in reading
                 // order, the one on the left once it's upright first.
-                val turn = bookTurn(original, quad) ?: 0
+                val turn = textTurn(original, quad) ?: 0
                 val (first, second) = BookPages.inReadingOrder(halves, turn)
                 val copy = newOriginal(documentId)
                 original.copyTo(copy, overwrite = true)
@@ -659,21 +660,22 @@ class PageStore(
 
     // Kept for the app's life and used by one detection at a time: its model takes a moment to load.
     private val pageNet by lazy { runCatching { PageNet(context) }.getOrNull() }
+    private val cardNet by lazy { runCatching { PageNet(context, PageNet.CARDS) }.getOrNull() }
 
-    // Reads which way up a book's text is; loaded the first time a book is saved.
-    private val bookReader by lazy { runCatching { PaddleReader(context) }.getOrNull() }
+    // Reads which way up a book's or a card's text is; loaded the first time one is saved.
+    private val turnReader by lazy { runCatching { PaddleReader(context) }.getOrNull() }
 
-    /** Clockwise quarter turns that make the book in [spread] of [original] read upright; null if unsure. */
-    private fun bookTurn(original: File, spread: Quad): Int? = runCatching {
-        val reader = bookReader ?: return null
+    /** Clockwise quarter turns that make what's in [quad] of [original] read upright; null if unsure. */
+    private fun textTurn(original: File, quad: Quad): Int? = runCatching {
+        val reader = turnReader ?: return null
         val source = PageRenderer.loadUpright(original.path, TURN_SIDE)
-        val flat = PageRenderer.straighten(source, PageEdits(quad = spread, filter = PageFilter.Original), TURN_SIDE)
+        val flat = PageRenderer.straighten(source, PageEdits(quad = quad, filter = PageFilter.Original), TURN_SIDE)
         source.recycle()
         synchronized(reader) { reader.upright(flat) }.also { flat.recycle() }
     }.getOrNull()
 
     private fun detect(preview: android.graphics.Bitmap, kind: DocumentKind, seen: Quad? = null): Quad? = runCatching {
-        val finder = pageNet
+        val finder = if (kind == DocumentKind.IdCard) cardNet else pageNet
         val detector = DocumentDetector(
             angleTolerance = if (kind == DocumentKind.Whiteboard || kind == DocumentKind.Slides) 50.0 else 35.0,
             keepSpreads = kind == DocumentKind.Book,
@@ -1042,7 +1044,7 @@ class PageStore(
         private const val MIN_PAPER = 0.45
         private const val PAPER_CHECK_SIDE = 800
         private const val DETECT_SIDE = 640
-        /** A book's text is read at this size to tell which way up it is. */
+        /** A book's or a card's text is read at this size to tell which way up it is. */
         private const val TURN_SIDE = 1600
         private const val LONG_WIDTH = 1240
         private const val LONG_GAP = 24

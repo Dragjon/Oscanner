@@ -357,14 +357,16 @@ private fun CameraLayer(viewModel: CaptureViewModel, state: CaptureUiState, titl
 
     DisposableEffect(controller, lifecycleOwner) {
         val executor = Executors.newSingleThreadExecutor()
-        // Loaded on the analysis thread the first time Book mode is used, and kept while scanning.
+        // Loaded on the analysis thread the first time Book or ID card mode is used, and kept while scanning.
         var bookNet: PageNet? = null
+        var cardNet: PageNet? = null
         val analyzer = PageAnalyzer(
             mode = { viewModel.state.value.mode },
             toScreen = context.backCameraToPortrait(),
             onCode = viewModel::onCode,
             onResult = { quad, sharpness, aspect, glare, signals -> viewModel.onFrame(quad, sharpness, aspect, glare, signals) },
             bookFinder = { bookNet ?: runCatching { PageNet(context) }.getOrNull()?.also { bookNet = it } },
+            cardFinder = { cardNet ?: runCatching { PageNet(context, PageNet.CARDS) }.getOrNull()?.also { cardNet = it } },
         )
         controller.setImageAnalysisAnalyzer(executor, analyzer)
         controller.bindToLifecycle(lifecycleOwner)
@@ -374,6 +376,7 @@ private fun CameraLayer(viewModel: CaptureViewModel, state: CaptureUiState, titl
             executor.execute {
                 analyzer.release()
                 bookNet?.close()
+                cardNet?.close()
             }
             executor.shutdown()
         }

@@ -33,6 +33,11 @@ internal class PageAnalyzer(
      * wrong places.
      */
     private val bookFinder: () -> dev.olaf.oscanner.core.imaging.PageFinder? = { null },
+    /**
+     * The same network trained on ID cards, for ID card mode: a pale card on a pale sheet shows
+     * only its thin edge, too faint for the edge search on its own.
+     */
+    private val cardFinder: () -> dev.olaf.oscanner.core.imaging.PageFinder? = { null },
 ) : ImageAnalysis.Analyzer {
 
     // Created on the analysis thread, after OpenCV's native code is loaded.
@@ -62,7 +67,11 @@ internal class PageAnalyzer(
                 angleTolerance = if (current == CaptureMode.Whiteboard || current == CaptureMode.Slides) 50.0 else 35.0,
                 keepSpreads = current == CaptureMode.Book,
                 cards = current == CaptureMode.IdCard,
-                finder = if (current == CaptureMode.Book) bookFinder() else null,
+                finder = when (current) {
+                    CaptureMode.Book -> bookFinder()
+                    CaptureMode.IdCard -> cardFinder()
+                    else -> null
+                },
             ).also { detector = it }
             val plane = image.planes[0]
             val luminance = Mat(image.height, image.width, CvType.CV_8UC1, plane.buffer, plane.rowStride.toLong())
