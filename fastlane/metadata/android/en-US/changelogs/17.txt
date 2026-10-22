@@ -1,0 +1,1 @@
+The camera's outline keeps up with your hand: pages are followed from frame to frame several times faster, and the photo is cropped where the page is even if it moved as you took it. ID card mode finds the whole card, including cards with a colored band across them.
