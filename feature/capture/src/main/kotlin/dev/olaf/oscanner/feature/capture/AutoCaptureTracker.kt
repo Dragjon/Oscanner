@@ -24,7 +24,8 @@ data class TrackerState(
  * on a single frame, on a patch of counter, say, never shows. An outline that takes in the shown
  * one and reaches further out (a strip of desk, out to a mat's edge) is the likeliest mistake,
  * so it needs [growFrames] frames in a row. Wobbles smaller than [still] leave the outline where
- * it is, so it doesn't shiver while the phone is held still.
+ * it is, so it doesn't shiver while the phone is held still; a move beyond [moved] is followed
+ * at once, since easing toward it leaves the outline a few frames behind the hand, over the desk.
  */
 class AutoCaptureTracker(
     private val stableMillis: Long = 600,
@@ -34,6 +35,7 @@ class AutoCaptureTracker(
     private val smoothing: Float = 0.5f,
     private val growFrames: Int = 3,
     private val still: Float = 0.006f,
+    private val moved: Float = 0.01f,
 ) {
     /**
      * Book mode: a spread and one of its pages are both good outlines, and a frame can find
@@ -77,7 +79,12 @@ class AutoCaptureTracker(
         pendingFrames = 0
         lastSeenAt = now
         val eased = smoothed?.let { from ->
-            if (QuadGeometry.maxCornerDistance(from, detected) < still) from else QuadGeometry.lerp(from, detected, smoothing)
+            val distance = QuadGeometry.maxCornerDistance(from, detected)
+            when {
+                distance < still -> from
+                distance > moved -> detected
+                else -> QuadGeometry.lerp(from, detected, smoothing)
+            }
         } ?: detected
         smoothed = eased
 

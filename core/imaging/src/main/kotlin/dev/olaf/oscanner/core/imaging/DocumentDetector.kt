@@ -79,7 +79,7 @@ class DocumentDetector(
     /** The small frame as it is, the small frame with text filled in, and the full frame. */
     private val raw = Field()
     private val filled = Field()
-    private val full = Field()
+    private val full = Field(onDemand = true)
 
     /**
      * [gray] is a single-channel 8-bit frame, ideally around 640 px on its long side. [prior] is
@@ -89,6 +89,13 @@ class DocumentDetector(
      */
     fun detect(gray: Mat, prior: Quad? = null, search: Boolean = true): Detection {
         val sharpness = sharpness(gray)
+        // A page found in the frame before is looked for where it was first: snapping its sides
+        // onto the edges near there takes a fraction of the time of a search, so the outline
+        // keeps up with the hand. The search runs when that fails, and whenever no prior is given.
+        full.load(gray)
+        if (prior != null && search && sharpness >= FOLLOW_BLURRY) {
+            follow(gray, prior)?.let { return Detection(it, sharpness, followed = true) }
+        }
         val scale = SEARCH_SIDE.toDouble() / max(gray.cols(), gray.rows())
         Imgproc.resize(gray, small, Size(), scale, scale, Imgproc.INTER_AREA)
         raw.load(small)
@@ -113,7 +120,8 @@ class DocumentDetector(
         candidates += lineCandidates(width, height)
 
         // Not searching: only the prior, snapped onto the page's edge (see [detect] for photos).
-        val valid = if (search) candidates.mapNotNull { check(it, width, height) } else emptyList()
+        // The three masks often trace the same outline; each is checked once.
+        val valid = if (search) candidates.distinct().mapNotNull { check(it, width, height) } else emptyList()
         val found = valid
             .filter { outer ->
                 keepSpreads || cards || valid.none { inner ->
@@ -127,13 +135,13 @@ class DocumentDetector(
             .maxByOrNull { it.score }
             ?.quad
 
-        full.load(gray)
         val sx = gray.cols().toDouble() / width
         val sy = gray.rows().toDouble() / height
         fun toFull(q: Quad) = q.corners.map { P(it.x * width * sx, it.y * height * sy) }
         fun toQuad(points: List<P>) = QuadGeometry.order(points.map { Corner((it.x / gray.cols()).toFloat(), (it.y / gray.rows()).toFloat()) })
         if (found != null) {
             val outline = inset(toQuad(refine(toFull(found))))
+
             // A book: the edge search often finds one page of the spread, its edges the clearest.
             // The finder sees the whole spread; when what it sees holds that page and is about
             // twice its size, it's the spread.
@@ -149,10 +157,8 @@ class DocumentDetector(
         if (prior != null) {
             // A blurred frame (the phone moving) can't place the page better than the last one did.
             if (sharpness < FOLLOW_BLURRY) return Detection(prior, sharpness, followed = true)
-            // The prior was inset when it was found; its sides are snapped back onto the edge.
-            val reach = max(REFINE_REACH, (FOLLOW_REACH * max(gray.cols(), gray.rows())).toInt())
-            val followed = snapToPaper(toFull(outset(prior)), reach, maxMove = 1.5 * reach, nearest = true)?.let(::toQuad)
-            if (followed != null && plausible(followed)) return Detection(inset(followed), sharpness, followed = true)
+            // When searching, it was already followed above, and failed.
+            if (!search) follow(gray, prior)?.let { return Detection(it, sharpness, followed = true) }
         }
         // The finder's outline is rough (its mask is coarse): its sides are snapped onto the
         // page's own edge, looked for further out, and it only counts if that edge is there.
@@ -162,6 +168,20 @@ class DocumentDetector(
         // the finder's own outline stands: it already had to be sure all over and fill its shape.
         val snapped = snapToPaper(toFull(rough), reach) ?: return Detection(inset(rough), sharpness)
         return Detection(inset(toQuad(snapped)), sharpness)
+    }
+
+    /**
+     * [prior] snapped onto the page's edges near where it was in [gray] (loaded as [full]), or
+     * null if they aren't there. The prior was inset when it was found; its sides are snapped
+     * from where the edge was.
+     */
+    private fun follow(gray: Mat, prior: Quad): Quad? {
+        val reach = max(REFINE_REACH, (FOLLOW_REACH * max(gray.cols(), gray.rows())).toInt())
+        val corners = outset(prior).corners.map { P(it.x.toDouble() * gray.cols(), it.y.toDouble() * gray.rows()) }
+        val followed = snapToPaper(corners, reach, maxMove = 1.5 * reach, nearest = true)
+            ?.let(::refine)
+            ?.let { points -> QuadGeometry.order(points.map { Corner((it.x / gray.cols()).toFloat(), (it.y / gray.rows()).toFloat()) }) }
+        return followed?.takeIf(::plausible)?.let(::inset)
     }
 
     /**
@@ -180,14 +200,23 @@ class DocumentDetector(
         rgba.release()
         if (scale < 1.0) Imgproc.resize(gray, gray, Size(), scale, scale, Imgproc.INTER_AREA)
         try {
-            val inGray = detect(gray).quad
-            val found = if (cards) wholeCard(inGray, colorOf(rgba(bitmap)).let { c -> detect(c).quad.also { c.release() } }) else inGray
-            if (seen == null) return found
-            if (found != null && QuadGeometry.iou(found, seen) >= AGREES_WITH_CAMERA) return found
-            return detect(gray, prior = seen, search = false).quad ?: seen
+            return inPhoto(gray, seen) { colorOf(rgba(bitmap)) }
         } finally {
             gray.release()
         }
+    }
+
+    /** [detect] for a photo already in gray, [color] giving its [colorOf] for cards. */
+    internal fun inPhoto(gray: Mat, seen: Quad?, color: () -> Mat? = { null }): Quad? {
+        val inGray = detect(gray).quad
+        val found = if (cards) wholeCard(inGray, color()?.let { c -> detect(c).quad.also { c.release() } }) else inGray
+        if (seen == null) return found
+        if (found != null && QuadGeometry.iou(found, seen) >= AGREES_WITH_CAMERA) return found
+        detect(gray, prior = seen, search = false).quad?.let { return it }
+        // The page moved between the camera's last look and the photo, too far to snap onto: the
+        // photo's own outline of it is where it is now. The camera's stale one would take in desk.
+        if (found != null && QuadGeometry.iou(found, seen) >= SAME_PAGE) return found
+        return seen
     }
 
     /** The photo's colors, for [colorOf]. */
@@ -330,9 +359,23 @@ class DocumentDetector(
      * Whether the full frame steps down across (x, y) going against (nx, ny): the middle of a
      * few pixels just outside is darker than the middle of a few just inside.
      */
-    private fun isStepAt(x: Double, y: Double, nx: Double, ny: Double): Boolean {
-        fun middle(from: Int, to: Int) = (from..to).map { full.at(x + nx * it, y + ny * it) }.sorted().let { it[it.size / 2] }
-        return middle(STEP_NEAR, STEP_FAR) - middle(-STEP_FAR, -STEP_NEAR) >= STEP_MIN_LEVELS
+    private fun isStepAt(x: Double, y: Double, nx: Double, ny: Double): Boolean =
+        middle(x, y, nx, ny, STEP_NEAR) - middle(x, y, nx, ny, -STEP_FAR) >= STEP_MIN_LEVELS
+
+    private val window = IntArray(STEP_FAR - STEP_NEAR + 1)
+
+    /** The upper middle of the pixels from [from] on along (nx, ny), as many as STEP_NEAR..STEP_FAR. */
+    private fun middle(x: Double, y: Double, nx: Double, ny: Double, from: Int): Int {
+        for (k in window.indices) {
+            val v = full.at(x + nx * (from + k), y + ny * (from + k))
+            var j = k
+            while (j > 0 && window[j - 1] > v) {
+                window[j] = window[j - 1]
+                j--
+            }
+            window[j] = v
+        }
+        return window[window.size / 2]
     }
 
     /** A page-shaped outline: convex, a sensible size, square enough, not running out of view. */
@@ -346,7 +389,8 @@ class DocumentDetector(
 
     /** Variance of the Laplacian: low when the frame is blurred by motion or focus. */
     private fun sharpness(gray: Mat): Double {
-        Imgproc.Laplacian(gray, laplacian, CvType.CV_64F)
+        // Whole numbers well inside 16 bits: the same variance as in floating point, sooner.
+        Imgproc.Laplacian(gray, laplacian, CvType.CV_16S)
         val mean = MatOfDouble()
         val std = MatOfDouble()
         Core.meanStdDev(laplacian, mean, std)
@@ -465,21 +509,33 @@ class DocumentDetector(
         if (max(across, down) > MAX_SIDE_RATIO * min(across, down)) return null
         val shape = if (cards) cardShape(max(across, down) / min(across, down)) ?: return null else 1.0
         val sides = sides(corners)
-        val support = sides.map { (a, b, inward) -> raw.support(a, b, inward, either = cards) }
+        // Most candidates fail on a side or two, so each side is measured only if the ones before passed.
+        val support = ArrayList<Support>(4)
+        for ((a, b, inward) in sides) {
+            val s = raw.support(a, b, inward, either = cards)
+            if (s.share < SIDE_MIN || (!cards && support.isNotEmpty() && s.polarity != support[0].polarity)) return null
+            support += s
+        }
         val shares = support.map { it.share }
-        if (shares.min() < SIDE_MIN || shares.average() < MEAN_MIN) return null
-        if (!cards && support.any { it.polarity != support[0].polarity }) return null
+        if (shares.average() < MEAN_MIN) return null
         // With text filled in, a row of text has no edge left while paper still does. But on a
         // light counter full of dark flecks (terrazzo, granite), filling them in makes the
         // counter as white as the paper: a side that is a strong, clean step as it is, with the
         // paper the lighter side, counts.
-        val sure = sides.mapIndexed { i, (a, b, inward) ->
-            shares[i] >= SURE_SIDE && support[i].polarity > 0 && raw.isStep(a, b, inward) && flecked(a, b, inward)
+        // Worked out only for the sides that need it: it's the slowest test here.
+        val sureCache = arrayOfNulls<Boolean>(4)
+        fun sure(i: Int): Boolean = sureCache[i] ?: run {
+            val (a, b, inward) = sides[i]
+            (shares[i] >= SURE_SIDE && support[i].polarity > 0 && raw.isStep(a, b, inward) && flecked(a, b, inward)).also { sureCache[i] = it }
         }
-        val filledShares = sides.map { (a, b, inward) -> filled.support(a, b, inward, either = cards).share }
-        if (filledShares.indices.any { filledShares[it] < SIDE_MIN && !sure[it] }) return null
+        val filledShares = DoubleArray(4)
+        for (i in 0 until 4) {
+            val (a, b, inward) = sides[i]
+            filledShares[i] = filled.support(a, b, inward, either = cards).share
+            if (filledShares[i] < SIDE_MIN && !sure(i)) return null
+        }
         val filledMin = filledShares.min()
-        val steps = sides.indices.count { i -> val (a, b, inward) = sides[i]; filled.isStep(a, b, inward) || sure[i] }
+        val steps = sides.indices.count { i -> val (a, b, inward) = sides[i]; filled.isStep(a, b, inward) || sure(i) }
         // One side may be a soft fold, like a book's gutter.
         if (steps < 3) return null
 
@@ -600,20 +656,30 @@ class DocumentDetector(
             val n = max(8, (length / 4).toInt())
             val xs = ArrayList<Double>(n)
             val ys = ArrayList<Double>(n)
+            val g = DoubleArray(2 * reach + 1)
             for (s in 0 until n) {
                 val t = 0.08 + 0.84 * s / (n - 1)
                 val x0 = a.x + dx * t
                 val y0 = a.y + dy * t
-                val g = DoubleArray(2 * reach + 1) { full.gradient(x0 + nx * (it - reach), y0 + ny * (it - reach), nx, ny) }
+                for (k in g.indices) g[k] = full.gradient(x0 + nx * (k - reach), y0 + ny * (k - reach), nx, ny)
                 val best = g.max()
                 if (best >= FINDER_GRAD) {
                     // The page's own edge is the outermost one: lines printed on it are further in.
                     // And it's a step, darker all the way out, where a ruled line is paper again
                     // just past it.
-                    val steps = g.indices.filter { g[it] >= FINDER_OUTER * best && isStepAt(x0 + nx * (it - reach), y0 + ny * (it - reach), nx, ny) }
+                    fun isEdge(k: Int) = g[k] >= FINDER_OUTER * best && isStepAt(x0 + nx * (k - reach), y0 + ny * (k - reach), nx, ny)
                     // Following a page already found, the edge nearest where it was is the page's:
-                    // a shadow or a desk's edge just outside is a step too.
-                    val i = if (nearest) steps.minByOrNull { abs(it - reach) } else steps.firstOrNull()
+                    // a shadow or a desk's edge just outside is a step too. Looked for outward from
+                    // there, inner side first at each distance, as the nearest was picked before.
+                    var i: Int? = null
+                    if (nearest) {
+                        for (d in 0..reach) {
+                            if (isEdge(reach - d)) { i = reach - d; break }
+                            if (d > 0 && isEdge(reach + d)) { i = reach + d; break }
+                        }
+                    } else {
+                        i = g.indices.firstOrNull(::isEdge)
+                    }
                     if (i != null) {
                         xs += x0 + nx * (i - reach)
                         ys += y0 + ny * (i - reach)
@@ -624,7 +690,8 @@ class DocumentDetector(
             // Refit without the points a stray edge in the texture pulled away from the line.
             val first = Line.fit(xs, ys)
             val off = xs.indices.map { abs(first.distance(P(xs[it], ys[it]))) }
-            val keep = xs.indices.filter { off[it] <= max(TRIM_MIN, TRIM * off.sorted()[off.size / 2]) }
+            val limit = max(TRIM_MIN, TRIM * off.sorted()[off.size / 2])
+            val keep = xs.indices.filter { off[it] <= limit }
             if (keep.size < xs.size / 2) first else Line.fit(keep.map { xs[it] }, keep.map { ys[it] })
         }
         val snapped = List(4) { i -> fitted[(i + 3) % 4].meet(fitted[i]) ?: return null }
@@ -695,7 +762,11 @@ class DocumentDetector(
     }
 
     /** A grayscale image, lightly blurred, and its gradients, copied out for per-pixel reads. */
-    private class Field {
+    /**
+     * A frame, softened, with its gradients. [onDemand]: worked out at each point asked for, the
+     * same sums Sobel makes, for a frame where only a few hundred points along an outline are read.
+     */
+    private class Field(private val onDemand: Boolean = false) {
         val image = Mat()
         private val sobel = Mat()
         var width = 0
@@ -711,12 +782,13 @@ class DocumentDetector(
             width = image.cols()
             height = image.rows()
             val n = width * height
-            if (pixels.size != n) {
-                pixels = ByteArray(n)
+            if (pixels.size != n) pixels = ByteArray(n)
+            image.get(0, 0, pixels)
+            if (onDemand) return
+            if (gx.size != n) {
                 gx = ShortArray(n)
                 gy = ShortArray(n)
             }
-            image.get(0, 0, pixels)
             Imgproc.Sobel(image, sobel, CvType.CV_16S, 1, 0, 3)
             sobel.get(0, 0, gx)
             Imgproc.Sobel(image, sobel, CvType.CV_16S, 0, 1, 3)
@@ -735,9 +807,36 @@ class DocumentDetector(
             val px = x.roundToInt()
             val py = y.roundToInt()
             if (px < 0 || py < 0 || px >= width || py >= height) return 0.0
+            if (onDemand) {
+                if (px < 1 || py < 1 || px >= width - 1 || py >= height - 1) return sobelX(px, py) * nx + sobelY(px, py) * ny
+                // Inside the image, the same sums read straight off the rows above and below.
+                val w = width
+                val c = py * w + px
+                val a = pixels
+                fun v(i: Int) = a[i].toInt() and 0xFF
+                val tl = v(c - w - 1); val tc = v(c - w); val tr = v(c - w + 1)
+                val ml = v(c - 1); val mr = v(c + 1)
+                val bl = v(c + w - 1); val bc = v(c + w); val br = v(c + w + 1)
+                val sx = tr - tl + 2 * (mr - ml) + br - bl
+                val sy = bl - tl + 2 * (bc - tc) + br - tr
+                return sx * nx + sy * ny
+            }
             val i = py * width + px
             return gx[i] * nx + gy[i] * ny
         }
+
+        /** The pixel at (x, y), mirrored at the image's edge as OpenCV's filters do (reflect 101). */
+        private fun px(x: Int, y: Int): Int {
+            val cx = if (x < 0) -x else if (x >= width) 2 * width - 2 - x else x
+            val cy = if (y < 0) -y else if (y >= height) 2 * height - 2 - y else y
+            return pixels[cy * width + cx].toInt() and 0xFF
+        }
+
+        private fun sobelX(x: Int, y: Int): Int =
+            px(x + 1, y - 1) - px(x - 1, y - 1) + 2 * (px(x + 1, y) - px(x - 1, y)) + px(x + 1, y + 1) - px(x - 1, y + 1)
+
+        private fun sobelY(x: Int, y: Int): Int =
+            px(x - 1, y + 1) - px(x - 1, y - 1) + 2 * (px(x, y + 1) - px(x, y - 1)) + px(x + 1, y + 1) - px(x + 1, y - 1)
 
         /**
          * How much of the segment a→b runs along an edge, counting only the more common polarity
@@ -863,6 +962,8 @@ class DocumentDetector(
         private const val SPREAD_HOLDS = 0.85
         /** A photo's own outline overlapping the camera's this much is the same page, better placed. */
         private const val AGREES_WITH_CAMERA = 0.9
+        /** Overlapping the camera's outline this much, the photo's is the same page, moved. */
+        private const val SAME_PAGE = 0.6
         /** How sure the [PageFinder] must be (0..255) that a spot is page. */
         private const val FINDER_SURE = 127.0
         private const val SQRT2 = 1.4142135623730951

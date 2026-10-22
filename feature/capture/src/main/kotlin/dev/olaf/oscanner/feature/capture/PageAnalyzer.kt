@@ -82,8 +82,8 @@ internal class PageAnalyzer(
             // and then, so an outline can't wander off on its own.
             val inGray = detector.detect(frame, lastQuad.takeIf { followedFrames < MAX_FOLLOWED })
             // A card is often a pale tint on a gray desk, plain in brightness: its colors are
-            // searched too.
-            val detection = if (current == CaptureMode.IdCard) {
+            // searched too, unless it was simply followed from the frame before.
+            val detection = if (current == CaptureMode.IdCard && !inGray.followed) {
                 val inColor = colorfulness(image)?.let { color -> detector.detect(color).quad }
                 val card = DocumentDetector.wholeCard(inGray.quad, inColor)
                 if (card === inGray.quad) inGray else Detection(card, inGray.sharpness)
