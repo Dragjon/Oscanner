@@ -1,0 +1,1 @@
+ID card mode finds cards that are no brighter than what they lie on, such as a white card on a pale sheet, and turns them upright by their text. A book photographed turned or upside down comes out with its pages upright and in reading order. The orientation button shows a phone with P for portrait, or on its side with L for landscape.
