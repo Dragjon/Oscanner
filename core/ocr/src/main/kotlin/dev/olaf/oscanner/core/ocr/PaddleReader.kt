@@ -17,6 +17,7 @@ import org.opencv.core.Scalar
 import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
 import java.nio.FloatBuffer
+import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.hypot
 import kotlin.math.max
@@ -80,6 +81,70 @@ class PaddleReader(context: Context) : PageReader {
         }
     }
 
+    /**
+     * Clockwise quarter turns, 0 to 270, that make [image]'s text read upright; null when it has
+     * too little text to tell. The detector finds lines far better running across than down, so
+     * the way round where it finds more of them is the text's axis; then a few of the longest are
+     * read both ways up, and the right way reads as more letters, more surely.
+     */
+    fun upright(image: Bitmap): Int? {
+        val rgba = Mat()
+        Utils.bitmapToMat(image, rgba)
+        val bgr = Mat()
+        Imgproc.cvtColor(rgba, bgr, Imgproc.COLOR_RGBA2BGR)
+        rgba.release()
+        val turned = Mat()
+        Core.rotate(bgr, turned, Core.ROTATE_90_CLOCKWISE)
+        try {
+            val flat = acrossLines(bgr)
+            val side = acrossLines(turned)
+            val sideways = side.sumOf { it.second } > flat.sumOf { it.second }
+            val (source, lines) = if (sideways) turned to side else bgr to flat
+            if (lines.isEmpty()) return null
+            var margin = 0.0
+            for ((box, _) in lines.sortedByDescending { it.second }.take(UPRIGHT_LINES)) {
+                val crop = crop(source, box)
+                val flipped = Mat()
+                Core.rotate(crop, flipped, Core.ROTATE_180)
+                margin += sureness(crop) - sureness(flipped)
+                crop.release()
+                flipped.release()
+            }
+            if (abs(margin) < UPRIGHT_MARGIN) return null
+            return ((if (sideways) 90 else 0) + (if (margin > 0) 0 else 180)) % 360
+        } finally {
+            bgr.release()
+            turned.release()
+        }
+    }
+
+    /** Lines found in [bgr] running across it, clearly longer than tall, with their lengths. */
+    private fun acrossLines(bgr: Mat): List<Pair<List<Point>, Double>> =
+        findLines(bgr, UPRIGHT_SIDE).mapNotNull { box ->
+            val (tl, tr, br, bl) = box
+            val width = max(hypot(tr.x - tl.x, tr.y - tl.y), hypot(br.x - bl.x, br.y - bl.y))
+            val height = max(hypot(bl.x - tl.x, bl.y - tl.y), hypot(br.x - tr.x, br.y - tr.y))
+            (box to width).takeIf { width >= LINE_LENGTH * height }
+        }
+
+    /** The line [box] in [bgr], straightened as it runs. */
+    private fun crop(bgr: Mat, box: List<Point>): Mat {
+        val (tl, tr, br, bl) = box
+        val width = max(hypot(tr.x - tl.x, tr.y - tl.y), hypot(br.x - bl.x, br.y - bl.y)).roundToInt().coerceAtLeast(2)
+        val height = max(hypot(bl.x - tl.x, bl.y - tl.y), hypot(br.x - tr.x, br.y - tr.y)).roundToInt().coerceAtLeast(2)
+        val warp = Imgproc.getPerspectiveTransform(
+            MatOfPoint2f(tl, tr, br, bl),
+            MatOfPoint2f(Point(0.0, 0.0), Point(width.toDouble(), 0.0), Point(width.toDouble(), height.toDouble()), Point(0.0, height.toDouble())),
+        )
+        val crop = Mat()
+        Imgproc.warpPerspective(bgr, crop, warp, Size(width.toDouble(), height.toDouble()), Imgproc.INTER_LINEAR, Core.BORDER_REPLICATE)
+        warp.release()
+        return crop
+    }
+
+    /** How surely a line reads: the reader's confidence summed over the letters it reads. */
+    private fun sureness(crop: Mat): Double = recognize(crop).first.sumOf { it.first.confidence.toDouble() }
+
     override fun close() {
         detector.close()
         recognizer.close()
@@ -93,8 +158,8 @@ class PaddleReader(context: Context) : PageReader {
      * DBNet: a map of how likely each pixel is text, thresholded into blobs; each blob's
      * rotated rectangle, grown back out by the margin the model was trained to shrink it by.
      */
-    private fun findLines(bgr: Mat): List<List<Point>> {
-        val scale = DET_SIDE.toDouble() / max(bgr.cols(), bgr.rows())
+    private fun findLines(bgr: Mat, side: Int = DET_SIDE): List<List<Point>> {
+        val scale = side.toDouble() / max(bgr.cols(), bgr.rows())
         val dw = max(32, (bgr.cols() * scale / 32).roundToInt() * 32)
         val dh = max(32, (bgr.rows() * scale / 32).roundToInt() * 32)
         val small = Mat()
@@ -312,5 +377,11 @@ class PaddleReader(context: Context) : PageReader {
         const val REC_HEIGHT = 48
         const val MIN_REC_WIDTH = 16
         const val MAX_REC_WIDTH = 3200
+        /** Telling which way up: lines found at this size, the longest few read both ways. */
+        const val UPRIGHT_SIDE = 960
+        const val UPRIGHT_LINES = 8
+        const val LINE_LENGTH = 3.0
+        /** Read the right way up, those lines' letters add up to this much more confidence. */
+        const val UPRIGHT_MARGIN = 5.0
     }
 }
