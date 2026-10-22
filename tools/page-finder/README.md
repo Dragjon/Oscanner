@@ -44,3 +44,19 @@ boxes, slabs of wood or cloth, never in the mask): `python cards.py 2000 trainde
 for i in 1..6 and `python cards.py 800 valdecoy.npz 599`, plus `trainroom.npz`, 2,100 card-free
 crops of real emulator camera frames; then `python train.py 3 cardnet2.pt 1e-3 cardnet3.pt`
 (cards 0.956, decoy scenes 0.927) and `python export.py cardnet3.pt card.onnx`.
+
+Real cards (2026-10-23): on photos of real cards the drawn-only finder was lost (mean IoU 0.19
+on MIDV-2020 photos, 0.36 on frames from a user's video), so it now also learns from
+MIDV-2020 (Bulatov et al., "MIDV-2020: A Comprehensive Benchmark Dataset for Identity
+Document Analysis", 2022; CC BY-SA 2.5), photos and video frames of mock ID documents with their corners marked; only the
+ID-1 card types are used. The archives are large, so
+`curl <url> | python midvstream.py <out dir> [every]` streams one, keeping only the card images
+shrunk to 384 px (and every n-th clip frame); then `realcards.py` crops them the way the camera frames a card
+(`python realcards.py 30 trainmidvphoto.npz 701 <photo dir>`, `4 trainmidvclip.npz 702 <clips dir>`),
+and with `composite` pastes the real cards into `cards.py`'s scenes in place of the drawn ones
+(`python realcards.py composite 1800 traincomp$i.npz 71$i <photo dir>` for i in 1..5). The Slovak
+ID (`svk_id`) is held out: `HOLD_OUT=svk_id` for the training sets, and
+`ONLY=svk_id python realcards.py 5 valmidv.npz 703 <photo dir>` to check on. With the earlier
+sets, `python train.py 4 cardnet3.pt 1e-3 cardnet4.pt`: drawn cards 0.952, decoy scenes 0.924,
+the held-out real cards 0.891 (from 0.19), the user's frames 0.80. Because it learned from
+CC BY-SA data, `card.onnx` is under CC BY-SA 4.0 (see `licenses/THIRD_PARTY.md`).
