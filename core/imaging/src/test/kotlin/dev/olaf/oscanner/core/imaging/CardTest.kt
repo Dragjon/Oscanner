@@ -43,7 +43,7 @@ class CardTest {
         Core.split(yuv, planes)
         val color = Mat().also { DocumentDetector.colorfulness(planes[1], planes[2], it) }
         val detector = DocumentDetector(cards = true)
-        val quad = DocumentDetector.wholeCard(detector.detect(gray).quad, detector.detect(color).quad)
+        val quad = DocumentDetector.wholeCard(detector.detect(gray).quad, detector.detectInColor(color).quad)
         assertNotNull(quad)
         val truth = listOf(90f to 230f, 390f to 230f, 390f to 419f, 90f to 419f).map { (x, y) -> x / 480 to y / 640 }
         val off = truth.maxOf { (tx, ty) -> quad!!.corners.minOf { hypot(it.x - tx, it.y - ty) } }

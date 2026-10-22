@@ -209,7 +209,7 @@ class DocumentDetector(
     /** [detect] for a photo already in gray, [color] giving its [colorOf] for cards. */
     internal fun inPhoto(gray: Mat, seen: Quad?, color: () -> Mat? = { null }): Quad? {
         val inGray = detect(gray).quad
-        val found = if (cards) wholeCard(inGray, color()?.let { c -> detect(c).quad.also { c.release() } }) else inGray
+        val found = if (cards) wholeCard(inGray, color()?.let { c -> detectInColor(c).quad.also { c.release() } }) else inGray
         if (seen == null) return found
         if (found != null && QuadGeometry.iou(found, seen) >= AGREES_WITH_CAMERA) return found
         detect(gray, prior = seen, search = false).quad?.let { return it }
@@ -218,6 +218,24 @@ class DocumentDetector(
         if (found != null && QuadGeometry.iou(found, seen) >= SAME_PAGE) return found
         return seen
     }
+
+    /**
+     * Where the card is in [color], a [colorfulness] map. There a card is more colorful than its
+     * desk all round, or less, whatever is printed on it, so its sides go one way, as a page's do.
+     */
+    fun detectInColor(color: Mat): Detection {
+        inColor = true
+        try {
+            return detect(color)
+        } finally {
+            inColor = false
+        }
+    }
+
+    private var inColor = false
+
+    /** A card's side in gray can be lighter than the desk in one place and darker in another. */
+    private val mixedSides get() = cards && !inColor
 
     /** The photo's colors, for [colorOf]. */
     private fun rgba(bitmap: Bitmap): Mat = Mat().also { Utils.bitmapToMat(bitmap, it) }
@@ -512,10 +530,13 @@ class DocumentDetector(
         // Most candidates fail on a side or two, so each side is measured only if the ones before passed.
         val support = ArrayList<Support>(4)
         for ((a, b, inward) in sides) {
-            val s = raw.support(a, b, inward, either = cards)
+            val s = raw.support(a, b, inward, either = mixedSides)
             if (s.share < SIDE_MIN || (!cards && support.isNotEmpty() && s.polarity != support[0].polarity)) return null
             support += s
         }
+        // A card in color: its band can turn one side, not more; and it's set off from the desk
+        // all over, not in one part, as a screen with a strip of wall below it would be.
+        if (cards && inColor && (support.count { it.polarity > 0 }.let { min(it, 4 - it) } > 1 || !setOff(corners))) return null
         val shares = support.map { it.share }
         if (shares.average() < MEAN_MIN) return null
         // With text filled in, a row of text has no edge left while paper still does. But on a
@@ -531,7 +552,7 @@ class DocumentDetector(
         val filledShares = DoubleArray(4)
         for (i in 0 until 4) {
             val (a, b, inward) = sides[i]
-            filledShares[i] = filled.support(a, b, inward, either = cards).share
+            filledShares[i] = filled.support(a, b, inward, either = mixedSides).share
             if (filledShares[i] < SIDE_MIN && !sure(i)) return null
         }
         val filledMin = filledShares.min()
@@ -545,6 +566,41 @@ class DocumentDetector(
             if (support[0].polarity > 0) 1.0 else DARK_PAGE
         val whole = steps == 4 && min(shares.min(), filledMin) >= WHOLE
         return Candidate(quad, area, support[0].polarity, score, whole)
+    }
+
+    /**
+     * Whether most of the inside of [corners] (small-frame pixels) differs from what's just
+     * outside, the same way: one thing on a desk, not two side by side.
+     */
+    private fun setOff(corners: List<P>): Boolean {
+        val cx = corners.sumOf { it.x } / 4
+        val cy = corners.sumOf { it.y } / 4
+        fun at(u: Double, v: Double, grow: Double): Int {
+            // Bilinear across the quad, then pushed out from its middle by [grow].
+            val top = P(corners[0].x + (corners[1].x - corners[0].x) * u, corners[0].y + (corners[1].y - corners[0].y) * u)
+            val bottom = P(corners[3].x + (corners[2].x - corners[3].x) * u, corners[3].y + (corners[2].y - corners[3].y) * u)
+            val x = top.x + (bottom.x - top.x) * v
+            val y = top.y + (bottom.y - top.y) * v
+            return raw.at(cx + (x - cx) * grow, cy + (y - cy) * grow)
+        }
+        val inside = IntArray(SET_OFF_GRID * SET_OFF_GRID)
+        for (i in 0 until SET_OFF_GRID) for (j in 0 until SET_OFF_GRID) {
+            inside[i * SET_OFF_GRID + j] = at(0.1 + 0.8 * i / (SET_OFF_GRID - 1), 0.1 + 0.8 * j / (SET_OFF_GRID - 1), 1.0)
+        }
+        val ring = IntArray(4 * SET_OFF_GRID)
+        for (k in 0 until SET_OFF_GRID) {
+            val s = k.toDouble() / (SET_OFF_GRID - 1)
+            ring[4 * k] = at(s, 0.0, SET_OFF_RING)
+            ring[4 * k + 1] = at(s, 1.0, SET_OFF_RING)
+            ring[4 * k + 2] = at(0.0, s, SET_OFF_RING)
+            ring[4 * k + 3] = at(1.0, s, SET_OFF_RING)
+        }
+        ring.sort()
+        val desk = ring[ring.size / 2]
+        val sortedInside = inside.sortedArray()
+        val sign = if (sortedInside[sortedInside.size / 2] >= desk) 1 else -1
+        val apart = inside.count { (it - desk) * sign >= SET_OFF_LEVELS }
+        return apart >= SET_OFF_SHARE * inside.size
     }
 
     /**
@@ -925,6 +981,9 @@ class DocumentDetector(
             Core.absdiff(u, Scalar(128.0), a)
             Core.absdiff(v, Scalar(128.0), b)
             Core.addWeighted(a, COLOR_GAIN, b, COLOR_GAIN, 0.0, out)
+            // A camera's color is noisy, the more so scaled up: smoothed, the speckle in a desk's
+            // grain doesn't line up into edges.
+            Imgproc.GaussianBlur(out, out, Size(5.0, 5.0), 0.0)
             a.release()
             b.release()
         }
@@ -956,6 +1015,11 @@ class DocumentDetector(
         private const val CARD_RATIO_MIN = 1.2
         private const val CARD_RATIO_MAX = 2.1
         private const val CARD_SPREAD = 0.12
+        /** Inside a card in color, this share of a grid this fine differs from the desk by this much. */
+        private const val SET_OFF_GRID = 10
+        private const val SET_OFF_RING = 1.12
+        private const val SET_OFF_LEVELS = 12
+        private const val SET_OFF_SHARE = 0.65
         /** A spread is this many times one page's area, and holds this share of it. */
         private const val SPREAD_MIN = 1.6
         private const val SPREAD_MAX = 2.6
