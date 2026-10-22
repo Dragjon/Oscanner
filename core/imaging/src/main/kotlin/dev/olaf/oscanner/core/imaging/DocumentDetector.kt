@@ -134,8 +134,11 @@ class DocumentDetector(
         // A card's thin edge passes for one in a busy cloth too: the card finder says where a
         // card can be at all.
         cardWhere = if (cards && search && finder != null) finderMask(gray) else null
+        // Unsure of what it marks (a real card unlike those it learned on, where it marks only
+        // the photo, half believing it), its word doesn't count either way.
+        finderSure = cardWhere?.let(::confident) ?: false
         val valid = if (search) candidates.distinct().mapNotNull { check(it, width, height) } else emptyList()
-        val found = valid
+        val best = valid
             .filter { outer ->
                 keepSpreads || cards || valid.none { inner ->
                     inner.whole && inner.polarity == outer.polarity && sharesSide(inner.quad, outer.quad) &&
@@ -146,7 +149,9 @@ class DocumentDetector(
                 }
             }
             .maxByOrNull { it.score }
-            ?.quad
+        // A card found by its edges alone is followed by them too; see [stillACard].
+        if (best != null) byEdges = !best.covered
+        val found = best?.quad
 
         val sx = gray.cols().toDouble() / width
         val sy = gray.rows().toDouble() / height
@@ -167,8 +172,9 @@ class DocumentDetector(
             }
             // A card: where the finder, trained on cards, sees one the edge search outlined
             // something else (its band or photo, or a patch of cloth beside a card whose edges
-            // are too faint), the finder's card it is.
-            if (cards && finder != null) {
+            // are too faint), the finder's card it is. Not over a card found by its clean edges
+            // alone: there the finder didn't know the card, and what it marks is a part of it.
+            if (cards && finder != null && !byEdges) {
                 val card = fromFinder(gray, width, height)?.let { rough ->
                     val reach = max(REFINE_REACH, (FINDER_REACH * max(gray.cols(), gray.rows())).toInt())
                     snapToPaper(toFull(rough), reach)?.let { inset(toQuad(it)) } ?: inset(rough)
@@ -189,7 +195,9 @@ class DocumentDetector(
         val reach = max(REFINE_REACH, (FINDER_REACH * max(gray.cols(), gray.rows())).toInt())
         // When its sides don't snap (pages bowing up toward a spine, or a busy cloth along them),
         // the finder's own outline stands: it already had to be sure all over and fill its shape.
-        val snapped = snapToPaper(toFull(rough), reach) ?: return Detection(inset(rough), sharpness)
+        // Not a card's: a card lies flat, so its sides snap; an outline that doesn't is the finder
+        // taking a part of a card it doesn't know, its photo, for the whole.
+        val snapped = snapToPaper(toFull(rough), reach) ?: return Detection(if (cards) null else inset(rough), sharpness)
         return Detection(inset(toQuad(snapped)), sharpness)
     }
 
@@ -204,7 +212,19 @@ class DocumentDetector(
         val followed = snapToPaper(corners, reach, maxMove = 1.5 * reach, nearest = true)
             ?.let(::refine)
             ?.let { points -> QuadGeometry.order(points.map { Corner((it.x / gray.cols()).toFloat(), (it.y / gray.rows()).toFloat()) }) }
-        return followed?.takeIf(::plausible)?.let(::inset)?.takeIf { stillACard(gray, it) }
+        return followed?.takeIf(::plausible)?.let(::inset)?.takeIf { sameShape(prior, it) && stillACard(gray, it) }
+    }
+
+    /**
+     * Whether a card followed from [before] to [after] kept its shape: its corners all moved
+     * about together. One side sliding onto a line printed near it bends the outline out of a card.
+     */
+    private fun sameShape(before: Quad, after: Quad): Boolean {
+        if (!cards) return true
+        val moves = before.corners.zip(after.corners).map { (b, a) -> (a.x - b.x).toDouble() to (a.y - b.y).toDouble() }
+        val mx = moves.sumOf { it.first } / 4
+        val my = moves.sumOf { it.second } / 4
+        return moves.all { (x, y) -> hypot(x - mx, y - my) <= CARD_WARP }
     }
 
     /**
@@ -212,7 +232,7 @@ class DocumentDetector(
      * followed from frame to frame mustn't become whatever its edges snapped onto instead.
      */
     private fun stillACard(gray: Mat, quad: Quad): Boolean {
-        if (!cards || finder == null) return true
+        if (!cards || finder == null || byEdges) return true
         cardWhere = finderMask(gray)
         return coveredByCard(quad.corners.map { P(it.x.toDouble(), it.y.toDouble()) }, 1, 1)
     }
@@ -279,6 +299,12 @@ class DocumentDetector(
     private var maskFor: Mat? = null
     private var maskStamp = 0L
     private var frameStamp = 0L
+
+    /** Whether the card finder is sure of what it marks this frame; see [check]. */
+    private var finderSure = false
+
+    /** Whether the card last found by a search was one the finder didn't see, found by its clean edges. */
+    private var byEdges = false
 
     /** The card finder's mask this frame, as a grid of bytes, when it's asked; see [coveredByCard]. */
     private var cardWhere: Mat? = null
@@ -611,10 +637,12 @@ class DocumentDetector(
         val down = (hypot(corners[3].x - corners[0].x, corners[3].y - corners[0].y) + hypot(corners[2].x - corners[1].x, corners[2].y - corners[1].y)) / 2
         if (max(across, down) > MAX_SIDE_RATIO * min(across, down)) return null
         val shape = if (cards) cardShape(max(across, down) / min(across, down)) ?: return null else 1.0
-        if (cards && !coveredByCard(corners, width, height)) return null
+        // The finder was trained on drawn cards and may not know a real one: a card it doesn't
+        // see still counts lying on something plain with its edge unbroken all round (below).
+        val covered = !cards || cardWhere == null || (finderSure && coveredByCard(corners, width, height))
         // Among cards, the outline that best matches where the finder sees the card: the whole
         // card, band and all, over the part below its band or a run along its photo's edge.
-        val match = if (cards) cardMatch(corners, width, height) else 1.0
+        val match = if (!cards) 1.0 else if (covered) cardMatch(corners, width, height) else UNSEEN_MATCH
         // Where the finder clearly sees this card, its word stands for the edges' on the sides
         // that hardly show: a band as bright as the desk beyond it, a card as bright as its sheet.
         val vouched = cards && cardWhere != null && match >= CARD_VOUCHED
@@ -646,23 +674,33 @@ class DocumentDetector(
             if (!cards && filledShares[i] < SIDE_MIN && !sure(i)) return null
         }
         val filledMin = filledShares.min()
+        // A card the finder doesn't see counts only lying on something plain, quiet just outside
+        // every side, and with an edge unbroken all round. On a speckled counter or a printed
+        // cloth, where an edge runs everywhere, it's the finder's word or nothing.
+        val plain = cards && !covered && shares.all { it >= CLEAN_SIDE } &&
+            sides.all { (a, b, inward) -> raw.busyOutside(a, b, inward) <= QUIET }
+        if (cards && !covered && !plain) return null
+        // On a sheet about as bright as it, a pale card's edge is faint, and an outline found
+        // roughly runs a pixel or two off it: its cross-sections are lined up on the edge first.
         val steps = sides.indices.count { i ->
             val (a, b, inward) = sides[i]
-            filled.isStep(a, b, inward) || sure(i) || (cards && (raw.isStep(a, b, inward) || raw.isLine(a, b, inward)))
+            filled.isStep(a, b, inward) || sure(i) ||
+                (cards && (raw.isStep(a, b, inward, aligned = plain) || raw.isLine(a, b, inward)))
         }
-        // One side may be a soft fold, like a book's gutter.
-        if (steps < if (vouched) 2 else 3) return null
+        // One side may be a soft fold, like a book's gutter. A card shows its edge as a step on
+        // only some sides, when it's about as bright as its sheet.
+        if (steps < if (vouched || plain) 2 else 3) return null
         // A card's sides all show along their whole length, as a step however soft or a thin
         // line, at one place across them; a run through a flecked counter or a printed cloth,
         // taken along its length, evens out.
-        if (cards && !vouched && sides.any { (a, b, inward) -> raw.slope(a, b, inward) < CARD_EDGE }) return null
+        if (cards && !vouched && sides.any { (a, b, inward) -> raw.slope(a, b, inward, aligned = plain) < CARD_EDGE }) return null
 
         val skew = angles.sumOf { abs(it - 90.0) } / 4 / squareness
         val mean = shares.average()
         val score = mean * mean * shares.min() * shares.min() * area * (1.0 - 0.5 * skew) * shape * match * match * match * match *
             if (support[0].polarity > 0) 1.0 else DARK_PAGE
         val whole = steps == 4 && min(shares.min(), filledMin) >= WHOLE
-        return Candidate(quad, area, support[0].polarity, score, whole)
+        return Candidate(quad, area, support[0].polarity, score, whole, covered)
     }
 
     /**
@@ -834,7 +872,7 @@ class DocumentDetector(
         return Quad.of(quad.corners.map { Corner(cx + (it.x - cx) * k, cy + (it.y - cy) * k) })
     }
 
-    private class Candidate(val quad: Quad, val area: Double, val polarity: Int, val score: Double, val whole: Boolean)
+    private class Candidate(val quad: Quad, val area: Double, val polarity: Int, val score: Double, val whole: Boolean, val covered: Boolean = true)
 
     private data class P(val x: Double, val y: Double)
 
@@ -993,8 +1031,8 @@ class DocumentDetector(
          * Averages the cross-section of side a→b along its length: paper ends in a step, while
          * light falling off over a wall or carpet makes a ramp.
          */
-        fun isStep(a: P, b: P, inward: P): Boolean {
-            val profile = profile(a, b, inward)
+        fun isStep(a: P, b: P, inward: P, aligned: Boolean = false): Boolean {
+            val profile = profile(a, b, inward, aligned)
             val contrast = abs(profile.last() - profile.first())
             var steepest = 0.0
             for (j in 0 until profile.size - 2) steepest = max(steepest, abs(profile[j + 2] - profile[j]))
@@ -1020,16 +1058,50 @@ class DocumentDetector(
             return depth >= LINE_DEPTH && abs(outside - inside) < depth
         }
 
+        /** How busy what lies just outside side a→b is: its mean gradient, a few pixels out. */
+        fun busyOutside(a: P, b: P, inward: P): Double {
+            val dx = b.x - a.x
+            val dy = b.y - a.y
+            val length = hypot(dx, dy)
+            var nx = -dy / length
+            var ny = dx / length
+            if (nx * inward.x + ny * inward.y > 0) {
+                nx = -nx
+                ny = -ny
+            }
+            val n = max(8, (length / 3).toInt())
+            var sum = 0.0
+            var count = 0
+            for (s in 0 until n) {
+                val t = 0.1 + 0.8 * s / (n - 1)
+                for (o in BUSY_FROM..BUSY_TO) {
+                    val x = a.x + dx * t + nx * o
+                    val y = a.y + dy * t + ny * o
+                    if (x < 0 || y < 0 || x >= width || y >= height) continue
+                    sum += hypot(gradient(x, y, 1.0, 0.0), gradient(x, y, 0.0, 1.0))
+                    count++
+                }
+            }
+            return if (count == 0) 0.0 else sum / count
+        }
+
         /** The steepest change across side a→b, over two pixels, taken along its length. */
-        fun slope(a: P, b: P, inward: P): Double {
-            val profile = profile(a, b, inward)
+        fun slope(a: P, b: P, inward: P, aligned: Boolean = false): Double {
+            val profile = profile(a, b, inward, aligned)
             var steepest = 0.0
             for (j in 0 until profile.size - 2) steepest = max(steepest, abs(profile[j + 2] - profile[j]))
             return steepest
         }
 
-        /** The cross-section of side a→b averaged along it, from outside (first) to inside. */
-        private fun profile(a: P, b: P, inward: P): DoubleArray {
+        /**
+         * The cross-section of side a→b averaged along it, from outside (first) to inside.
+         * [aligned]: each cross-section is first centred on the strongest edge within a pixel or
+         * two of the side, and turned so it rises inward, as a card's edge does even where its
+         * print makes it darker than the sheet in one place and lighter in another. A side found
+         * from a rough outline is a pixel or two off along its length, which on its own smears a
+         * faint step into a ramp.
+         */
+        private fun profile(a: P, b: P, inward: P, aligned: Boolean = false): DoubleArray {
             val dx = b.x - a.x
             val dy = b.y - a.y
             val length = hypot(dx, dy)
@@ -1043,11 +1115,25 @@ class DocumentDetector(
             val profile = DoubleArray(2 * STEP_REACH + 1)
             for (s in 0 until n) {
                 val t = 0.1 + 0.8 * s / (n - 1)
-                val x0 = a.x + dx * t
-                val y0 = a.y + dy * t
+                var shift = 0
+                var rising = true
+                if (aligned) {
+                    var best = 0.0
+                    for (o in -ALIGN_REACH..ALIGN_REACH) {
+                        val g = gradient(a.x + dx * t + nx * o, a.y + dy * t + ny * o, nx, ny)
+                        if (abs(g) > abs(best)) {
+                            best = g
+                            shift = o
+                        }
+                    }
+                    rising = best >= 0
+                }
+                val x0 = a.x + dx * t + nx * shift
+                val y0 = a.y + dy * t + ny * shift
                 for (j in profile.indices) {
                     val o = j - STEP_REACH
-                    profile[j] += at(x0 + nx * o, y0 + ny * o).toDouble()
+                    val v = at(x0 + nx * o, y0 + ny * o)
+                    profile[j] += (if (rising) v else 255 - v).toDouble()
                 }
             }
             for (j in profile.indices) profile[j] /= n
@@ -1078,6 +1164,19 @@ class DocumentDetector(
         private const val COVER_GRID = 8
         /** An outline matching the card finder's mask this well needs only two of its sides to show. */
         private const val CARD_VOUCHED = 0.7
+        /** How far, as a share of the frame, one corner of a card followed may move apart from the rest. */
+        private const val CARD_WARP = 0.015
+        /**
+         * A card the finder doesn't see: each side runs along an edge for this share of its length
+         * (patterned cloth and flecked counters, which the finder is there to rule out, break up
+         * somewhere along a side); and it scores as if the finder matched it this well.
+         */
+        private const val CLEAN_SIDE = 0.85
+        /** Plain enough beside a card: the mean gradient this many pixels out (at the search's size). */
+        private const val QUIET = 20.0
+        private const val BUSY_FROM = 4
+        private const val BUSY_TO = 10
+        private const val UNSEEN_MATCH = 0.5
         /** A spread is this many times one page's area, and holds this share of it. */
         private const val SPREAD_MIN = 1.6
         private const val SPREAD_MAX = 2.6
@@ -1143,6 +1242,8 @@ class DocumentDetector(
         /** A card's edge line: this many pixels either side of the side, this much darker than both. */
         private const val LINE_HALF = 2
         private const val LINE_DEPTH = 8.0
+        /** How far either way a card's cross-sections are moved to line up on its edge. */
+        private const val ALIGN_REACH = 2
         /** Each side of a card changes this much over two pixels, taken along its length. */
         private const val CARD_EDGE = 8.0
         /** An inner sheet this well outlined, at most this share of an outer one, splits it. */
