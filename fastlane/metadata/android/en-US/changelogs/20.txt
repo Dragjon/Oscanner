@@ -1,0 +1,1 @@
+ID card mode finds real cards it used to miss, such as a pale printed student card on a plain sheet, and no longer outlines just the photo on a card. A card followed while the phone moves keeps its shape.
