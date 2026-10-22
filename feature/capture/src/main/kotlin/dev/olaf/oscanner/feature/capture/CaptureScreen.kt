@@ -27,6 +27,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -47,14 +48,13 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AddPhotoAlternate
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.FlashOff
 import androidx.compose.material.icons.rounded.FlashOn
-import androidx.compose.material.icons.rounded.StayCurrentLandscape
-import androidx.compose.material.icons.rounded.StayCurrentPortrait
 import androidx.compose.material.icons.rounded.ScreenRotation
 import androidx.compose.material.icons.rounded.MotionPhotosAuto
 import androidx.compose.material.icons.rounded.TouchApp
@@ -62,6 +62,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarDuration
@@ -135,6 +136,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
@@ -556,12 +558,14 @@ private fun TopChrome(
                 Spacer(Modifier.width(8.dp))
             }
             if (showCameraControls) {
-                // Icon only: the top bar is full, and the icon itself shows the way it's locked.
+                // Icon only: the top bar is full, and the icon itself shows the way it's locked: a
+                // phone upright with a P in it, or on its side with an L.
                 ChromePill(
-                    icon = when (orientation) {
-                        CameraOrientation.Auto -> Icons.Rounded.ScreenRotation
-                        CameraOrientation.Portrait -> Icons.Rounded.StayCurrentPortrait
-                        CameraOrientation.Landscape -> Icons.Rounded.StayCurrentLandscape
+                    icon = Icons.Rounded.ScreenRotation,
+                    glyph = when (orientation) {
+                        CameraOrientation.Auto -> null
+                        CameraOrientation.Portrait -> { { PhoneGlyph(stringResource(R.string.capture_orientation_portrait_letter), sideways = false) } }
+                        CameraOrientation.Landscape -> { { PhoneGlyph(stringResource(R.string.capture_orientation_landscape_letter), sideways = true) } }
                     },
                     label = stringResource(
                         when (orientation) {
@@ -662,6 +666,8 @@ private fun ChromePill(
     modifier: Modifier = Modifier,
     rotation: Float = 0f,
     showLabel: Boolean = true,
+    /** Drawn in place of [icon], when there is one. */
+    glyph: (@Composable () -> Unit)? = null,
 ) {
     Surface(
         onClick = onClick,
@@ -673,12 +679,31 @@ private fun ChromePill(
             .semantics { contentDescription = label },
     ) {
         Row(Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp).graphicsLayer { rotationZ = rotation })
+            if (glyph != null) {
+                Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) { glyph() }
+            } else {
+                Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp).graphicsLayer { rotationZ = rotation })
+            }
             if (showLabel) {
                 Spacer(Modifier.width(6.dp))
                 Text(label, style = MaterialTheme.typography.labelMedium)
             }
         }
+    }
+}
+
+/** A phone's outline, upright or on its side, with [letter] in it, the right way up either way. */
+@Composable
+private fun PhoneGlyph(letter: String, sideways: Boolean) {
+    val long = 19.dp
+    val short = 13.dp
+    Box(
+        Modifier
+            .size(if (sideways) long else short, if (sideways) short else long)
+            .border(1.6.dp, LocalContentColor.current, RoundedCornerShape(3.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(letter, fontSize = 10.sp, fontWeight = FontWeight.Bold, lineHeight = 10.sp)
     }
 }
 
