@@ -169,7 +169,7 @@ class CaptureViewModel(
         }
         val hint = synchronized(hints) {
             val s = _state.value
-            if (s.mode == CaptureMode.Code) null else hints.onFrame(quad, frameAspect, signals, s.flash, now)
+            if (s.mode == CaptureMode.Code) null else hints.onFrame(quad, frameAspect, signals, s.flash, now, card = s.mode == CaptureMode.IdCard)
         }
         _state.update {
             it.copy(

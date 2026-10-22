@@ -5,6 +5,7 @@ import androidx.camera.core.ImageProxy
 import dev.olaf.oscanner.core.imaging.DocumentDetector
 import dev.olaf.oscanner.core.imaging.PageRenderer
 import dev.olaf.oscanner.core.imaging.QuadGeometry
+import dev.olaf.oscanner.core.imaging.turned
 import dev.olaf.oscanner.core.model.Quad
 import org.opencv.core.Core
 import org.opencv.core.CvType
@@ -67,11 +68,12 @@ internal class PageAnalyzer(
                 angleTolerance = if (current == CaptureMode.Whiteboard || current == CaptureMode.Slides) 50.0 else 35.0,
                 keepSpreads = current == CaptureMode.Book,
                 cards = current == CaptureMode.IdCard,
+                // The camera's frames are sideways to the finder, which knows only upright ones.
                 finder = when (current) {
                     CaptureMode.Book -> bookFinder()
                     CaptureMode.IdCard -> cardFinder()
                     else -> null
-                },
+                }?.turned(toScreen),
             ).also { detector = it }
             val plane = image.planes[0]
             val luminance = Mat(image.height, image.width, CvType.CV_8UC1, plane.buffer, plane.rowStride.toLong())

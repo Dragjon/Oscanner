@@ -67,4 +67,20 @@ class CaptureHintsTest {
         val small = Quad.of(listOf(Corner(0.4f, 0.4f), Corner(0.6f, 0.4f), Corner(0.6f, 0.6f), Corner(0.4f, 0.6f)))
         assertEquals(CaptureHint.Far, CaptureHints().run(12, clean, quad = small))
     }
+
+    @Test
+    fun aCardIsSmallerThanAPageBeforeItAsksToComeCloser() {
+        // A card taking a sixth of the frame, or even a thirteenth, is close enough; a seventieth isn't.
+        val card = Quad.of(listOf(Corner(0.3f, 0.3f), Corner(0.7f, 0.3f), Corner(0.7f, 0.7f), Corner(0.3f, 0.7f)))
+        val far = Quad.of(listOf(Corner(0.375f, 0.35f), Corner(0.625f, 0.35f), Corner(0.625f, 0.65f), Corner(0.375f, 0.65f)))
+        val distant = Quad.of(listOf(Corner(0.45f, 0.45f), Corner(0.55f, 0.45f), Corner(0.55f, 0.6f), Corner(0.45f, 0.6f)))
+        fun CaptureHints.card(quad: Quad): CaptureHint? {
+            var hint: CaptureHint? = null
+            repeat(12) { hint = onFrame(quad, 1f, clean, flashOn = false, now = it * 50L, card = true) }
+            return hint
+        }
+        assertNull(CaptureHints().card(card))
+        assertNull(CaptureHints().card(far))
+        assertEquals(CaptureHint.Far, CaptureHints().card(distant))
+    }
 }

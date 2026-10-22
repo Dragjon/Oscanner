@@ -32,9 +32,12 @@ internal class CaptureHints(
     private var shownAt = 0L
     private var clearSince = 0L
 
-    /** [quad] in normalized screen coordinates, [aspect] the screen frame's width / height. */
-    fun onFrame(quad: Quad?, aspect: Float, signals: FrameSignals?, flashOn: Boolean, now: Long): CaptureHint? {
-        recent.addLast(active(quad, aspect, signals, flashOn))
+    /**
+     * [quad] in normalized screen coordinates, [aspect] the screen frame's width / height. A
+     * [card] is small, and fills far less of the frame than a page at the right distance.
+     */
+    fun onFrame(quad: Quad?, aspect: Float, signals: FrameSignals?, flashOn: Boolean, now: Long, card: Boolean = false): CaptureHint? {
+        recent.addLast(active(quad, aspect, signals, flashOn, card))
         if (recent.size > window) recent.removeFirst()
         val agreed = CaptureHint.entries.firstOrNull { hint -> recent.count { hint in it } >= needed }
         val current = shown
@@ -60,13 +63,13 @@ internal class CaptureHints(
         clearSince = 0L
     }
 
-    private fun active(quad: Quad?, aspect: Float, signals: FrameSignals?, flashOn: Boolean): Set<CaptureHint> = buildSet {
+    private fun active(quad: Quad?, aspect: Float, signals: FrameSignals?, flashOn: Boolean, card: Boolean): Set<CaptureHint> = buildSet {
         if (signals != null && signals.brightness < DARK && !flashOn) add(CaptureHint.Dark)
         if (quad == null) return@buildSet
         if (signals != null && signals.skinAtEdges > FINGER_SHARE) add(CaptureHint.Finger)
         if (signals != null && signals.penOnPage > PEN_SHARE) add(CaptureHint.Handwriting)
         if (steep(quad, aspect)) add(CaptureHint.Steep)
-        if (QuadGeometry.area(quad.corners) < FAR_AREA) add(CaptureHint.Far)
+        if (QuadGeometry.area(quad.corners) < if (card) CARD_FAR_AREA else FAR_AREA) add(CaptureHint.Far)
     }
 
     /**
@@ -88,6 +91,8 @@ internal class CaptureHints(
         const val FINGER_SHARE = 0.06f
         const val PEN_SHARE = 0.012f
         const val FAR_AREA = 0.22
+        /** A card this small in the frame still comes out over a thousand pixels wide. */
+        const val CARD_FAR_AREA = 0.06
         const val STEEP_RATIO = 0.72f
         const val STEEP_DEGREES = 14.0
     }
