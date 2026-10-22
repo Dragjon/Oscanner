@@ -19,7 +19,9 @@ import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.exp
 import kotlin.math.hypot
+import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -54,6 +56,12 @@ class DocumentDetector(
     private val angleTolerance: Double = 35.0,
     /** Book mode wants an open book as one outline, which it then splits at the gutter. */
     private val keepSpreads: Boolean = false,
+    /**
+     * An ID card: 85.6 by 54 mm, so outlines near that shape win. Its face is printed (a colored
+     * band, a photo), so a side may be lighter than what's behind it in one place and darker in
+     * another, and the plain part under a band, sharing three of its sides, isn't a sheet of its own.
+     */
+    private val cards: Boolean = false,
     /** Asked where the page is when the search below finds nothing; see [PageFinder]. */
     private val finder: PageFinder? = null,
 ) {
@@ -108,7 +116,7 @@ class DocumentDetector(
         val valid = if (search) candidates.mapNotNull { check(it, width, height) } else emptyList()
         val found = valid
             .filter { outer ->
-                keepSpreads || valid.none { inner ->
+                keepSpreads || cards || valid.none { inner ->
                     inner.whole && inner.polarity == outer.polarity && sharesSide(inner.quad, outer.quad) &&
                         // Two sheets side by side; or a sheet with a strip of darker desk taken in
                         // beside it, out to the edge of a mat or the table, which the camera
@@ -172,13 +180,37 @@ class DocumentDetector(
         rgba.release()
         if (scale < 1.0) Imgproc.resize(gray, gray, Size(), scale, scale, Imgproc.INTER_AREA)
         try {
-            val found = detect(gray).quad
+            val inGray = detect(gray).quad
+            val found = if (cards) wholeCard(inGray, colorOf(rgba(bitmap)).let { c -> detect(c).quad.also { c.release() } }) else inGray
             if (seen == null) return found
             if (found != null && QuadGeometry.iou(found, seen) >= AGREES_WITH_CAMERA) return found
             return detect(gray, prior = seen, search = false).quad ?: seen
         } finally {
             gray.release()
         }
+    }
+
+    /** The photo's colors, for [colorOf]. */
+    private fun rgba(bitmap: Bitmap): Mat = Mat().also { Utils.bitmapToMat(bitmap, it) }
+
+    /**
+     * How colorful each pixel of [rgba] is, at the size of the gray frame searched before, which
+     * this replaces: a pastel card on a gray desk is plain in gray and stands out here.
+     */
+    private fun colorOf(rgba: Mat): Mat {
+        val yuv = Mat()
+        Imgproc.cvtColor(rgba, yuv, Imgproc.COLOR_RGBA2RGB)
+        rgba.release()
+        Imgproc.cvtColor(yuv, yuv, Imgproc.COLOR_RGB2YUV)
+        val planes = mutableListOf<Mat>()
+        Core.split(yuv, planes)
+        yuv.release()
+        val out = Mat()
+        colorfulness(planes[1], planes[2], out)
+        planes.forEach(Mat::release)
+        val scale = DETECT_SIDE.toDouble() / max(out.cols(), out.rows())
+        if (scale < 1.0) Imgproc.resize(out, out, Size(), scale, scale, Imgproc.INTER_AREA)
+        return out
     }
 
     fun release() {
@@ -431,11 +463,12 @@ class DocumentDetector(
         val across = (hypot(corners[1].x - corners[0].x, corners[1].y - corners[0].y) + hypot(corners[2].x - corners[3].x, corners[2].y - corners[3].y)) / 2
         val down = (hypot(corners[3].x - corners[0].x, corners[3].y - corners[0].y) + hypot(corners[2].x - corners[1].x, corners[2].y - corners[1].y)) / 2
         if (max(across, down) > MAX_SIDE_RATIO * min(across, down)) return null
+        val shape = if (cards) cardShape(max(across, down) / min(across, down)) ?: return null else 1.0
         val sides = sides(corners)
-        val support = sides.map { (a, b, inward) -> raw.support(a, b, inward) }
+        val support = sides.map { (a, b, inward) -> raw.support(a, b, inward, either = cards) }
         val shares = support.map { it.share }
         if (shares.min() < SIDE_MIN || shares.average() < MEAN_MIN) return null
-        if (support.any { it.polarity != support[0].polarity }) return null
+        if (!cards && support.any { it.polarity != support[0].polarity }) return null
         // With text filled in, a row of text has no edge left while paper still does. But on a
         // light counter full of dark flecks (terrazzo, granite), filling them in makes the
         // counter as white as the paper: a side that is a strong, clean step as it is, with the
@@ -443,7 +476,7 @@ class DocumentDetector(
         val sure = sides.mapIndexed { i, (a, b, inward) ->
             shares[i] >= SURE_SIDE && support[i].polarity > 0 && raw.isStep(a, b, inward) && flecked(a, b, inward)
         }
-        val filledShares = sides.map { (a, b, inward) -> filled.support(a, b, inward).share }
+        val filledShares = sides.map { (a, b, inward) -> filled.support(a, b, inward, either = cards).share }
         if (filledShares.indices.any { filledShares[it] < SIDE_MIN && !sure[it] }) return null
         val filledMin = filledShares.min()
         val steps = sides.indices.count { i -> val (a, b, inward) = sides[i]; filled.isStep(a, b, inward) || sure[i] }
@@ -452,10 +485,20 @@ class DocumentDetector(
 
         val skew = angles.sumOf { abs(it - 90.0) } / 4 / angleTolerance
         val mean = shares.average()
-        val score = mean * mean * shares.min() * shares.min() * area * (1.0 - 0.5 * skew) *
+        val score = mean * mean * shares.min() * shares.min() * area * (1.0 - 0.5 * skew) * shape *
             if (support[0].polarity > 0) 1.0 else DARK_PAGE
         val whole = steps == 4 && min(shares.min(), filledMin) >= WHOLE
         return Candidate(quad, area, support[0].polarity, score, whole)
+    }
+
+    /**
+     * How card-shaped an outline [ratio] long to wide is, 1 for a card's own 1.586 and less the
+     * further off; null when it can't be a card at all, even seen at an angle.
+     */
+    private fun cardShape(ratio: Double): Double? {
+        if (ratio < CARD_RATIO_MIN || ratio > CARD_RATIO_MAX) return null
+        val off = ln(ratio / CARD_RATIO) / CARD_SPREAD
+        return exp(-off * off)
     }
 
     /**
@@ -698,9 +741,9 @@ class DocumentDetector(
 
         /**
          * How much of the segment a→b runs along an edge, counting only the more common polarity
-         * (lighter toward [inward], or darker), and which one that is.
+         * (lighter toward [inward], or darker), or with [either] both, and which is more common.
          */
-        fun support(a: P, b: P, inward: P): Support {
+        fun support(a: P, b: P, inward: P, either: Boolean = false): Support {
             val dx = b.x - a.x
             val dy = b.y - a.y
             val length = hypot(dx, dy)
@@ -725,7 +768,8 @@ class DocumentDetector(
                 }
                 if (best >= GRAD_MIN) lighter++ else if (best <= -GRAD_MIN) darker++
             }
-            return Support(max(lighter, darker).toDouble() / n, if (lighter >= darker) 1 else -1)
+            val along = if (either) lighter + darker else max(lighter, darker)
+            return Support(along.toDouble() / n, if (lighter >= darker) 1 else -1)
         }
 
         /**
@@ -772,9 +816,47 @@ class DocumentDetector(
     }
 
     companion object {
+        /**
+         * How far from gray each pixel is, from its [u] and [v] (128 is gray), into [out]:
+         * scaled up so a pale tint reads as clearly as a step in brightness would.
+         */
+        fun colorfulness(u: Mat, v: Mat, out: Mat) {
+            val a = Mat()
+            val b = Mat()
+            Core.absdiff(u, Scalar(128.0), a)
+            Core.absdiff(v, Scalar(128.0), b)
+            Core.addWeighted(a, COLOR_GAIN, b, COLOR_GAIN, 0.0, out)
+            a.release()
+            b.release()
+        }
+
+        /**
+         * The card, from its outline in gray and in [colorfulness]: whichever was found, and when
+         * both were, the one in color if it's clearly the bigger and holds the other. In gray a
+         * card's band or photo can stand out more than its edge does.
+         */
+        fun wholeCard(inGray: Quad?, inColor: Quad?): Quad? {
+            if (inGray == null || inColor == null) return inGray ?: inColor
+            val a = QuadGeometry.area(inGray.corners)
+            val b = QuadGeometry.area(inColor.corners)
+            val iou = QuadGeometry.iou(inGray, inColor)
+            val shared = iou * (a + b) / (1 + iou)
+            return if (b >= CARD_WIDER * a && shared >= CARD_HOLDS * a) inColor else inGray
+        }
+
+        private const val CARD_WIDER = 1.1
+        private const val CARD_HOLDS = 0.9
+
+        /** Each step of U or V away from gray counts as this many of brightness. */
+        private const val COLOR_GAIN = 3.0
         /** Pages smaller than this share of the frame are ignored. */
         const val MIN_AREA_RATIO = 0.08
         private const val MAX_SIDE_RATIO = 5.0
+        /** An ID-1 card, long side to short; how far off it may look at an angle, and how fast that costs. */
+        private const val CARD_RATIO = 1.586
+        private const val CARD_RATIO_MIN = 1.2
+        private const val CARD_RATIO_MAX = 2.1
+        private const val CARD_SPREAD = 0.12
         /** A spread is this many times one page's area, and holds this share of it. */
         private const val SPREAD_MIN = 1.6
         private const val SPREAD_MAX = 2.6

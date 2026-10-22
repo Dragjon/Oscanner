@@ -658,6 +658,7 @@ class PageStore(
         val detector = DocumentDetector(
             angleTolerance = if (kind == DocumentKind.Whiteboard || kind == DocumentKind.Slides) 50.0 else 35.0,
             keepSpreads = kind == DocumentKind.Book,
+            cards = kind == DocumentKind.IdCard,
             finder = finder?.let { net -> PageFinder { gray -> synchronized(net) { net.pageMask(gray) } } },
         )
         detector.detect(preview, seen).also { detector.release() }

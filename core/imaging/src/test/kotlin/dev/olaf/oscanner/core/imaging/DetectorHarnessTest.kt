@@ -25,11 +25,19 @@ class DetectorHarnessTest {
             val gray = Imgcodecs.imread(f.path, Imgcodecs.IMREAD_GRAYSCALE)
             val maskFile = masks?.let { File(it, f.name) }?.takeIf(File::exists)
             val finder = maskFile?.let { m -> PageFinder { Imgcodecs.imread(m.path, Imgcodecs.IMREAD_GRAYSCALE) } }
-            val d = DocumentDetector(keepSpreads = f.name.contains("spreadkeep"), finder = finder)
+            val d = DocumentDetector(keepSpreads = f.name.contains("spreadkeep"), cards = f.name.startsWith("scene_card"), finder = finder)
             val t0 = System.nanoTime()
             val given = prior.takeIf { followed < 10 }
-            var q = d.detect(gray, given).quad
-            repeat(4) { q = d.detect(gray, given).quad }
+            // Cards: as the camera does, colors are searched too.
+            val color = if (f.name.startsWith("scene_card")) {
+                val yuv = Imgcodecs.imread(f.path).also { org.opencv.imgproc.Imgproc.cvtColor(it, it, org.opencv.imgproc.Imgproc.COLOR_BGR2YUV) }
+                val planes = mutableListOf<org.opencv.core.Mat>()
+                org.opencv.core.Core.split(yuv, planes)
+                org.opencv.core.Mat().also { DocumentDetector.colorfulness(planes[1], planes[2], it) }
+            } else null
+            fun once() = d.detect(gray, given).quad.let { q -> if (color == null) q else DocumentDetector.wholeCard(q, d.detect(color).quad) }
+            var q = once()
+            repeat(4) { q = once() }
             if (sequence) {
                 // As the camera does: a found page is followed for up to 10 frames without being
                 // found afresh. Found afresh means found with no prior given.
