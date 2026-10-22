@@ -2,7 +2,6 @@ package dev.olaf.oscanner.feature.capture
 
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
-import dev.olaf.oscanner.core.imaging.Detection
 import dev.olaf.oscanner.core.imaging.DocumentDetector
 import dev.olaf.oscanner.core.imaging.PageRenderer
 import dev.olaf.oscanner.core.imaging.QuadGeometry
@@ -44,8 +43,6 @@ internal class PageAnalyzer(
     private var lastQuad: Quad? = null
     private var followedFrames = 0
     private val codes by lazy { CodeReader() }
-    private val chroma = arrayOf(ByteArray(0), ByteArray(0))
-    private var color: Mat? = null
 
     override fun analyze(image: ImageProxy) {
         image.use {
@@ -80,16 +77,7 @@ internal class PageAnalyzer(
             }
             // A page is followed from frame to frame for a while, but must be found afresh now
             // and then, so an outline can't wander off on its own.
-            val inGray = detector.detect(frame, lastQuad.takeIf { followedFrames < MAX_FOLLOWED })
-            // A card is often a pale tint on a gray desk, plain in brightness: its colors are
-            // searched too, unless it was simply followed from the frame before.
-            val detection = if (current == CaptureMode.IdCard && !inGray.followed) {
-                val inColor = colorfulness(image)?.let { color -> detector.detectInColor(color).quad }
-                val card = DocumentDetector.wholeCard(inGray.quad, inColor)
-                if (card === inGray.quad) inGray else Detection(card, inGray.sharpness)
-            } else {
-                inGray
-            }
+            val detection = detector.detect(frame, lastQuad.takeIf { followedFrames < MAX_FOLLOWED })
             lastQuad = detection.quad
             followedFrames = if (detection.quad != null && detection.followed) followedFrames + 1 else 0
             val glare = detection.quad?.let { Glare.onPage(frame, it) } ?: false
@@ -106,38 +94,12 @@ internal class PageAnalyzer(
         }
     }
 
-    /** How colorful each pixel of [image] is (see [DocumentDetector.colorfulness]), at half size. */
-    private fun colorfulness(image: ImageProxy): Mat? {
-        if (image.planes.size < 3) return null
-        val w = image.width / 2
-        val h = image.height / 2
-        fun plane(i: Int): Mat {
-            val p = image.planes[i]
-            val buffer = p.buffer
-            val bytes = chroma[i - 1].takeIf { it.size == w * h } ?: ByteArray(w * h).also { chroma[i - 1] = it }
-            for (y in 0 until h) {
-                val row = y * p.rowStride
-                for (x in 0 until w) bytes[y * w + x] = buffer.get(row + x * p.pixelStride)
-            }
-            return Mat(h, w, CvType.CV_8UC1).apply { put(0, 0, bytes) }
-        }
-        val u = plane(1)
-        val v = plane(2)
-        val out = color ?: Mat().also { color = it }
-        DocumentDetector.colorfulness(u, v, out)
-        u.release()
-        v.release()
-        return out
-    }
-
     /** Call from the analysis thread after the analyzer is detached. */
     fun release() {
         detector?.release()
         detector = null
         scaled?.release()
         scaled = null
-        color?.release()
-        color = null
     }
 
     private companion object {

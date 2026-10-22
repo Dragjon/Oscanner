@@ -24,7 +24,7 @@ class DetectorHarnessTest {
         var followed = 0
         var shot = ""
         val kinds = StringBuilder()
-        dir.listFiles { f -> f.name.startsWith("scene_") && f.name.endsWith(".png") && !f.name.endsWith(".color.png") }!!.sorted().forEach { f ->
+        dir.listFiles { f -> f.name.startsWith("scene_") && f.name.endsWith(".png") }!!.sorted().forEach { f ->
             val gray = Imgcodecs.imread(f.path, Imgcodecs.IMREAD_GRAYSCALE)
             val maskFile = masks?.let { File(it, f.name) }?.takeIf(File::exists)
             val finder = maskFile?.let { m -> PageFinder { Imgcodecs.imread(m.path, Imgcodecs.IMREAD_GRAYSCALE) } }
@@ -38,20 +38,8 @@ class DetectorHarnessTest {
             }
             val t0 = System.nanoTime()
             val given = prior.takeIf { followed < 10 }
-            // Cards: as the camera does, colors are searched too.
-            // A colorfulness map saved from the camera, when there is one, stands in for the frame's own.
-            val saved = File(f.path.removeSuffix(".png") + ".color.png").takeIf(File::exists)
-            val color = if (saved != null) {
-                Imgcodecs.imread(saved.path, Imgcodecs.IMREAD_GRAYSCALE)
-            } else if (f.name.startsWith("scene_card")) {
-                val yuv = Imgcodecs.imread(f.path).also { org.opencv.imgproc.Imgproc.cvtColor(it, it, org.opencv.imgproc.Imgproc.COLOR_BGR2YUV) }
-                val planes = mutableListOf<org.opencv.core.Mat>()
-                org.opencv.core.Core.split(yuv, planes)
-                org.opencv.core.Mat().also { DocumentDetector.colorfulness(planes[1], planes[2], it) }
-            } else null
-            fun once() = d.detect(gray, given).quad.let { q -> if (color == null) q else DocumentDetector.wholeCard(q, d.detectInColor(color).quad) }
-            var q = once()
-            repeat(4) { q = once() }
+            var q = d.detect(gray, given).quad
+            repeat(4) { q = d.detect(gray, given).quad }
             if (sequence) {
                 // As the camera does: a found page is followed for up to 10 frames without being
                 // found afresh.
