@@ -143,6 +143,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.olaf.oscanner.core.design.LocalOscannerExtras
 import dev.olaf.oscanner.core.design.PrimaryPill
+import dev.olaf.oscanner.core.imaging.PageNet
 import dev.olaf.oscanner.core.model.CameraOrientation
 import dev.olaf.oscanner.core.design.pressScale
 import dev.olaf.oscanner.core.design.rememberPageImage
@@ -354,18 +355,24 @@ private fun CameraLayer(viewModel: CaptureViewModel, state: CaptureUiState, titl
 
     DisposableEffect(controller, lifecycleOwner) {
         val executor = Executors.newSingleThreadExecutor()
+        // Loaded on the analysis thread the first time Book mode is used, and kept while scanning.
+        var bookNet: PageNet? = null
         val analyzer = PageAnalyzer(
             mode = { viewModel.state.value.mode },
             toScreen = context.backCameraToPortrait(),
             onCode = viewModel::onCode,
             onResult = { quad, sharpness, aspect, glare, signals -> viewModel.onFrame(quad, sharpness, aspect, glare, signals) },
+            bookFinder = { bookNet ?: runCatching { PageNet(context) }.getOrNull()?.also { bookNet = it } },
         )
         controller.setImageAnalysisAnalyzer(executor, analyzer)
         controller.bindToLifecycle(lifecycleOwner)
         onDispose {
             controller.clearImageAnalysisAnalyzer()
             controller.unbind()
-            executor.execute { analyzer.release() }
+            executor.execute {
+                analyzer.release()
+                bookNet?.close()
+            }
             executor.shutdown()
         }
     }
@@ -452,6 +459,14 @@ private fun CameraLayer(viewModel: CaptureViewModel, state: CaptureUiState, titl
 /** What the status pill says, in words that fit the mode. */
 @Composable
 private fun statusText(state: CaptureUiState): String = when {
+    // Just changed: say what the page orientation is now, in words; an icon is easy to misread.
+    state.orientationChanged -> stringResource(
+        when (state.orientation) {
+            CameraOrientation.Auto -> R.string.capture_orientation_now_auto
+            CameraOrientation.Portrait -> R.string.capture_orientation_now_portrait
+            CameraOrientation.Landscape -> R.string.capture_orientation_now_landscape
+        },
+    )
     state.mode == CaptureMode.Code -> stringResource(R.string.capture_status_code)
     state.status == CaptureStatus.Captured -> stringResource(R.string.capture_status_captured)
     state.glare -> stringResource(R.string.capture_status_glare)
@@ -556,7 +571,9 @@ private fun TopChrome(
                         },
                     ),
                     onClick = onCycleOrientation,
-                    rotation = rotation,
+                    // Not turned with the phone: the icon shows the photo's shape against the phone
+                    // itself, tall for portrait and wide for landscape, however it's held.
+                    rotation = 0f,
                     showLabel = false,
                 )
                 Spacer(Modifier.width(8.dp))
@@ -993,9 +1010,11 @@ private fun QuadOverlay(quad: Quad?, frameAspect: Float, modifier: Modifier = Mo
         drawPath(path, color, style = Stroke(2.dp.toPx(), join = StrokeJoin.Round))
         points.forEach { drawCircle(color, radius = 5.dp.toPx(), center = it) }
         if (spine) {
-            // Book mode: where the spread will be cut into two pages.
-            val top = Offset((points[0].x + points[1].x) / 2, (points[0].y + points[1].y) / 2)
-            val bottom = Offset((points[3].x + points[2].x) / 2, (points[3].y + points[2].y) / 2)
+            // Book mode: where the spread will be cut into two pages, across its longer sides.
+            fun dist(a: Offset, b: Offset) = (a - b).getDistance()
+            val across = dist(points[0], points[3]) + dist(points[1], points[2]) > dist(points[0], points[1]) + dist(points[3], points[2])
+            val top = if (across) (points[0] + points[3]) / 2f else (points[0] + points[1]) / 2f
+            val bottom = if (across) (points[1] + points[2]) / 2f else (points[3] + points[2]) / 2f
             val dash = 6.dp.toPx()
             drawLine(color, top, bottom, strokeWidth = 2.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(dash, dash)))
         }

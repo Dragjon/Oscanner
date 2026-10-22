@@ -113,4 +113,20 @@ class QuadGeometryTest {
         assertTrue(QuadGeometry.contains(square, Corner(0.4f, 0.4f)))
         assertFalse(QuadGeometry.contains(square, Corner(0.7f, 0.4f)))
     }
+
+    @Test
+    fun aSpreadIsCutAcrossItsLongerSides() {
+        // Lying across the frame: cut down the middle.
+        val wide = Quad(Corner(0.1f, 0.3f), Corner(0.9f, 0.3f), Corner(0.9f, 0.7f), Corner(0.1f, 0.7f))
+        val (l, r) = QuadGeometry.splitInHalf(wide)
+        assertEquals(0.5f, l.topRight.x, 1e-6f)
+        assertEquals(0.5f, r.topLeft.x, 1e-6f)
+        // Turned on its side, pages one above the other: cut across, the upper page first.
+        val tall = Quad(Corner(0.3f, 0.1f), Corner(0.7f, 0.1f), Corner(0.7f, 0.9f), Corner(0.3f, 0.9f))
+        val (top, bottom) = QuadGeometry.splitInHalf(tall)
+        assertEquals(0.5f, top.bottomLeft.y, 1e-6f)
+        assertEquals(0.1f, top.topLeft.y, 1e-6f)
+        assertEquals(0.5f, bottom.topRight.y, 1e-6f)
+        assertEquals(0.9f, bottom.bottomRight.y, 1e-6f)
+    }
 }

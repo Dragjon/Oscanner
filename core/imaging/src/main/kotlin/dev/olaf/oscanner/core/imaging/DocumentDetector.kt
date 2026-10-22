@@ -124,7 +124,20 @@ class DocumentDetector(
         val sy = gray.rows().toDouble() / height
         fun toFull(q: Quad) = q.corners.map { P(it.x * width * sx, it.y * height * sy) }
         fun toQuad(points: List<P>) = QuadGeometry.order(points.map { Corner((it.x / gray.cols()).toFloat(), (it.y / gray.rows()).toFloat()) })
-        if (found != null) return Detection(inset(toQuad(refine(toFull(found)))), sharpness)
+        if (found != null) {
+            val outline = inset(toQuad(refine(toFull(found))))
+            // A book: the edge search often finds one page of the spread, its edges the clearest.
+            // The finder sees the whole spread; when what it sees holds that page and is about
+            // twice its size, it's the spread.
+            if (keepSpreads && finder != null) {
+                val spread = fromFinder(gray, width, height)?.let { rough ->
+                    val reach = max(REFINE_REACH, (FINDER_REACH * max(gray.cols(), gray.rows())).toInt())
+                    snapToPaper(toFull(rough), reach)?.let { inset(toQuad(it)) } ?: inset(rough)
+                }
+                if (spread != null && isSpreadOf(spread, outline)) return Detection(spread, sharpness)
+            }
+            return Detection(outline, sharpness)
+        }
         if (prior != null) {
             // A blurred frame (the phone moving) can't place the page better than the last one did.
             if (sharpness < FOLLOW_BLURRY) return Detection(prior, sharpness, followed = true)
@@ -217,6 +230,16 @@ class DocumentDetector(
         if (quad.corners.count { it.x < BORDER || it.x > 1 - BORDER || it.y < BORDER || it.y > 1 - BORDER } >= 2) return null
         if (QuadGeometry.angles(quad).any { abs(it - 90.0) > angleTolerance }) return null
         return quad
+    }
+
+    /** Whether [spread] is two pages, one of them [page]: about twice its area, holding nearly all of it. */
+    private fun isSpreadOf(spread: Quad, page: Quad): Boolean {
+        val a = QuadGeometry.area(page.corners)
+        val b = QuadGeometry.area(spread.corners)
+        if (b < SPREAD_MIN * a || b > SPREAD_MAX * a) return false
+        val iou = QuadGeometry.iou(page, spread)
+        val shared = iou * (a + b) / (1 + iou)
+        return shared >= SPREAD_HOLDS * a
     }
 
     /** Whether what [outer] takes in beyond [inner] is clearly darker than [inner]: desk, not paper. */
@@ -752,6 +775,10 @@ class DocumentDetector(
         /** Pages smaller than this share of the frame are ignored. */
         const val MIN_AREA_RATIO = 0.08
         private const val MAX_SIDE_RATIO = 5.0
+        /** A spread is this many times one page's area, and holds this share of it. */
+        private const val SPREAD_MIN = 1.6
+        private const val SPREAD_MAX = 2.6
+        private const val SPREAD_HOLDS = 0.85
         /** A photo's own outline overlapping the camera's this much is the same page, better placed. */
         private const val AGREES_WITH_CAMERA = 0.9
         /** How sure the [PageFinder] must be (0..255) that a spot is page. */

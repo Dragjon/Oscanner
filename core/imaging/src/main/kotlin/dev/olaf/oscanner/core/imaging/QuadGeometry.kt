@@ -145,9 +145,34 @@ object QuadGeometry {
     /** Left and right halves, cut between the midpoints of the top and bottom edges. */
     fun splitInHalf(quad: Quad): Pair<Quad, Quad> {
         fun mid(a: Corner, b: Corner) = Corner((a.x + b.x) / 2, (a.y + b.y) / 2)
-        val top = mid(quad.topLeft, quad.topRight)
-        val bottom = mid(quad.bottomLeft, quad.bottomRight)
-        return Quad(quad.topLeft, top, bottom, quad.bottomLeft) to Quad(top, quad.topRight, quad.bottomRight, bottom)
+        val (from, to) = spine(quad)
+        return if (spineAcross(quad)) {
+            Quad(quad.topLeft, quad.topRight, to, from) to Quad(from, to, quad.bottomRight, quad.bottomLeft)
+        } else {
+            Quad(quad.topLeft, from, to, quad.bottomLeft) to Quad(from, quad.topRight, quad.bottomRight, to)
+        }
+    }
+
+    /**
+     * A two-page spread's spine, its ends on the outline: across the middle of the outline's
+     * longer pair of sides, since two pages side by side are wider than tall along the spine.
+     * Down the middle for a spread lying across the frame; across it for a book turned on its side.
+     */
+    fun spine(quad: Quad): Pair<Corner, Corner> {
+        fun mid(a: Corner, b: Corner) = Corner((a.x + b.x) / 2, (a.y + b.y) / 2)
+        return if (spineAcross(quad)) {
+            mid(quad.topLeft, quad.bottomLeft) to mid(quad.topRight, quad.bottomRight)
+        } else {
+            mid(quad.topLeft, quad.topRight) to mid(quad.bottomLeft, quad.bottomRight)
+        }
+    }
+
+    /** Whether [quad]'s left and right sides are its longer ones, so a spine would run across it. */
+    fun spineAcross(quad: Quad, aspect: Float = 1f): Boolean {
+        fun len(a: Corner, b: Corner) = kotlin.math.hypot((a.x - b.x) * aspect, a.y - b.y)
+        val across = len(quad.topLeft, quad.topRight) + len(quad.bottomLeft, quad.bottomRight)
+        val down = len(quad.topLeft, quad.bottomLeft) + len(quad.topRight, quad.bottomRight)
+        return down > across
     }
 
     /**

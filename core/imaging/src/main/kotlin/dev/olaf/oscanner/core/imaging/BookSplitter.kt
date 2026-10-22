@@ -50,20 +50,37 @@ object BookSplitter {
         Imgproc.warpPerspective(gray, flat, forward, Size(outW, outH))
         gray.release()
 
-        val spine = spineFraction(flat)
+        // A spread is wider than tall along its spine's axis: two pages side by side. Taller
+        // than wide, the book was photographed turned, its pages one above the other, and the
+        // spine runs across.
+        val across = outH > outW
+        val spine = if (across) {
+            val t = Mat()
+            Core.transpose(flat, t)
+            spineFraction(t).also { t.release() }
+        } else {
+            spineFraction(flat)
+        }
         flat.release()
 
-        // Where the spine column meets the top and bottom of the spread, back in the photo.
+        // Where the spine meets the spread's edges, back in the photo.
         val inverse = forward.inv()
-        val warpedEnds = MatOfPoint2f(Point(spine * outW, 0.0), Point(spine * outW, outH))
+        val warpedEnds = if (across) {
+            MatOfPoint2f(Point(0.0, spine * outH), Point(outW, spine * outH))
+        } else {
+            MatOfPoint2f(Point(spine * outW, 0.0), Point(spine * outW, outH))
+        }
         val photoEnds = MatOfPoint2f()
         Core.perspectiveTransform(warpedEnds, photoEnds, inverse)
-        val (top, bottom) = photoEnds.toArray().map { Corner((it.x / w).toFloat(), (it.y / h).toFloat()) }
+        val (a, b) = photoEnds.toArray().map { Corner((it.x / w).toFloat(), (it.y / h).toFloat()) }
         listOf(src, dst, forward, inverse, warpedEnds, photoEnds).forEach(Mat::release)
 
-        val left = Quad(spread.topLeft, top, bottom, spread.bottomLeft)
-        val right = Quad(top, spread.topRight, spread.bottomRight, bottom)
-        return left to right
+        return if (across) {
+            // The upper page first.
+            Quad(spread.topLeft, spread.topRight, b, a) to Quad(a, b, spread.bottomRight, spread.bottomLeft)
+        } else {
+            Quad(spread.topLeft, a, b, spread.bottomLeft) to Quad(a, spread.topRight, spread.bottomRight, b)
+        }
     }
 
     /** Spine position as a fraction of the straightened spread's width. */

@@ -27,6 +27,12 @@ internal class PageAnalyzer(
     private val toScreen: Int,
     private val onCode: (ScannedCode) -> Unit,
     private val onResult: (quad: Quad?, sharpness: Double, frameAspect: Float, glare: Boolean, signals: FrameSignals) -> Unit,
+    /**
+     * The learned page finder, for Book mode only: it sees a whole spread where the edge search
+     * finds one page. Not used for other modes, where on real frames it added outlines in the
+     * wrong places.
+     */
+    private val bookFinder: () -> dev.olaf.oscanner.core.imaging.PageFinder? = { null },
 ) : ImageAnalysis.Analyzer {
 
     // Created on the analysis thread, after OpenCV's native code is loaded.
@@ -55,6 +61,7 @@ internal class PageAnalyzer(
             val detector = detector ?: DocumentDetector(
                 angleTolerance = if (current == CaptureMode.Whiteboard || current == CaptureMode.Slides) 50.0 else 35.0,
                 keepSpreads = current == CaptureMode.Book,
+                finder = if (current == CaptureMode.Book) bookFinder() else null,
             ).also { detector = it }
             val plane = image.planes[0]
             val luminance = Mat(image.height, image.width, CvType.CV_8UC1, plane.buffer, plane.rowStride.toLong())

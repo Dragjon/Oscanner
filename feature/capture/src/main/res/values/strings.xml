@@ -100,6 +100,9 @@
     <string name="capture_keep_discard">Discard</string>
     <string name="capture_failed">Couldn\'t take the picture. Try again.</string>
     <string name="capture_default_title">Scan %1$s</string>
+    <string name="capture_orientation_now_auto">Pages turn with the phone</string>
+    <string name="capture_orientation_now_portrait">Pages locked upright (portrait)</string>
+    <string name="capture_orientation_now_landscape">Pages locked sideways (landscape)</string>
     <string name="capture_orientation_auto">Turn with the phone. Tap to lock portrait</string>
     <string name="capture_orientation_portrait">Locked portrait. Tap to lock landscape</string>
     <string name="capture_orientation_landscape">Locked landscape. Tap to turn with the phone</string>

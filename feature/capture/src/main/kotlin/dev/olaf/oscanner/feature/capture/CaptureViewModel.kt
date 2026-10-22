@@ -71,6 +71,8 @@ data class CaptureUiState(
     /** Fixes applied to every page as it's saved. */
     val fixes: ScanFixes = ScanFixes(),
     val orientation: CameraOrientation = CameraOrientation.Auto,
+    /** The orientation was changed a moment ago: the status says what it is now. */
+    val orientationChanged: Boolean = false,
     /** The page just taken looks like one taken before; null when it doesn't. */
     val duplicate: Duplicate? = null,
 )
@@ -196,8 +198,13 @@ class CaptureViewModel(
     /** Auto, then always portrait, then always landscape; kept for next time. */
     fun cycleOrientation() {
         val next = CameraOrientation.entries[(_state.value.orientation.ordinal + 1) % CameraOrientation.entries.size]
-        _state.update { it.copy(orientation = next) }
+        _state.update { it.copy(orientation = next, orientationChanged = true) }
         viewModelScope.launch { settings.setCameraOrientation(next) }
+        orientationNotice?.cancel()
+        orientationNotice = viewModelScope.launch {
+            kotlinx.coroutines.delay(ORIENTATION_NOTICE_MS)
+            _state.update { it.copy(orientationChanged = false) }
+        }
     }
 
     fun onShutterPressed() {
@@ -404,7 +411,10 @@ class CaptureViewModel(
     /** The signatures of the document's pages when adding to one, read once. */
     private var documentPages: List<FloatArray?>? = null
 
+    private var orientationNotice: kotlinx.coroutines.Job? = null
+
     private companion object {
+        const val ORIENTATION_NOTICE_MS = 2000L
         const val CAPTURED_HOLD_MS = 900L
         const val GLARE_WINDOW = 6
         const val GLARE_NEEDED = 4
