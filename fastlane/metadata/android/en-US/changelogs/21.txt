@@ -1,0 +1,1 @@
+ID card mode finds real cards far more often: its card finder now also learned from photos of real cards, not only drawn ones.
