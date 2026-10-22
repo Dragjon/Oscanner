@@ -1,0 +1,1 @@
+ID card mode on the live camera finds and holds the card steadily, so it auto-captures: the card finder now sees camera frames upright. "Page is small" no longer shows for a card held at a normal distance. Book mode on the live camera also finds whole spreads more reliably.
