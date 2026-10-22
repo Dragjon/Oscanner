@@ -1,0 +1,1 @@
+Book mode finds the whole open book, not just one page, and splits it along the spine whichever way the book is turned. The camera's orientation button now shows clearly whether pages are locked upright, sideways or turn with the phone.
