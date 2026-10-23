@@ -71,8 +71,9 @@ def turn(img, pts, k):
     return img, pts
 
 
-def frame(img, pts, rng):
-    """One 96x128 frame and mask from a photo whose card is at pts, or None if no crop fits."""
+def frame(img, pts, rng, share=(0.05, 0.6)):
+    """One 96x128 frame and mask from a photo whose card (or page) is at pts, taking up a [share]
+    of the frame, or None if no crop fits."""
     h, w = img.shape[:2]
     lo, hi = pts.min(0), pts.max(0)
     area = cv2.contourArea(pts.astype(np.float32))
@@ -89,7 +90,7 @@ def frame(img, pts, rng):
             return None
     else:
         # The card a share of the frame from a twentieth to most of it.
-        share = np.exp(rng.uniform(np.log(0.05), np.log(0.6)))
+        share = np.exp(rng.uniform(np.log(share[0]), np.log(share[1])))
         cw = np.sqrt(area / share * 0.75)
         ch = cw / 0.75
         if cw > w or ch > h:
