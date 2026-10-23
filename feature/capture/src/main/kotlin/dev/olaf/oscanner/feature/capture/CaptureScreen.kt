@@ -963,17 +963,14 @@ private fun BatchStack(captures: List<File>, onClick: () -> Unit, modifier: Modi
     val last by rememberPageImage(captures.last().path, maxSide = 200)
     val description = pluralStringResource(R.plurals.capture_pages_taken, captures.size, captures.size)
     val open = stringResource(R.string.capture_pages_open)
-    // Tap to look over the pages so far, without ending the scan.
-    Box(
-        modifier
-            .clip(MaterialTheme.shapes.small)
-            .clickable(onClickLabel = open, onClick = onClick)
-            .semantics(mergeDescendants = true) { contentDescription = description },
-    ) {
+    // Tap to look over the pages so far, without ending the scan. Only the picture is clipped to
+    // its rounded shape: the count sits over its corner, half outside it.
+    Box(modifier.semantics(mergeDescendants = true) { contentDescription = description }) {
         Box(
             Modifier
                 .size(56.dp)
                 .clip(MaterialTheme.shapes.small)
+                .clickable(onClickLabel = open, onClick = onClick)
                 .background(Color.White.copy(alpha = 0.12f)),
         ) {
             last?.let {

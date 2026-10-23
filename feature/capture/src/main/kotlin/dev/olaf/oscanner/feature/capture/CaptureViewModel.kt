@@ -311,11 +311,18 @@ class CaptureViewModel(
         )
     }
 
-    /** Drops one captured page; with none left, back to the camera. */
+    /**
+     * Drops one captured page; with none left, back to the camera. A note that it repeats an
+     * earlier page goes with it: kept, it would put the deleted page back.
+     */
     fun deleteCapture(file: File) {
         _state.update { s ->
             val left = s.captures.filter { it.file != file }
-            s.copy(captures = left, reviewing = s.reviewing && left.isNotEmpty())
+            s.copy(
+                captures = left,
+                reviewing = s.reviewing && left.isNotEmpty(),
+                duplicate = s.duplicate?.takeIf { it.capture.file != file },
+            )
         }
         viewModelScope.launch(Dispatchers.IO) { file.delete() }
     }
