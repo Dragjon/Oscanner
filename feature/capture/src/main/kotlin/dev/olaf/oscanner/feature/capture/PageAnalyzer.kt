@@ -2,6 +2,7 @@ package dev.olaf.oscanner.feature.capture
 
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
+import dev.olaf.oscanner.core.imaging.CornerFinder
 import dev.olaf.oscanner.core.imaging.DocumentDetector
 import dev.olaf.oscanner.core.imaging.PageRenderer
 import dev.olaf.oscanner.core.imaging.QuadGeometry
@@ -39,6 +40,15 @@ internal class PageAnalyzer(
      * only its thin edge, too faint for the edge search on its own.
      */
     private val cardFinder: () -> dev.olaf.oscanner.core.imaging.PageFinder? = { null },
+    /**
+     * The corner network, for Document and ID card modes: it finds a whole page or card outright,
+     * steadier than following edges. Book mode needs spreads, which it doesn't know. It takes
+     * several frames' time, so it runs on its own thread on the latest frame whenever it's free,
+     * and each outline it finds is checked against the frame it reaches and held until the next:
+     * following edges in between brought back the jumps. Only when it misses twice running does
+     * the edge search take over (a page running out of view, an open book).
+     */
+    private val cornerFinder: () -> CornerFinder? = { null },
 ) : ImageAnalysis.Analyzer {
 
     // Created on the analysis thread, after OpenCV's native code is loaded.
@@ -49,6 +59,19 @@ internal class PageAnalyzer(
     private var lastQuad: Quad? = null
     private var followedFrames = 0
     private val codes by lazy { CodeReader() }
+
+    private var corners: CornerFinder? = null
+    private val netThread = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private val netBusy = java.util.concurrent.atomic.AtomicBoolean(false)
+    @Volatile private var netOutline: NetOutline? = null
+    private var netUsed = 0L
+    /** The network's last outline that held up, and how many of its outlines since didn't. */
+    private var held: Quad? = null
+    private var misses = 0
+    private var frameNumber = 0L
+
+    /** An outline from the corner network, null if it saw none, and the frame it saw it in. */
+    private class NetOutline(val mode: CaptureMode, val frame: Long, val quad: Quad?)
 
     override fun analyze(image: ImageProxy) {
         image.use {
@@ -63,7 +86,14 @@ internal class PageAnalyzer(
                 detector = null
                 detectorMode = current
                 lastQuad = null
+                held = null
+                misses = 0
+                corners = when (current) {
+                    CaptureMode.Document, CaptureMode.IdCard -> cornerFinder()?.turned(toScreen)
+                    else -> null
+                }
             }
+            frameNumber++
             val detector = detector ?: DocumentDetector(
                 angleTolerance = if (current == CaptureMode.Whiteboard || current == CaptureMode.Slides) 50.0 else 35.0,
                 keepSpreads = current == CaptureMode.Book,
@@ -86,9 +116,38 @@ internal class PageAnalyzer(
             } else {
                 luminance
             }
+            corners?.let { net ->
+                if (netBusy.compareAndSet(false, true)) {
+                    val copy = frame.clone()
+                    val n = frameNumber
+                    netThread.execute {
+                        try {
+                            netOutline = NetOutline(current, n, runCatching { net.corners(copy) }.getOrNull())
+                        } finally {
+                            copy.release()
+                            netBusy.set(false)
+                        }
+                    }
+                }
+            }
+            // The network's latest outline, once, if it's for this mode and the page is there.
+            val fresh = netOutline?.takeIf { it.mode == current && it.frame > netUsed }
+            val checked = fresh?.let { outline ->
+                netUsed = outline.frame
+                outline.quad?.let { detector.withCorners(frame, it) }.also { found ->
+                    if (found != null) {
+                        held = found.quad
+                        misses = 0
+                    } else if (++misses >= NET_MISSES) {
+                        held = null
+                    }
+                }
+            }
             // A page is followed from frame to frame for a while, but must be found afresh now
             // and then, so an outline can't wander off on its own.
-            val detection = detector.detect(frame, lastQuad.takeIf { followedFrames < MAX_FOLLOWED })
+            val detection = checked
+                ?: held?.let { detector.held(frame, it) }
+                ?: detector.detect(frame, lastQuad.takeIf { followedFrames < MAX_FOLLOWED })
             lastQuad = detection.quad
             followedFrames = if (detection.quad != null && detection.followed) followedFrames + 1 else 0
             val glare = detection.quad?.let { Glare.onPage(frame, it) } ?: false
@@ -107,6 +166,9 @@ internal class PageAnalyzer(
 
     /** Call from the analysis thread after the analyzer is detached. */
     fun release() {
+        // The network may be mid-frame: it's closed only once its thread is done.
+        netThread.shutdown()
+        netThread.awaitTermination(2, java.util.concurrent.TimeUnit.SECONDS)
         detector?.release()
         detector = null
         scaled?.release()
@@ -115,6 +177,7 @@ internal class PageAnalyzer(
 
     private companion object {
         const val MAX_FOLLOWED = 10
+        const val NET_MISSES = 2
         const val MAX_SIDE = 720
         const val TARGET_SIDE = 640
     }

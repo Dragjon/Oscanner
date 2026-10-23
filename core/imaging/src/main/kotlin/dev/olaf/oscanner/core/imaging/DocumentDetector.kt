@@ -64,6 +64,12 @@ class DocumentDetector(
     private val cards: Boolean = false,
     /** Asked where the page is when the search below finds nothing; see [PageFinder]. */
     private val finder: PageFinder? = null,
+    /**
+     * Asked first, before following or searching: a network trained on real photos that finds a
+     * whole document's corners outright, see [CornerFinder]. Its outline is kept if it's
+     * page-shaped (card-shaped for [cards]); otherwise the search runs as without it.
+     */
+    private val cornerFinder: CornerFinder? = null,
 ) {
 
     /**
@@ -103,6 +109,9 @@ class DocumentDetector(
         // onto the edges near there takes a fraction of the time of a search, so the outline
         // keeps up with the hand. The search runs when that fails, and whenever no prior is given.
         full.load(gray)
+        // On real cards and documents the network is surer and steadier than following edges,
+        // which can slide onto print near a side.
+        if (search && cornerFinder != null) fromCorners(gray)?.let { return Detection(it, sharpness) }
         if (prior != null && search && sharpness >= FOLLOW_BLURRY) {
             follow(gray, prior)?.let { return Detection(it, sharpness, followed = true) }
         }
@@ -511,6 +520,59 @@ class DocumentDetector(
         if (area < smallest || area > 0.98) return false
         if (quad.corners.count { it.x < BORDER || it.x > 1 - BORDER || it.y < BORDER || it.y > 1 - BORDER } >= 2) return false
         return QuadGeometry.angles(quad).none { abs(it - 90.0) > squareness }
+    }
+
+    /**
+     * The [cornerFinder]'s outline of the page in [gray] (loaded as [full]), or null if it has
+     * none or its outline isn't the page's: page-shaped (card-shaped for [cards]), with at least
+     * three sides on an edge, as the search's candidates must be (a thumb may hide the fourth).
+     * A line printed near the bottom of a page can pass for its edge to the network, which then
+     * cuts across the paper. Its sides are then snapped onto the edge, as a followed page's are:
+     * its corners come from a coarse heatmap.
+     */
+    private fun fromCorners(gray: Mat): Quad? = cornerFinder?.corners(gray)?.let { checked(gray, it) }
+
+    /**
+     * An outline from a [CornerFinder] that ran on its own thread, on a frame a moment before
+     * [gray]: checked against this frame as [fromCorners] checks its own, or null. Lets the camera
+     * keep its pace while the slower network works.
+     */
+    fun withCorners(gray: Mat, quad: Quad): Detection? {
+        frameStamp++
+        val sharpness = sharpness(gray)
+        full.load(gray)
+        return checked(gray, quad)?.let { Detection(it, sharpness) }
+    }
+
+    /** [quad], an outline kept from an earlier frame, as this frame's, with this frame's sharpness. */
+    fun held(gray: Mat, quad: Quad): Detection = Detection(quad, sharpness(gray))
+
+    /** [quad], from the corner network, if it's the page in [gray] (loaded as [full]); see [fromCorners]. */
+    private fun checked(gray: Mat, found: Quad): Quad? {
+        val quad = found.takeIf { plausible(it) && (!cards || cardShaped(it, gray)) } ?: return null
+        val scale = SEARCH_SIDE.toDouble() / max(gray.cols(), gray.rows())
+        Imgproc.resize(gray, small, Size(), scale, scale, Imgproc.INTER_AREA)
+        raw.load(small)
+        val onSmall = quad.corners.map { P(it.x.toDouble() * raw.width, it.y.toDouble() * raw.height) }
+        val onEdges = sides(onSmall).count { (a, b, inward) -> raw.support(a, b, inward, either = cards).share >= SIDE_MIN }
+        if (onEdges < 4) return null
+        // A card's thin edge runs beside lines printed near it, which snapping can slide onto.
+        if (cards) return inset(quad)
+        val reach = max(REFINE_REACH, (FOLLOW_REACH * max(gray.cols(), gray.rows())).toInt())
+        val corners = quad.corners.map { P(it.x.toDouble() * gray.cols(), it.y.toDouble() * gray.rows()) }
+        val snapped = snapToPaper(corners, reach, maxMove = 1.5 * reach, nearest = true)
+            ?.let(::refine)
+            ?.let { points -> QuadGeometry.order(points.map { Corner((it.x / gray.cols()).toFloat(), (it.y / gray.rows()).toFloat()) }) }
+            ?.takeIf { plausible(it) && (!cards || cardShaped(it, gray)) }
+        return inset(snapped ?: quad)
+    }
+
+    /** Whether [quad], normalized to [gray], has an ID card's sides, seen in the frame's own pixels. */
+    private fun cardShaped(quad: Quad, gray: Mat): Boolean {
+        val c = quad.corners.map { P(it.x.toDouble() * gray.cols(), it.y.toDouble() * gray.rows()) }
+        val across = (hypot(c[1].x - c[0].x, c[1].y - c[0].y) + hypot(c[2].x - c[3].x, c[2].y - c[3].y)) / 2
+        val down = (hypot(c[3].x - c[0].x, c[3].y - c[0].y) + hypot(c[2].x - c[1].x, c[2].y - c[1].y)) / 2
+        return min(across, down) > 0 && cardShape(max(across, down) / min(across, down)) != null
     }
 
     /** Variance of the Laplacian: low when the frame is blurred by motion or focus. */

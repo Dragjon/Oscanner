@@ -145,6 +145,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.olaf.oscanner.core.design.LocalOscannerExtras
 import dev.olaf.oscanner.core.design.PrimaryPill
+import dev.olaf.oscanner.core.imaging.CornerNet
 import dev.olaf.oscanner.core.imaging.PageNet
 import dev.olaf.oscanner.core.model.CameraOrientation
 import dev.olaf.oscanner.core.design.pressScale
@@ -357,9 +358,10 @@ private fun CameraLayer(viewModel: CaptureViewModel, state: CaptureUiState, titl
 
     DisposableEffect(controller, lifecycleOwner) {
         val executor = Executors.newSingleThreadExecutor()
-        // Loaded on the analysis thread the first time Book or ID card mode is used, and kept while scanning.
+        // Loaded on the analysis thread the first time a mode needs them, and kept while scanning.
         var bookNet: PageNet? = null
         var cardNet: PageNet? = null
+        var cornerNet: CornerNet? = null
         val analyzer = PageAnalyzer(
             mode = { viewModel.state.value.mode },
             toScreen = context.backCameraToPortrait(),
@@ -367,6 +369,7 @@ private fun CameraLayer(viewModel: CaptureViewModel, state: CaptureUiState, titl
             onResult = { quad, sharpness, aspect, glare, signals -> viewModel.onFrame(quad, sharpness, aspect, glare, signals) },
             bookFinder = { bookNet ?: runCatching { PageNet(context) }.getOrNull()?.also { bookNet = it } },
             cardFinder = { cardNet ?: runCatching { PageNet(context, PageNet.CARDS) }.getOrNull()?.also { cardNet = it } },
+            cornerFinder = { cornerNet ?: runCatching { CornerNet(context) }.getOrNull()?.also { cornerNet = it } },
         )
         controller.setImageAnalysisAnalyzer(executor, analyzer)
         controller.bindToLifecycle(lifecycleOwner)
@@ -377,6 +380,7 @@ private fun CameraLayer(viewModel: CaptureViewModel, state: CaptureUiState, titl
                 analyzer.release()
                 bookNet?.close()
                 cardNet?.close()
+                cornerNet?.close()
             }
             executor.shutdown()
         }
