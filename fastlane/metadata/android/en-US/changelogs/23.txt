@@ -1,0 +1,1 @@
+The page count on the camera's thumbnail shows whole again, so it visibly drops when a page is deleted; a deleted page can no longer come back from a "looks like page 1 again" note.
