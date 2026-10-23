@@ -1,0 +1,1 @@
+ID card and Document modes find a whole card or page with a corner-finding model trained on real photos: the outline no longer jumps onto print near the edge, and cards it used to lose are found.
