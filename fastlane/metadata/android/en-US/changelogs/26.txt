@@ -1,0 +1,1 @@
+Photos taken in portrait or landscape lock no longer come out sideways now and then, also when the phone is held flat over a page: each photo follows the orientation the screen shows.
