@@ -111,6 +111,8 @@ class CaptureViewModel(
     /** How far the phone is turned (0, 90, 180, 270); photos come out upright for it. */
     @Volatile private var deviceTurn = 0
     @Volatile private var sensedTurn = 0
+    /** How the back camera is mounted: clockwise degrees from its pictures to a portrait screen. */
+    @Volatile private var cameraAngle = 90
     /** Glare in each of the last few frames, newest last, so the hint doesn't flicker. */
     private val glareFrames = ArrayDeque<Boolean>()
 
@@ -188,11 +190,13 @@ class CaptureViewModel(
 
     /**
      * [turn] is how the pages are taken, [sensed] how the phone is actually held; they differ
-     * when the orientation is locked, and each photo is then turned to match [turn].
+     * when the orientation is locked, and each photo is then turned to match [turn]. [camera] is
+     * how the back camera is mounted (see [backCameraToPortrait]).
      */
-    fun setDeviceTurn(turn: Int, sensed: Int) {
+    fun setDeviceTurn(turn: Int, sensed: Int, camera: Int) {
         deviceTurn = turn
         sensedTurn = sensed
+        cameraAngle = camera
     }
 
     /** Auto, then always portrait, then always landscape; kept for next time. */
@@ -214,10 +218,11 @@ class CaptureViewModel(
     fun onPictureSaved(file: File) {
         val auto = autoShot
         autoShot = false
-        // The camera turned the photo for how the phone was held; a locked orientation wants
-        // it the other way.
-        val extra = (deviceTurn - sensedTurn).mod(360)
-        if (extra != 0) runCatching { turnPhoto(file, extra) }
+        // Each photo is set to the turn the screen shows. The camera tags it by its own reading
+        // of how the phone is held, which tips over at 45° rather than well past it as the
+        // screen's does, and wobbles while the phone lies flat over a page; going by the
+        // difference from the screen's reading left some photos sideways, locked or not.
+        runCatching { orientPhoto(file, deviceTurn) }
         synchronized(tracker) { tracker.onCaptured() }
         capturedAt = System.currentTimeMillis()
         _state.update {
@@ -397,11 +402,32 @@ class CaptureViewModel(
         (w.toFloat() / h).takeIf { it.isFinite() && it > 0f }
     }.getOrNull()
 
+    /**
+     * Tags [file] to stand upright for a phone turned clockwise by [turn], without re-encoding
+     * it. Cameras store the sensor's picture, wider than tall, and tag the turn; for one that
+     * turned the pixels itself instead, the screen's turn is put right by how far it differs
+     * from the phone's.
+     */
+    private fun orientPhoto(file: File, turn: Int) {
+        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeFile(file.path, bounds)
+        if (bounds.outWidth >= bounds.outHeight) {
+            setRotation(file, (cameraAngle + turn) % 360)
+        } else {
+            val extra = (turn - sensedTurn).mod(360)
+            if (extra != 0) turnPhoto(file, extra)
+        }
+    }
+
     /** Turns [file] clockwise by [degrees] by its EXIF orientation, without re-encoding it. */
     private fun turnPhoto(file: File, degrees: Int) {
+        setRotation(file, (ExifInterface(file).rotationDegrees + degrees) % 360)
+    }
+
+    /** Tags [file] to be shown turned clockwise by [degrees]. */
+    private fun setRotation(file: File, degrees: Int) {
         val exif = ExifInterface(file)
-        val turned = (exif.rotationDegrees + degrees) % 360
-        val tag = when (turned) {
+        val tag = when (degrees) {
             90 -> ExifInterface.ORIENTATION_ROTATE_90
             180 -> ExifInterface.ORIENTATION_ROTATE_180
             270 -> ExifInterface.ORIENTATION_ROTATE_270

@@ -202,7 +202,8 @@ fun CaptureRoute(
         CameraOrientation.Landscape -> if (sensed == 90) 90 else 270
     }
     val upright = rememberUprightRotation(turn)
-    LaunchedEffect(turn, sensed) { viewModel.setDeviceTurn(turn, sensed) }
+    val cameraAngle = remember(context) { context.backCameraToPortrait() }
+    LaunchedEffect(turn, sensed, cameraAngle) { viewModel.setDeviceTurn(turn, sensed, cameraAngle) }
 
     var showFixes by rememberSaveable { mutableStateOf(false) }
     var confirmLeave by rememberSaveable { mutableStateOf(false) }
