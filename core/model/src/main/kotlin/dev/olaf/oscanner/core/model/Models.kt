@@ -59,6 +59,8 @@ data class Page(
     val edits: PageEdits,
     /** Recognized text, or null until the page has been read. */
     val text: String? = null,
+    /** Marked as answered wrong: a test paper's question to practise again. */
+    val wrong: Boolean = false,
 )
 
 /** A recognized word and its box, normalized to the page as shown (after crop and rotation). */

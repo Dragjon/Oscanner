@@ -46,6 +46,18 @@
     <string name="document_split_questions_none">No numbered questions found. They need to start with 1., 2) or Q3 at the left.</string>
     <string name="document_splitting">Finding the questions…</string>
     <string name="document_questions_title">%1$s – questions</string>
+    <string name="document_mark_wrong">Mark wrong</string>
+    <string name="document_mark_wrong_description">A question answered wrong, to practise again</string>
+    <string name="document_mark_right">Got it right</string>
+    <string name="document_mark_right_description">Take off the wrong mark</string>
+    <string name="document_page_wrong">marked wrong</string>
+    <string name="document_wrong_badge">Wrong</string>
+    <string name="document_practise_wrong">Practise wrong questions</string>
+    <plurals name="document_practise_wrong_description">
+        <item quantity="one">The %1$d page marked wrong, in a new document</item>
+        <item quantity="other">The %1$d pages marked wrong, in a new document</item>
+    </plurals>
+    <string name="document_wrong_title">%1$s – to practise</string>
     <string name="document_id_photo">ID photo</string>
     <string name="document_id_photo_description">A passport-size photo of the person in this picture, and a sheet of copies to print</string>
     <string name="document_id_photo_title">ID photo</string>
@@ -127,7 +139,7 @@
     <string name="document_print">Print</string>
     <string name="document_print_description">Any printer this phone can reach</string>
     <string name="document_arrange">Pages</string>
-    <string name="document_arrange_description">Reorder, turn, copy out or delete pages</string>
+    <string name="document_arrange_description">Reorder, turn, mark wrong, copy out or delete pages</string>
     <string name="document_arrange_hint">Tap pages to choose them</string>
     <string name="document_clear_choice">Clear</string>
     <string name="document_move_earlier">Earlier</string>

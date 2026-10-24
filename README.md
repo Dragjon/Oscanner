@@ -32,7 +32,8 @@ follows, in [`PLAN.md`](PLAN.md).
   draw, type text and stamps, erase, remove handwriting (told from print by a small on-device
   network) or fingers, black out private details (found automatically or by hand, and removed
   from the text layer too), password-protected PDFs (AES-256), page and file size options,
-  watermark, App lock. Edits can be applied to other pages at once.
+  watermark, App lock. Edits can be applied to other pages at once. Test papers: split into
+  one question a page, mark the ones answered wrong and gather them to practise again.
 - **PDFs you already have**: import a PDF (or open or share one to Oscanner) and its pages
   become a document to sign, mark up, black out, clean and merge like a scan. On Android 15
   and later a PDF's own text is kept, exactly and at once, instead of being read again.

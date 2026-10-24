@@ -210,8 +210,10 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   with Android's own face finder; the background is cut with GrabCut.
 - ✅ **Test paper** (2026-10-21): blank the answers with handwriting removal, then Edit → Split
   into questions puts each numbered question ("1.", "2)", "Q3", "Question 4") with its answer
-  space on a page of its own in a new document, across pages too. Marking which were wrong
-  is still to do.
+  space on a page of its own in a new document, across pages too. ✅ Marking which were wrong
+  (2026-10-24): Edit → Mark wrong on a page, or several at once in Pages; a red "Wrong" label
+  sits under the page (not on it, where the question's number is). Edit → Practise wrong
+  questions copies the marked pages into a new document; Got it right takes a mark off.
 - **Large objects** (blueprints, posters): stitch overlapping shots. Only after a patent check.
 
 ### 3.5 Editing extras

@@ -39,6 +39,9 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.CallSplit
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Cancel
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.RotateRight
 import androidx.compose.material3.Icon
@@ -112,6 +115,10 @@ class ArrangeViewModel(
         viewModelScope.launch { store.deletePages(ids) }
     }
 
+    fun markWrong(ids: List<Long>, wrong: Boolean) {
+        viewModelScope.launch { store.markWrong(ids, wrong) }
+    }
+
     fun extract(ids: List<Long>, title: String) {
         viewModelScope.launch {
             runCatching { store.extractPages(documentId, ids, title) }.onSuccess { extracted.send(it) }
@@ -122,8 +129,8 @@ class ArrangeViewModel(
 }
 
 /**
- * Every page as a tile. Tap tiles to choose them, then move, turn, copy into a new document or
- * delete. Long-press a tile and drag it to move it; the Earlier and Later buttons do the same
+ * Every page as a tile. Tap tiles to choose them, then move, turn, mark as answered wrong, copy
+ * into a new document or delete. Long-press a tile and drag it to move it; the Earlier and Later buttons do the same
  * for TalkBack and one-handed use.
  */
 @Composable
@@ -308,6 +315,17 @@ fun ArrangeRoute(viewModel: ArrangeViewModel, onBack: () -> Unit, onOpenDocument
                     .fillMaxWidth(),
             ) {
                 DockAction(Icons.Rounded.RotateRight, stringResource(R.string.document_rotate), { viewModel.rotate(picked) }, enabled = any)
+                // A test paper's questions: marked wrong to practise again, or cleared once right.
+                val allWrong = any && visible.filter { it.id in picked }.all { it.wrong }
+                DockAction(
+                    if (allWrong) Icons.Rounded.CheckCircle else Icons.Rounded.Cancel,
+                    stringResource(if (allWrong) R.string.document_mark_right else R.string.document_mark_wrong),
+                    {
+                        viewModel.markWrong(picked, !allWrong)
+                        chosen.clear()
+                    },
+                    enabled = any,
+                )
                 DockAction(Icons.Rounded.CallSplit, stringResource(R.string.document_extract), {
                     val ids = visible.filter { it.id in picked }.map { it.id }
                     scope.launch { viewModel.extract(ids, String.format(extractTitle, viewModel.title())) }
@@ -334,7 +352,8 @@ fun ArrangeRoute(viewModel: ArrangeViewModel, onBack: () -> Unit, onOpenDocument
 private fun PageTile(page: Page, number: Int, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
     val image by rememberPageImage(page.thumbPath ?: page.renderPath, maxSide = 320)
-    val description = stringResource(R.string.document_page_number, number)
+    val description = stringResource(R.string.document_page_number, number) +
+        if (page.wrong) ", " + stringResource(R.string.document_page_wrong) else ""
     Surface(
         onClick = onClick,
         shape = MaterialTheme.shapes.medium,
@@ -356,6 +375,7 @@ private fun PageTile(page: Page, number: Int, selected: Boolean, onClick: () -> 
                 contentAlignment = Alignment.Center,
             ) {
                 image?.let { Image(it, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.padding(4.dp)) }
+                if (page.wrong) WrongBadge(Modifier.align(Alignment.BottomCenter).padding(6.dp))
                 if (selected) {
                     Box(
                         Modifier
@@ -371,6 +391,23 @@ private fun PageTile(page: Page, number: Int, selected: Boolean, onClick: () -> 
             Spacer(Modifier.height(6.dp))
             Text(number.toString(), style = MaterialTheme.typography.labelMedium, color = colors.onSurfaceVariant)
         }
+    }
+}
+
+/** A page marked as answered wrong: a red label, so it can't be taken for a delete button. */
+@Composable
+internal fun WrongBadge(modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    Row(
+        modifier
+            .clip(CircleShape)
+            .background(colors.error)
+            .padding(start = 6.dp, end = 10.dp, top = 3.dp, bottom = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Rounded.Close, contentDescription = null, tint = colors.onError, modifier = Modifier.size(14.dp))
+        Spacer(Modifier.width(3.dp))
+        Text(stringResource(R.string.document_wrong_badge), style = MaterialTheme.typography.labelMedium, color = colors.onError)
     }
 }
 

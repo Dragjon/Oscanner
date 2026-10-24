@@ -1,5 +1,9 @@
 package dev.olaf.oscanner.feature.document
 
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.material.icons.rounded.Replay
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Cancel
 import android.text.format.Formatter
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -182,6 +186,7 @@ fun DocumentRoute(
         return
     }
     val questionsTitle = stringResource(R.string.document_questions_title, document.title)
+    val wrongTitle = stringResource(R.string.document_wrong_title, document.title)
 
     val pagerState = rememberPagerState { state.pages.size }
     val colors = MaterialTheme.colorScheme
@@ -247,15 +252,25 @@ fun DocumentRoute(
                 )
             }
 
-            if (state.pages.size > 1) {
-                Text(
-                    stringResource(R.string.document_page_of, pagerState.currentPage + 1, state.pages.size),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = colors.onSurfaceVariant,
-                    modifier = Modifier
+            // Under the page, not on it: a question's number is at its top.
+            val wrong = state.pages.getOrNull(pagerState.currentPage)?.wrong == true
+            if (state.pages.size > 1 || wrong) {
+                Row(
+                    Modifier
                         .align(Alignment.CenterHorizontally)
                         .padding(top = 4.dp),
-                )
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    if (state.pages.size > 1) {
+                        Text(
+                            stringResource(R.string.document_page_of, pagerState.currentPage + 1, state.pages.size),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = colors.onSurfaceVariant,
+                        )
+                    }
+                    if (wrong) WrongBadge()
+                }
             }
 
             Column(
@@ -311,9 +326,25 @@ fun DocumentRoute(
                         SheetAction(Icons.Rounded.CleaningServices, stringResource(R.string.document_cleanup), stringResource(R.string.document_cleanup_description), act { onCleanup(document.id, pagerState.currentPage) })
                         SheetAction(Icons.Rounded.Draw, stringResource(R.string.document_markup), stringResource(R.string.document_markup_description), act { onMarkup(document.id, pagerState.currentPage) })
                         SheetAction(Icons.Rounded.Rectangle, stringResource(R.string.document_redact), stringResource(R.string.document_redact_description), act { onRedact(document.id, pagerState.currentPage) })
+                        state.pages.getOrNull(pagerState.currentPage)?.let { page ->
+                            if (page.wrong) {
+                                SheetAction(Icons.Rounded.CheckCircle, stringResource(R.string.document_mark_right), stringResource(R.string.document_mark_right_description), act { viewModel.markWrong(page.id, false) })
+                            } else {
+                                SheetAction(Icons.Rounded.Cancel, stringResource(R.string.document_mark_wrong), stringResource(R.string.document_mark_wrong_description), act { viewModel.markWrong(page.id, true) })
+                            }
+                        }
                         SheetSection(stringResource(R.string.document_section_pages))
                         SheetAction(Icons.Rounded.GridView, stringResource(R.string.document_arrange), stringResource(R.string.document_arrange_description), act { onArrange(document.id) })
                         SheetAction(Icons.Rounded.Quiz, stringResource(R.string.document_split_questions), stringResource(R.string.document_split_questions_description), act { viewModel.splitQuestions(questionsTitle) })
+                        val wrong = state.pages.count { it.wrong }
+                        if (wrong > 0) {
+                            SheetAction(
+                                Icons.Rounded.Replay,
+                                stringResource(R.string.document_practise_wrong),
+                                pluralStringResource(R.plurals.document_practise_wrong_description, wrong, wrong),
+                                act { viewModel.practiseWrong(wrongTitle) },
+                            )
+                        }
                         SheetAction(Icons.Rounded.DocumentScanner, stringResource(R.string.document_scan_more), stringResource(R.string.document_scan_more_description), act { onScanMore(document.id) })
                         SheetAction(
                             Icons.Rounded.AddPhotoAlternate,

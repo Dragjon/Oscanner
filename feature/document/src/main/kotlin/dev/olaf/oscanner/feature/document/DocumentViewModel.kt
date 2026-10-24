@@ -89,6 +89,17 @@ class DocumentViewModel(
         viewModelScope.launch { store.deletePage(pageId) }
     }
 
+    /** Marks a page as answered wrong, or clears the mark once it's right. */
+    fun markWrong(pageId: Long, wrong: Boolean) {
+        viewModelScope.launch { store.markWrong(listOf(pageId), wrong) }
+    }
+
+    /** The pages marked wrong, copied into a new document [title] to practise them again. */
+    fun practiseWrong(title: String) = work(Busy.Splitting) {
+        val ids = state.value.pages.filter { it.wrong }.map { it.id }
+        DocumentEvent.Open(store.extractPages(documentId, ids, title))
+    }
+
     fun splitQuestions(title: String) = work(Busy.Splitting) {
         store.splitQuestions(documentId, title)?.let { DocumentEvent.Open(it) } ?: DocumentEvent.NoQuestions
     }

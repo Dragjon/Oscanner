@@ -900,6 +900,9 @@ class PageStore(
         }
     }
 
+    /** Marks pages as answered wrong, or not, to practise them again. */
+    suspend fun markWrong(pageIds: List<Long>, wrong: Boolean) = db.pages().setWrong(pageIds, wrong)
+
     /** Replaces a page's text with the user's corrections. Boxes for the PDF stay as read. */
     suspend fun setText(pageId: Long, value: String) = db.pages().setText(pageId, value)
 
@@ -1154,4 +1157,5 @@ private fun PageEntity.toModel() = Page(
     thumbPath = thumbPath,
     edits = EditsJson.read(editsJson),
     text = ocrText,
+    wrong = wrong,
 )

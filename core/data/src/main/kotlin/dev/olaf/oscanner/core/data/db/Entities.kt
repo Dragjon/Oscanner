@@ -74,6 +74,8 @@ data class PageEntity(
     val sizeBytes: Long = 0,
     val editsJson: String = "{}",
     val ocrText: String? = null,
+    /** Marked as answered wrong (a test paper's question), to practise again. */
+    @ColumnInfo(defaultValue = "0") val wrong: Boolean = false,
 )
 
 /** Full-text index over recognized page text (filled in Phase 2). */

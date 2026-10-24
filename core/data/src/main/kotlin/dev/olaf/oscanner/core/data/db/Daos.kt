@@ -149,6 +149,9 @@ interface PageDao {
     @Query("UPDATE pages SET ocrText = :text WHERE id = :id")
     suspend fun setText(id: Long, text: String?)
 
+    @Query("UPDATE pages SET wrong = :wrong WHERE id IN (:ids)")
+    suspend fun setWrong(ids: List<Long>, wrong: Boolean)
+
     @Query("SELECT * FROM pages WHERE documentId = :documentId AND ocrText IS NULL ORDER BY position")
     suspend fun unread(documentId: Long): List<PageEntity>
 
