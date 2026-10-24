@@ -138,9 +138,17 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   square closing, which keeps the slope of uneven light exactly), so a tinted panel of any
   size keeps its tint instead of going white with the shadows: a cell diagram's gray fill
   stays even where it went white in patches, and a dark disc no longer pales inside its rim;
-  15 of the 21 benchmark pages unchanged, mottle 1.8 to 1.7. Shading that runs off the page's
-  edge still flattens away (it can't be told from desk). Still to do: solid shapes hollowed
-  out, and halftone tints inside pictures. Tried and dropped (2026-10-24): keeping deep shapes that touch the page's edge (a
+  16 of the 21 benchmark pages unchanged, mottle 1.8 to 1.7. Shapes away from the page's edge
+  are no longer hollowed on any benchmark page. Shading or a shape that runs off the image's
+  edge still flattens away: a printed band down one side (a diagram's sea) and desk beside a
+  loosely cropped page are both a straight-edged strip along a whole side, and nothing in the
+  picture tells them apart; telling them would need the photo around the crop.
+  Halftone tints inside pictures: tried and dropped (2026-10-24). Smoothing a print's screen
+  where fine contrast never lets up across a text-sized square and there's little bare paper
+  (which keeps text out: every text page unchanged) made a dark screened disc even again, but
+  growing the area to a screen's edge left shapes half smooth and half dotted, and sharpening
+  outlines back after the blur drew halos. Still to do, if picked up again: a smoothing that
+  keeps outlines (an edge-aware filter guided by the blurred page) instead of blur-then-sharpen. Tried and dropped (2026-10-24): keeping deep shapes that touch the page's edge (a
   map printed to the edge); it kept dark desk beside a loosely cropped page as a black band.
 - ✅ **Creases, stains and bleed-through** in Clean up. ✅ Show-through (2026-10-21): Clean up →
   Show-through takes out the back page's print, told from faint ink on the front by its soft
