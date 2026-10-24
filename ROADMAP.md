@@ -125,6 +125,12 @@ benchmark it belongs to, committed and pushed, released only when everything is 
 - **Auto filter parity.** Side-by-side test set against our own baseline: whiter paper, no grey
   cast, crisp but not crunchy text, colour kept where it matters. Add a "No shadow" style
   option if Auto can't cover both.
+  2026-10-24: measured on 21 real page photos (tools: `FilterHarnessTest`, `FILT_DIR`): paper
+  already comes out 97% pure white with no measurable cast. The weak spot was crunchiness:
+  sharpening lifted grain and the blotches of compressed photos as much as text. Auto, Bright
+  and Gray now sharpen only steps of 8 levels or more: texture on smooth areas down 17%, text
+  edges as crisp as before. Still to do: toner specks on photocopies, pale shading that
+  flattens away, and textbook halftone tints.
 - ✅ **Creases, stains and bleed-through** in Clean up. ✅ Show-through (2026-10-21): Clean up →
   Show-through takes out the back page's print, told from faint ink on the front by its soft
   edges and gray colour; pencil, highlighter and pale photos stay (94% found on a staged page,

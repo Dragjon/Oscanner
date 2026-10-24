@@ -45,6 +45,8 @@ internal object Filters {
     /** Grain below this many 8-bit levels is left alone: a clean photo stays untouched. */
     private const val NOISY = 2.0
     private const val NOISE_PATCH = 1024
+    /** Steps smaller than this many 8-bit levels are grain or paper texture, not edges, and aren't sharpened. */
+    private const val EDGE_ONLY = 8.0
 
     /**
      * Slider adjustments after the look. Ink is pure black and white, so only its threshold
@@ -91,7 +93,7 @@ internal object Filters {
     private fun auto(rgb: Mat): Mat {
         val flat = cleanFlatColor(rgb)
         applyLut(flat, levels(black = 40, white = 245, gamma = 1.15))
-        return sharpen(flat, amount = 0.6)
+        return sharpenEdges(flat, amount = 0.6, threshold = EDGE_ONLY)
     }
 
     /** Like Auto, but lighter midtones and softer color: good for faint pencil or photos. */
@@ -107,14 +109,14 @@ internal object Filters {
         Imgproc.cvtColor(hsv, flat, Imgproc.COLOR_HSV2RGB)
         hsv.release()
         channels.forEach(Mat::release)
-        return sharpen(flat, amount = 0.4)
+        return sharpenEdges(flat, amount = 0.4, threshold = EDGE_ONLY)
     }
 
     /** Luminance only, flattened and stretched. Smallest files. */
     private fun gray(rgb: Mat): Mat {
         val flat = flatten(cleanNoise(toGray(rgb)), rgb)
         applyLut(flat, levels(black = 35, white = 240, gamma = 1.05))
-        return sharpen(flat, amount = 0.5)
+        return sharpenEdges(flat, amount = 0.5, threshold = EDGE_ONLY)
     }
 
     /** Pure black on white: flattened luminance, Sauvola threshold, then despeckle. */
@@ -413,6 +415,35 @@ internal object Filters {
         Core.addWeighted(src, 1.0 + amount, blurred, -amount, 0.0, out)
         blurred.release()
         src.release()
+        return out
+    }
+
+    /**
+     * Sharpens edges only: a step smaller than [threshold] levels (grain, paper texture, the
+     * blotches of a compressed photo) is left as it is, and the full [amount] applies from twice
+     * that, so text is crisp without the paper turning crunchy.
+     */
+    private fun sharpenEdges(src: Mat, amount: Double, threshold: Double): Mat {
+        val sigma = max(1.0, max(src.cols(), src.rows()) / 1500.0)
+        val f = Mat()
+        src.convertTo(f, CvType.CV_32F)
+        src.release()
+        val detail = Mat()
+        Imgproc.GaussianBlur(f, detail, Size(0.0, 0.0), sigma)
+        Core.subtract(f, detail, detail)
+        // weight = clamp((|detail| − threshold) / threshold, 0, 1) · amount
+        val weight = Mat()
+        Core.absdiff(detail, Scalar.all(0.0), weight)
+        weight.convertTo(weight, -1, 1.0 / threshold, -1.0)
+        Imgproc.threshold(weight, weight, 0.0, 0.0, Imgproc.THRESH_TOZERO)
+        Imgproc.threshold(weight, weight, 1.0, 0.0, Imgproc.THRESH_TRUNC)
+        Core.multiply(detail, weight, detail, amount)
+        weight.release()
+        Core.add(f, detail, f)
+        detail.release()
+        val out = Mat()
+        f.convertTo(out, CvType.CV_8U)
+        f.release()
         return out
     }
 
