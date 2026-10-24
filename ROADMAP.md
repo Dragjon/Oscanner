@@ -200,6 +200,13 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   still to do.
 
 ### Library
+- ✅ **Names that say what a document is** (2026-10-24): once read, a document still called
+  "Scan …" or "Import …" is named for the kind of paper (receipt, invoice, quote, statement,
+  payslip, letter, contract, ticket, prescription, certificate, form), who it's from and its
+  date: "Receipt – Greenleaf Market – 18 Oct 2026", "Letter – Your council tax band review –
+  7 Oct 2026". All on the phone, by rules rather than a model: no download, instant. Pages it
+  can't place keep the heading as before. A document whose import was cut short (the screen
+  closed) is now finished when the app next starts.
 - ✅ **Folders** (2026-10-24): long-press a folder's chip, or open the folder and use More, to
   rename or delete it. Deleting keeps its documents (under All) unless you choose to put them
   in Trash, with Undo. Under All, documents in folders are grouped under each folder's name,

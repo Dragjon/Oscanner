@@ -148,11 +148,17 @@ class TextReader(
         db.pages().setText(page.id, PageLayout.columnText(words) ?: result.text)
     }
 
-    /** A document still called "Scan …" takes its first page's heading as its name, once read. */
+    /**
+     * A document still called "Scan …" is named from its first page once read: what kind of
+     * paper, from whom and when ([DocumentNamer]), or else its heading.
+     */
     suspend fun nameAfterHeading(documentId: Long) {
         if (db.documents().hasAutoTitle(documentId) != true) return
         val first = db.pages().forDocument(documentId).firstOrNull()?.takeIf { it.ocrText != null } ?: return
-        val title = withContext(Dispatchers.Default) { DocumentTitles.fromWords(words(first)) } ?: return
+        // A name is a nicety: whatever goes wrong here mustn't fail the reading or import before it.
+        val title = withContext(Dispatchers.Default) {
+            runCatching { DocumentNamer().name(words(first)) }.onFailure { Log.w(TAG, "Naming document $documentId failed", it) }.getOrNull()
+        } ?: return
         db.documents().autoName(documentId, title)
     }
 

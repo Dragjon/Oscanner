@@ -56,6 +56,7 @@ import dev.olaf.oscanner.core.model.PdfQuality
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
@@ -202,12 +203,16 @@ class PageStore(
             }
             db.documents().touch(documentId, System.currentTimeMillis())
         }
-        // Text that came with a page needn't be read: it's kept now, and reading skips the page.
-        known.forEach { (page, words) -> text.keep(page, words) }
-        if (known.isNotEmpty()) text.nameAfterHeading(documentId)
-        renderDocument(documentId)
-        text.scheduleIfWanted(documentId, delay = Duration.ofSeconds(30))
-        if (fixes.removeHandwriting) removeHandwritingLater(added)
+        // The pages are saved: finish them even if whoever asked has gone (the screen closed),
+        // or they'd sit half-made.
+        withContext(NonCancellable) {
+            // Text that came with a page needn't be read: it's kept now, and reading skips the page.
+            known.forEach { (page, words) -> text.keep(page, words) }
+            if (known.isNotEmpty()) text.nameAfterHeading(documentId)
+            renderDocument(documentId)
+            text.scheduleIfWanted(documentId, delay = Duration.ofSeconds(30))
+            if (fixes.removeHandwriting) removeHandwritingLater(added)
+        }
     }
 
     /** The camera's fixes on a new page's edits. Handwriting comes after: it needs the page read. */
@@ -1022,6 +1027,11 @@ class PageStore(
 
     suspend fun emptyTrash() {
         db.documents().trashedIds().forEach { deleteForever(it) }
+    }
+
+    /** Finishes documents left part-made when the app last stopped: pages not yet rendered. */
+    suspend fun finishInterrupted() {
+        db.documents().idsInState(ProcessingState.Enhancing.name).forEach { renderDocument(it) }
     }
 
     /** Deletes documents that have sat in Trash for more than 30 days. */

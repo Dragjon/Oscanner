@@ -78,6 +78,9 @@ interface DocumentDao {
     @Query("UPDATE documents SET state = :state WHERE id = :id")
     suspend fun setState(id: Long, state: String)
 
+    @Query("SELECT id FROM documents WHERE state = :state")
+    suspend fun idsInState(state: String): List<Long>
+
     @Query("UPDATE documents SET title = :title, updatedAt = :now, autoTitle = 0 WHERE id = :id")
     suspend fun rename(id: Long, title: String, now: Long)
 

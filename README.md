@@ -21,7 +21,9 @@ follows, in [`PLAN.md`](PLAN.md).
   plain text, a spreadsheet, or a Word file that keeps the page's headings, paragraphs and
   pictures; documents can also be shared as PowerPoint slides, and a portrait made into a
   passport or ID photo with a sheet of copies to print.
-- **Documents**: folders, tags and notes, Trash, merge, reorder/rotate/copy out pages, sign,
+- **Documents**: named for what they are once read ("Receipt – Greenleaf Market – 18 Oct 2026",
+  "Letter from Riverside Council – 7 Oct 2026"), folders (renamed or deleted with a long press;
+  All groups documents by folder), tags and notes, Trash, merge, reorder/rotate/copy out pages, sign,
   draw, type text and stamps, erase, remove handwriting (told from print by a small on-device
   network) or fingers, black out private details (found automatically or by hand, and removed
   from the text layer too), password-protected PDFs (AES-256), page and file size options,
