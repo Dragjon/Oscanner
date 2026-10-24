@@ -13,8 +13,9 @@ import kotlin.math.pow
 import kotlin.math.sqrt
 
 /**
- * Measures how a page bends: one smooth bend for the whole page, fitted to its ruled lines (or,
- * without rules, its lines of text), and none at all when the page is already flat.
+ * Measures how a page bends: one smooth bend for the whole page, fitted to its ruled lines and
+ * the lines of text beyond them (or, without rules, its lines of text alone), and none at all
+ * when the page is already flat.
  *
  * Fitting each line on its own and blending between them followed every wobble of handwriting
  * and every slanted line, and bent flat pages. One surface, d(x, t) = Σ a_jk·(x − ½)^j·t^k for
@@ -31,9 +32,9 @@ object CurveDetector {
         Imgproc.cvtColor(small, gray, Imgproc.COLOR_RGB2GRAY)
         small.release()
         // Rules and table edges are drawn straight, so they show the bend best; handwriting
-        // wanders and slants.
+        // wanders and slants. Where the rules end, as below a table, the text takes over.
         val rules = ruleLines(gray)
-        val traced = if (rules.size >= MIN_RULES) rules else textLines(gray)
+        val traced = if (rules.size >= MIN_RULES) rules + textBeyond(rules, textLines(gray)) else textLines(gray)
         gray.release()
         val bend = fit(traced) ?: return PageCurve(emptyList())
         if (bend.size() < MIN_BEND) return PageCurve(emptyList())
@@ -57,6 +58,16 @@ object CurveDetector {
         Imgproc.dilate(ink, ink, join)
         join.release()
         return trace(ink, minWidth = 0.3, maxHeight = 0.04, minAspect = 0, samples = 60, minPoints = 12)
+    }
+
+    /**
+     * The lines of [text] above or below where [rules] are: a table or a form's ruled part
+     * shows the bend only where it is, and the text around it shows the rest.
+     */
+    private fun textBeyond(rules: List<Traced>, text: List<Traced>): List<Traced> {
+        val top = rules.minOf { it.level }
+        val bottom = rules.maxOf { it.level }
+        return text.filter { it.level < top - RULE_MARGIN || it.level > bottom + RULE_MARGIN }
     }
 
     /** Lines of text: letters smeared sideways into words, words into lines. */
@@ -98,7 +109,7 @@ object CurveDetector {
             val top = stat[1]
             val width = stat[2]
             val height = stat[3]
-            if (width < w * minWidth || height > h * maxHeight || width < height * minAspect) continue
+            if (width < w * minWidth) continue
             val columns = (left until left + width step max(1, width / samples)).toList()
             val thickness = IntArray(columns.size)
             val middles = FloatArray(columns.size)
@@ -115,6 +126,8 @@ object CurveDetector {
                 middles[i] = if (n > 0) sum.toFloat() / n else 0f
             }
             val typical = thickness.filter { it > 0 }.sorted().let { if (it.isEmpty()) 0 else it[it.size / 2] }
+            // How thick it is, not how tall its box is: a strongly bent line has a tall box.
+            if (typical > h * maxHeight || width < typical * minAspect) continue
             val xs = ArrayList<Float>()
             val ys = ArrayList<Float>()
             columns.forEachIndexed { i, x ->
@@ -315,6 +328,8 @@ object CurveDetector {
     private const val ROUNDS = 5
     private const val MIN_LINES = 3
     private const val MIN_RULES = 4
+    /** Text this close to the ruled part, as a share of page height, is in it or written on it. */
+    private const val RULE_MARGIN = 0.03f
     /** A sample this many times thicker than the line usually is belongs to something else on it. */
     private const val THICK = 2.5
     /** A little ridge, so the bend is no bigger than the lines ask for. */

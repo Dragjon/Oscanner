@@ -150,6 +150,10 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   outlines back after the blur drew halos. Still to do, if picked up again: a smoothing that
   keeps outlines (an edge-aware filter guided by the blurred page) instead of blur-then-sharpen. Tried and dropped (2026-10-24): keeping deep shapes that touch the page's edge (a
   map printed to the edge); it kept dark desk beside a loosely cropped page as a black band.
+- ✅ **Curved pages follow their text** (2026-10-25): a table's or form's rules show the bend
+  only where they are, so the lines of text above and below them now join the fit (a page with
+  a table on top, bent 46 px, was left as it was; now within 2 px), and strongly bent lines of
+  text are no longer turned away for their tall outline (81 px of bend now within 6 px, from 10).
 - ✅ **Creases, stains and bleed-through** in Clean up. ✅ Show-through (2026-10-21): Clean up →
   Show-through takes out the back page's print, told from faint ink on the front by its soft
   edges and gray colour; pencil, highlighter and pale photos stay (94% found on a staged page,
