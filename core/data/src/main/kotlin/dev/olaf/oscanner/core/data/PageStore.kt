@@ -35,6 +35,7 @@ import dev.olaf.oscanner.core.model.IdBackground
 import dev.olaf.oscanner.core.model.IdPhotoSize
 import dev.olaf.oscanner.core.model.Quad
 import dev.olaf.oscanner.core.model.WordBox
+import dev.olaf.oscanner.core.ocr.OcrResult
 import dev.olaf.oscanner.core.ocr.PaddleReader
 import dev.olaf.oscanner.core.pdf.DocxWriter
 import dev.olaf.oscanner.core.pdf.LayoutBlock
@@ -85,7 +86,12 @@ data class CapturedImage(
      * outline to find, no look applied and none of the camera's fixes.
      */
     val flat: Boolean = false,
+    /** What's on the page when that's already known, as an imported PDF's own text is. */
+    val words: OcrResult? = null,
 )
+
+/** A capture moved into its document and ready to be a page. */
+private data class Prepared(val original: File, val edits: PageEdits, val flat: Boolean, val words: OcrResult? = null)
 
 /**
  * Pages on disk and in the database. Layout: `files/docs/<docId>/<uuid>/original.jpg`, plus
@@ -168,33 +174,37 @@ class PageStore(
         val prepared = withContext(Dispatchers.IO) {
             images.flatMap { image ->
                 if (image.flat) {
-                    listOf(Triple(adopt(documentId, image), PageEdits(quad = Quad.Full, filter = PageFilter.Original), true))
+                    listOf(Prepared(adopt(documentId, image), PageEdits(quad = Quad.Full, filter = PageFilter.Original), flat = true, image.words))
                 } else {
-                    prepare(documentId, image, kind).map { (original, edits) -> Triple(original, withFixes(original, edits, fixes, kind), false) }
+                    prepare(documentId, image, kind).map { (original, edits) -> Prepared(original, withFixes(original, edits, fixes, kind), flat = false) }
                 }
             }
         }
         val added = mutableListOf<Long>()
+        val known = mutableListOf<Pair<PageEntity, OcrResult>>()
         db.withTransaction {
             var position = db.pages().lastPosition(documentId)
-            prepared.forEach { (original, edits, flat) ->
-                val id = db.pages().insert(
-                    PageEntity(
-                        documentId = documentId,
-                        position = ++position,
-                        originalPath = original.path,
-                        width = 0,
-                        height = 0,
-                        sizeBytes = original.length(),
-                        editsJson = EditsJson.write(edits),
-                    ),
+            prepared.forEach { (original, edits, flat, words) ->
+                val entity = PageEntity(
+                    documentId = documentId,
+                    position = ++position,
+                    originalPath = original.path,
+                    width = 0,
+                    height = 0,
+                    sizeBytes = original.length(),
+                    editsJson = EditsJson.write(edits),
                 )
+                val id = db.pages().insert(entity)
+                if (words != null) known += entity.copy(id = id) to words
                 // Pages of a PDF stay as they were, and slides have no handwriting: clean-up is
                 // left to the person.
                 if (!flat && kind != DocumentKind.Slides) added += id
             }
             db.documents().touch(documentId, System.currentTimeMillis())
         }
+        // Text that came with a page needn't be read: it's kept now, and reading skips the page.
+        known.forEach { (page, words) -> text.keep(page, words) }
+        if (known.isNotEmpty()) text.nameAfterHeading(documentId)
         renderDocument(documentId)
         text.scheduleIfWanted(documentId, delay = Duration.ofSeconds(30))
         if (fixes.removeHandwriting) removeHandwritingLater(added)
@@ -441,7 +451,7 @@ class PageStore(
             uris.flatMap { uri ->
                 runCatching {
                     if (isPdf(uri)) {
-                        PdfImport.pages(context, uri, dir).map { CapturedImage(it, liveQuad = null, flat = true) }
+                        PdfImport.pages(context, uri, dir).map { CapturedImage(it.file, liveQuad = null, flat = true, words = it.text) }
                     } else {
                         val file = File(dir, "${UUID.randomUUID()}.jpg")
                         context.contentResolver.openInputStream(uri)!!.use { input -> file.outputStream().use { input.copyTo(it) } }

@@ -142,7 +142,11 @@ benchmark it belongs to, committed and pushed, released only when everything is 
 ### 3.2 Work with files people already have
 - ✅ **Import PDFs** into the library as documents (2026-10-21): from Import → Files, a
   document's "Add from files", or by sharing or opening a PDF with Oscanner. Pages are rendered
-  at 200 dpi and read for text; keeping a PDF's own vector text is still to do.
+  at 200 dpi and read for text. ✅ A PDF's own text (2026-10-24) is kept instead, word by word
+  with where each sits, on Android 15 and later (its PDF renderer can give it): exact, and
+  about 0.3 s for a dense page rather than seconds of reading. Pages with fewer than 20 words
+  (a scan, maybe under a stamped line) or text that doesn't come out as letters are still
+  read; cropping, turning or blacking out a page reads it again, as for scans.
 - ✅ **Merge across sources**: a document's "Add from files" adds a PDF's pages (or pictures)
   after its scans, and documents of either kind merge.
 - ✅ **Smaller PDF** to share, whatever the quality setting (2026-10-21).

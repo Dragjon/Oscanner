@@ -126,10 +126,7 @@ class TextReader(
                         // Changed while being read (say, an area blacked out): what we read is
                         // stale and may hold words that must not be kept. It's queued again.
                         if (db.pages().get(page.id)?.editsJson != page.editsJson) continue
-                        withContext(Dispatchers.IO) { writeOcr(ocrFile(page), result) }
-                        // Text in two columns reads down each column, not across both.
-                        val words = result.words.map { PdfWord(it.text, it.left, it.top, it.right, it.bottom) }
-                        db.pages().setText(page.id, PageLayout.columnText(words) ?: result.text)
+                        keep(page, result)
                     }
                 }
             }
@@ -140,8 +137,19 @@ class TextReader(
         nameAfterHeading(documentId)
     }
 
+    /**
+     * Keeps [result] as what's on [page]: its words and boxes beside the original, its text in
+     * the database. Also for text that came with the page, such as an imported PDF's own.
+     */
+    suspend fun keep(page: PageEntity, result: OcrResult) {
+        withContext(Dispatchers.IO) { writeOcr(ocrFile(page), result) }
+        // Text in two columns reads down each column, not across both.
+        val words = result.words.map { PdfWord(it.text, it.left, it.top, it.right, it.bottom) }
+        db.pages().setText(page.id, PageLayout.columnText(words) ?: result.text)
+    }
+
     /** A document still called "Scan …" takes its first page's heading as its name, once read. */
-    private suspend fun nameAfterHeading(documentId: Long) {
+    suspend fun nameAfterHeading(documentId: Long) {
         if (db.documents().hasAutoTitle(documentId) != true) return
         val first = db.pages().forDocument(documentId).firstOrNull()?.takeIf { it.ocrText != null } ?: return
         val title = withContext(Dispatchers.Default) { DocumentTitles.fromWords(words(first)) } ?: return
