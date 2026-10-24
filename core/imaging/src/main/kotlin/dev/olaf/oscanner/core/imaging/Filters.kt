@@ -47,6 +47,12 @@ internal object Filters {
     private const val NOISE_PATCH = 1024
     /** Steps smaller than this many 8-bit levels are grain or paper texture, not edges, and aren't sharpened. */
     private const val EDGE_ONLY = 8.0
+    /** On light tones, steps from the neighbourhood smaller than this many levels are speckle, not marks. */
+    private const val CORE = 8.0
+    /** Tones at least this light (of 255, on flattened paper) are paper or pale tint, where speckle shows. */
+    private const val LIGHT_TONE = 160.0
+    /** The neighbourhood speckle is judged against: a long side this many times its blur. */
+    private const val QUIET_SCALE = 1400.0
 
     /**
      * Slider adjustments after the look. Ink is pure black and white, so only its threshold
@@ -91,13 +97,14 @@ internal object Filters {
 
     /** Flattened lighting, white paper, crisper text, colors kept. */
     private fun auto(rgb: Mat): Mat {
-        val flat = cleanFlatColor(rgb)
+        val flat = quietPaper(cleanFlatColor(rgb))
         applyLut(flat, levels(black = 40, white = 245, gamma = 1.15))
         return sharpenEdges(flat, amount = 0.6, threshold = EDGE_ONLY)
     }
 
     /** Like Auto, but lighter midtones and softer color: good for faint pencil or photos. */
     private fun bright(rgb: Mat): Mat {
+        // Not quietened: Bright is for faint pencil, whose lightest strokes are as faint as speckle.
         val flat = cleanFlatColor(rgb)
         applyLut(flat, levels(black = 25, white = 235, gamma = 0.85))
         val hsv = Mat()
@@ -114,7 +121,7 @@ internal object Filters {
 
     /** Luminance only, flattened and stretched. Smallest files. */
     private fun gray(rgb: Mat): Mat {
-        val flat = flatten(cleanNoise(toGray(rgb)), rgb)
+        val flat = quietPaper(flatten(cleanNoise(toGray(rgb)), rgb))
         applyLut(flat, levels(black = 35, white = 240, gamma = 1.05))
         return sharpenEdges(flat, amount = 0.5, threshold = EDGE_ONLY)
     }
@@ -445,6 +452,55 @@ internal object Filters {
         f.convertTo(out, CvType.CV_8U)
         f.release()
         return out
+    }
+
+    /**
+     * Evens out the paper and pale tints on flattened [src]: toner stipple on a photocopy, the
+     * grain of paper, a print's fine screen. On light tones, a pixel's step from its blurred
+     * neighbourhood under [CORE] levels is taken out, and from twice that kept whole (noise
+     * coring), so pencil, text edges and thin lines stay while the speckle around them goes.
+     * Each area keeps its average tone, so pale shading turns even rather than white.
+     * Darker tones, where the text is, are left alone.
+     */
+    private fun quietPaper(src: Mat): Mat {
+        val sigma = max(1.0, max(src.cols(), src.rows()) / QUIET_SCALE)
+        val smooth = Mat()
+        Imgproc.GaussianBlur(src, smooth, Size(0.0, 0.0), sigma)
+        // Judged on brightness, so a pixel's colours are kept or smoothed together.
+        val luma = if (src.channels() == 1) src else toGray(src)
+        val smoothLuma = if (smooth.channels() == 1) smooth else toGray(smooth)
+        // keep = clamp((|step| − CORE) / CORE, 0, 1) as 0–255, and all of it on darker tones.
+        val keep = Mat()
+        Core.absdiff(luma, smoothLuma, keep)
+        if (luma !== src) luma.release()
+        applyLut(keep, coring())
+        val dark = Mat()
+        Core.compare(smoothLuma, Scalar.all(LIGHT_TONE), dark, Core.CMP_LT)
+        if (smoothLuma !== smooth) smoothLuma.release()
+        keep.setTo(Scalar.all(255.0), dark)
+        dark.release()
+        // out = src · keep + smooth · (1 − keep)
+        val skip = Mat()
+        Core.bitwise_not(keep, skip)
+        if (src.channels() == 3) {
+            Core.merge(listOf(keep, keep, keep), keep)
+            Core.merge(listOf(skip, skip, skip), skip)
+        }
+        val out = Mat()
+        Core.multiply(src, keep, out, 1.0 / 255)
+        Core.multiply(smooth, skip, smooth, 1.0 / 255)
+        Core.add(out, smooth, out)
+        src.release()
+        smooth.release()
+        keep.release()
+        skip.release()
+        return out
+    }
+
+    /** How much of a step from the neighbourhood is kept, by its size in levels, as 0–255. */
+    private fun coring(): Mat {
+        val table = ByteArray(256) { i -> (((i - CORE) / CORE).coerceIn(0.0, 1.0) * 255.0 + 0.5).toInt().toByte() }
+        return Mat(1, 256, CvType.CV_8U).apply { put(0, 0, table) }
     }
 
     private fun levels(black: Int, white: Int, gamma: Double): Mat {
