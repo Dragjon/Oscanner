@@ -28,16 +28,18 @@
     <string name="welcome_scan_3">Auto-fix cleans every page as it\'s saved: curved pages straightened, fingers and handwriting taken out, desk in the corners made paper</string>
     <string name="welcome_scan_4">Notices when you scan the same page twice</string>
     <string name="welcome_scan_5">Import photos and PDFs you already have</string>
+    <string name="welcome_scan_6">Names each document for what it is, like \"Receipt – Greenleaf Market – 18 Oct\", and keeps them in folders</string>
 
     <string name="welcome_clean_title">Pages that look scanned, not photographed</string>
     <string name="welcome_clean_1">Looks for every job: Auto, Bright, Gray, Ink, Board, and Photo for old prints</string>
     <string name="welcome_clean_2">Clean up takes out handwriting, fingers, coffee stains and the back page showing through</string>
     <string name="welcome_clean_3">Sign, draw, highlight, add text and stamps, or retype a word on the page</string>
     <string name="welcome_clean_4">Black out private details: emails and card numbers found for you, removed from the text too</string>
-    <string name="welcome_clean_5">Crop, turn, reorder, merge, split a test into its questions</string>
+    <string name="welcome_clean_5">Crop, turn, reorder, merge, split a test into its questions and gather the ones you got wrong to practise</string>
 
     <string name="welcome_text_title">Text, files and everything in between</string>
     <string name="welcome_text_1">Reads the text in every page, so you can search, copy and share it</string>
+    <string name="welcome_text_translate">Translates it into 58 languages right on the phone, even over the page\'s own picture</string>
     <string name="welcome_text_2">Searchable PDFs, small PDFs and password-locked PDFs</string>
     <string name="welcome_text_3">Word files that keep the page\'s layout, Excel tables, PowerPoint slides</string>
     <string name="welcome_text_4">Passport and ID photos, with a sheet of copies to print</string>
@@ -77,7 +79,7 @@
     <string name="versus_cloud_ours">No, on purpose: your files stay yours</string>
     <string name="versus_cloud_theirs">Yes, through their servers</string>
     <string name="versus_translate">Translate</string>
-    <string name="versus_translate_ours">Coming</string>
+    <string name="versus_translate_ours">Free, 58 languages, on your phone</string>
     <string name="versus_translate_theirs">Yes</string>
     <string name="versus_footnote">CamScanner\'s free tier and prices as seen in October 2026.</string>
     <string name="versus_verdict">Everything you used CamScanner for, without the ads, the stamp or the bill. Go ahead and delete it.</string>

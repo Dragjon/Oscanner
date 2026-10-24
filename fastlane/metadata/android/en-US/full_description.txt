@@ -3,27 +3,30 @@
 <p><b>Scan</b></p>
 <ul>
 <li>The camera finds the page and takes the picture when you hold steady</li>
-<li>Crop with a magnifier, straighten and rotate</li>
-<li>Looks: Auto, Bright, Gray, Ink (pure black and white) and Board for whiteboards; shadows are removed</li>
-<li>Modes for ID cards (printed at true size), open books (split into two pages) and whiteboards</li>
+<li>Crop with a magnifier, straighten, rotate and flatten curved pages</li>
+<li>Looks: Auto, Bright, Gray, Ink (pure black and white), Board for whiteboards and Photo for old prints; shadows are removed</li>
+<li>Modes for ID cards (printed at true size), open books (split into two pages), whiteboards, slides and screens</li>
 <li>Read QR codes and barcodes; nothing opens unless you tap it</li>
+<li>Import photos and PDFs you already have</li>
 </ul>
 
-<p><b>Text</b></p>
+<p><b>Text and translation</b></p>
 <ul>
 <li>Reads the text in your scans, so you can search inside them and copy words out</li>
-<li>Searchable PDFs, plain text and Word (.docx) export</li>
-<li>English is built in; other languages download on request</li>
+<li>Searchable PDFs, plain text, Word (.docx) that keeps the layout, Excel tables and PowerPoint slides</li>
+<li>Translate a document into 58 languages on the phone, as text or over the page's own picture; each language is downloaded once</li>
 </ul>
 
 <p><b>Documents</b></p>
 <ul>
-<li>Folders, search, sort and a Trash that keeps things for 30 days</li>
+<li>Documents named for what they are (receipt, letter, invoice…), folders, search, tags and a Trash that keeps things for 30 days</li>
 <li>Merge, reorder, rotate, copy out and delete pages</li>
-<li>Sign, write and highlight on pages; erase things, remove pen marks or fingers</li>
-<li>Share as PDF or pictures, save to any app that keeps files, or print</li>
-<li>Password-protected PDFs (AES-256), page size and file size choices, your own watermark</li>
+<li>Sign, write, highlight and add text on pages; remove handwriting, fingers, stains and show-through</li>
+<li>Black out private details, also removed from the text</li>
+<li>Test papers: split into one question a page, mark the ones you got wrong and gather them to practise</li>
+<li>Share as PDF, a smaller PDF, pictures or one long picture; send to a computer on the same Wi-Fi; save to any app that keeps files, or print</li>
+<li>Password-protected PDFs (AES-256), passport and ID photos, your own watermark</li>
 <li>Lock the app with your fingerprint, face or screen lock</li>
 </ul>
 
-<p><b>Private by design</b>: no account, no ads, no tracking and no watermark of its own. Scans never leave your phone unless you share them. The only network use is downloading a text language you ask for.</p>
+<p><b>Private by design</b>: no account, no ads, no tracking and no watermark of its own. Scans never leave your phone unless you share them. The only network use is downloading a text-reading or translation language you ask for.</p>

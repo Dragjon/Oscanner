@@ -140,7 +140,7 @@ fun WelcomeScreen(onDone: () -> Unit) {
                     1 -> Feature(
                         Icons.Rounded.DocumentScanner,
                         R.string.welcome_scan_title,
-                        listOf(R.string.welcome_scan_1, R.string.welcome_scan_2, R.string.welcome_scan_3, R.string.welcome_scan_4, R.string.welcome_scan_5),
+                        listOf(R.string.welcome_scan_1, R.string.welcome_scan_2, R.string.welcome_scan_3, R.string.welcome_scan_4, R.string.welcome_scan_5, R.string.welcome_scan_6),
                         offset, shown, reduced,
                     )
                     2 -> Feature(
@@ -152,7 +152,7 @@ fun WelcomeScreen(onDone: () -> Unit) {
                     3 -> Feature(
                         Icons.Rounded.Description,
                         R.string.welcome_text_title,
-                        listOf(R.string.welcome_text_1, R.string.welcome_text_2, R.string.welcome_text_3, R.string.welcome_text_4, R.string.welcome_text_5),
+                        listOf(R.string.welcome_text_1, R.string.welcome_text_translate, R.string.welcome_text_2, R.string.welcome_text_3, R.string.welcome_text_4, R.string.welcome_text_5),
                         offset, shown, reduced,
                     )
                     4 -> Feature(
@@ -413,7 +413,7 @@ private val COMPARISON = listOf(
     Comparison(R.string.versus_clean, Mark.Yes, R.string.versus_free, Mark.Partly, R.string.versus_paid),
     Comparison(R.string.versus_offline, Mark.Yes, R.string.versus_offline_ours, Mark.Partly, R.string.versus_offline_theirs),
     Comparison(R.string.versus_cloud, Mark.No, R.string.versus_cloud_ours, Mark.Yes, R.string.versus_cloud_theirs),
-    Comparison(R.string.versus_translate, Mark.No, R.string.versus_translate_ours, Mark.Yes, R.string.versus_translate_theirs),
+    Comparison(R.string.versus_translate, Mark.Yes, R.string.versus_translate_ours, Mark.Yes, R.string.versus_translate_theirs),
 )
 
 @Composable
