@@ -314,10 +314,26 @@ internal object Filters {
         Core.extractChannel(hsv, saturation, 1)
         hsv.release()
         val estimate = if (paper.channels() == 1) paper.clone() else toGray(paper)
-        // The paper further out: closed far wider than any shape that matters.
-        val reach = (max(w, h) / 5).coerceAtLeast(31) or 1
+        // The paper further out: closed as wide as the page, so a tinted panel of any size sinks
+        // below it. Closing with a square keeps the slope of uneven light exactly (a disc would
+        // sag inside a dip on a steep slope) and only fills dips narrower than itself. Worked
+        // out at a quarter of the size.
+        val coarse = Mat()
+        Imgproc.resize(estimate, coarse, Size(), 0.25, 0.25, Imgproc.INTER_AREA)
+        val reach = max(coarse.cols(), coarse.rows()) or 1
+        // The edge carried on outwards first, so a shadow darkening into the edge stays a slope
+        // rather than a dip (the closing's own border handling lifts it to the level a reach in).
+        val pad = reach / 2 + 1
+        val padded = Mat()
+        Core.copyMakeBorder(coarse, padded, pad, pad, pad, pad, Core.BORDER_REPLICATE)
+        Imgproc.morphologyEx(padded, padded, Imgproc.MORPH_CLOSE, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(reach.toDouble(), reach.toDouble())))
+        padded.submat(pad, pad + coarse.rows(), pad, pad + coarse.cols()).copyTo(coarse)
+        padded.release()
         val wide = Mat()
-        Imgproc.morphologyEx(estimate, wide, Imgproc.MORPH_CLOSE, Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(reach.toDouble(), reach.toDouble())))
+        Imgproc.resize(coarse, wide, estimate.size(), 0.0, 0.0, Imgproc.INTER_LINEAR)
+        // Never below the estimate itself, which the coarse resizing could leave it at an edge.
+        Core.max(wide, estimate, wide)
+        coarse.release()
         // Where the estimate sank clearly below that: a shadow or a shape.
         val lifted = Mat()
         Core.multiply(estimate, Scalar(1.0 / SUNK), lifted)

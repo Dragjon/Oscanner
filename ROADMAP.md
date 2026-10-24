@@ -134,9 +134,13 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   photocopy's stipple and paper grain no longer turn into blotches, while pencil, thin lines and
   text edges stay. Specks on paper down by half (0.9 to 0.4 per megapixel), mottle 2.2 to 1.8,
   edges unchanged, about 40 ms more a page. Bright is left as it was, for the faintest pencil.
-  Still to do: pale shading that flattens away (a tinted panel bigger than the paper estimate's
-  reach goes white with the shadows), solid shapes hollowed out, and halftone tints inside
-  pictures. Tried and dropped (2026-10-24): keeping deep shapes that touch the page's edge (a
+  Pale shading (2026-10-24): the paper further out is now measured across the whole page (a
+  square closing, which keeps the slope of uneven light exactly), so a tinted panel of any
+  size keeps its tint instead of going white with the shadows: a cell diagram's gray fill
+  stays even where it went white in patches, and a dark disc no longer pales inside its rim;
+  15 of the 21 benchmark pages unchanged, mottle 1.8 to 1.7. Shading that runs off the page's
+  edge still flattens away (it can't be told from desk). Still to do: solid shapes hollowed
+  out, and halftone tints inside pictures. Tried and dropped (2026-10-24): keeping deep shapes that touch the page's edge (a
   map printed to the edge); it kept dark desk beside a loosely cropped page as a black band.
 - ✅ **Creases, stains and bleed-through** in Clean up. ✅ Show-through (2026-10-21): Clean up →
   Show-through takes out the back page's print, told from faint ink on the front by its soft

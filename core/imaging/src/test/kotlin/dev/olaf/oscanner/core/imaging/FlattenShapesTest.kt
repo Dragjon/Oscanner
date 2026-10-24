@@ -41,6 +41,43 @@ class FlattenShapesTest {
 
     private fun mean(img: Mat, r: Rect) = Core.mean(img.submat(r)).`val`
 
+    /** [base] under a soft shadow: darkest (x0.65) at the left edge, gone a third of the way across. */
+    private fun shaded(base: Mat): Mat {
+        val shade = Mat(base.size(), CvType.CV_32FC3)
+        for (x in 0 until base.cols()) {
+            val f = 0.65 + 0.35 * (x / 560.0).coerceAtMost(1.0)
+            shade.colRange(x, x + 1).setTo(Scalar(f, f, f))
+        }
+        val f = Mat()
+        base.convertTo(f, CvType.CV_32FC3)
+        Core.multiply(f, shade, f)
+        val out = Mat()
+        f.convertTo(out, CvType.CV_8UC3)
+        return out
+    }
+
+    @Test
+    fun aBigPalePanelKeepsItsTint() {
+        nu.pattern.OpenCV.loadLocally()
+        // A form's shaded section: a pale gray-blue panel across most of the page's width and a
+        // third of its height, far bigger than the paper estimate's reach, with text on it.
+        val page = Mat(2200, 1700, CvType.CV_8UC3, Scalar(250.0, 250.0, 248.0))
+        Imgproc.rectangle(page, Rect(150, 700, 1400, 800), Scalar(222.0, 228.0, 236.0), -1)
+        repeat(12) { i -> Imgproc.putText(page, "Section B: your household and income", Point(200.0, 780.0 + i * 60), Imgproc.FONT_HERSHEY_SIMPLEX, 1.2, Scalar(20.0, 20.0, 20.0), 2) }
+        repeat(6) { i -> Imgproc.putText(page, "The club planted forty new trees", Point(150.0, 300.0 + i * 52), Imgproc.FONT_HERSHEY_SIMPLEX, 1.2, Scalar(20.0, 20.0, 20.0), 2) }
+        val src = shaded(page)
+        val panel = Rect(1000, 1460, 500, 30)
+        val paper = Rect(1000, 1600, 500, 200)
+        val shadowedPaper = Rect(20, 1900, 100, 200)
+        for (filter in listOf(PageFilter.Auto, PageFilter.Gray)) {
+            val out = Filters.apply(src, filter)
+            val p = mean(out, panel)[0]
+            val w = mean(out, paper)[0]
+            assertTrue("$filter washed out the panel: $p against paper $w", w - p > 8)
+            assertTrue("$filter left the shadow: ${mean(out, shadowedPaper)[0]}", mean(out, shadowedPaper)[0] > 225)
+        }
+    }
+
     @Test
     fun grayAndAutoKeepSolidShapesSolidAndStillLiftTheShadow() {
         nu.pattern.OpenCV.loadLocally()
