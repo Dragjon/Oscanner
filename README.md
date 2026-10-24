@@ -23,7 +23,8 @@ follows, in [`PLAN.md`](PLAN.md).
   passport or ID photo with a sheet of copies to print.
 - **Translation on the phone**: Text → Translate puts a document's text into another of 58
   languages with Mozilla's Firefox Translations models (each language downloaded once, about
-  20 to 70 MB); the text itself never leaves the phone.
+  20 to 70 MB); the text itself never leaves the phone, and a
+  translation is kept with the document to show again next time.
 - **Documents**: named for what they are once read ("Receipt – Greenleaf Market – 18 Oct 2026",
   "Letter from Riverside Council – 7 Oct 2026"), folders (renamed or deleted with a long press;
   All groups documents by folder), tags and notes, Trash, merge, reorder/rotate/copy out pages, sign,

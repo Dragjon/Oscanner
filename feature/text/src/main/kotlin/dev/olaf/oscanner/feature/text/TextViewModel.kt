@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.olaf.oscanner.core.data.DocumentRepository
 import dev.olaf.oscanner.core.data.PageStore
+import dev.olaf.oscanner.core.data.PageTranslation
 import dev.olaf.oscanner.core.data.ReadProgress
 import dev.olaf.oscanner.core.model.Document
 import dev.olaf.oscanner.core.model.Page
@@ -12,6 +13,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -96,6 +98,32 @@ class TextViewModel(
     val translation: StateFlow<TranslationUi> = _translation.asStateFlow()
     private var translating: Job? = null
 
+    init {
+        viewModelScope.launch { restoreTranslation() }
+    }
+
+    /**
+     * Shows the translation kept from last time, when every page with text still has one, all
+     * between the same two languages. A page fixed since was translated from other words, so
+     * then nothing is shown and translating again does the whole document.
+     */
+    private suspend fun restoreTranslation() {
+        val pages = state.first { !it.loading }.pages.filter { !it.text.isNullOrBlank() }
+        if (pages.isEmpty()) return
+        val kept = pages.map { store.translation(it) ?: return }
+        val (from, to) = kept.first().let { it.from to it.to }
+        if (kept.any { it.from != from || it.to != to }) return
+        val languages = models.languages()
+        _translation.update {
+            // A translation started meanwhile wins.
+            if (it.translatedTo != null) it
+            else it.copy(
+                from = from, to = to, languages = languages, translatedFrom = from, translatedTo = to, showing = true,
+                pages = pages.zip(kept).associate { (page, t) -> page.id to t.text },
+            )
+        }
+    }
+
     /**
      * Sets up the translate sheet: the text's language guessed, the target the one used last
      * (or the phone's language, or English).
@@ -137,6 +165,9 @@ class TextViewModel(
                     val paragraphs = Paragraphs.of(page.text.orEmpty())
                     val translated = translator.translate(from, to, paragraphs).joinToString("\n")
                     _translation.update { it.copy(pages = it.pages + (page.id to translated)) }
+                    // Kept with the page, so it's there next time without translating again.
+                    runCatching { store.keepTranslation(page, PageTranslation(from, to, translated)) }
+                        .onFailure { Log.w("TextViewModel", "Couldn't keep the translation", it) }
                 }
                 _translation.update { it.copy(work = null) }
             } catch (e: CancellationException) {

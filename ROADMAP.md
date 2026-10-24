@@ -178,7 +178,8 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   shown and can't reach the network, so no NDK build was needed. Read lines are joined back
   into paragraphs first, so sentences translate whole. slimt was passed over: its licence is
   GPL-2.0 without "or later", which can't be combined with GPL-3.0. Still to do: translation
-  over the photo, keeping the layout, and keeping translations with the document.
+  over the photo, keeping the layout. A page's translation is kept beside its files (2026-10-24)
+  and shown again next time, until its text is fixed.
 
 ### 3.4 Capture modes
 - ✅ **Slides / screen mode** (2026-10-21): colours kept, screen patterns reduced, squared up to

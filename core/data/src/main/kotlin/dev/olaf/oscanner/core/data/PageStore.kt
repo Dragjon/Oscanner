@@ -903,6 +903,16 @@ class PageStore(
     /** Replaces a page's text with the user's corrections. Boxes for the PDF stay as read. */
     suspend fun setText(pageId: Long, value: String) = db.pages().setText(pageId, value)
 
+    /** The page's last translation, while its text is still what was translated. */
+    suspend fun translation(page: Page): PageTranslation? = withContext(Dispatchers.IO) {
+        page.text?.let { PageTranslation.read(PageTranslation.file(page.originalPath), it) }
+    }
+
+    /** Keeps [translation] of the page's current text, in place of any earlier one. */
+    suspend fun keepTranslation(page: Page, translation: PageTranslation) = withContext(Dispatchers.IO) {
+        page.text?.let { PageTranslation.write(PageTranslation.file(page.originalPath), it, translation) }
+    }
+
     /** Where the printed words are on [page] as [edits] shape it; see [TextReader.printedAreas]. */
     suspend fun printedAreas(page: Page, edits: PageEdits): List<Area> = text.printedAreas(page.originalPath, edits)
 
