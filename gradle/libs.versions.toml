@@ -21,8 +21,10 @@ zxing = "3.5.3"
 biometric = "1.1.0"
 # Biometric 1.1.0 brings Fragment 1.2, whose 16-bit request codes break the activity-result API.
 fragment = "1.8.5"
+webkit = "1.12.1"
 
 [libraries]
+androidx-webkit = { module = "androidx.webkit:webkit", version.ref = "webkit" }
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activityCompose" }
 androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }

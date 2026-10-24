@@ -13,6 +13,7 @@ dependencies {
     implementation(project(":core:imaging"))
     implementation(project(":core:pdf"))
     api(project(":core:ocr"))
+    api(project(":core:translate"))
     implementation(libs.androidx.work.runtime)
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)

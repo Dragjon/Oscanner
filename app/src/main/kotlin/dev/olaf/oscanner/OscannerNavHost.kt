@@ -23,6 +23,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import dev.olaf.oscanner.core.data.DataContainer
+import dev.olaf.oscanner.core.translate.LanguageGuess
 import dev.olaf.oscanner.feature.capture.CaptureRoute
 import dev.olaf.oscanner.feature.capture.CaptureViewModel
 import dev.olaf.oscanner.feature.document.ArrangeRoute
@@ -316,7 +317,15 @@ fun OscannerNavHost(
         ) { entry ->
             val documentId = entry.arguments!!.getLong("documentId")
             val viewModel: TextViewModel = viewModel(
-                factory = viewModelFactory { initializer { TextViewModel(container.documents, container.pages, documentId) } },
+                factory = viewModelFactory {
+                    initializer {
+                        val app = context.applicationContext
+                        TextViewModel(
+                            container.documents, container.pages, documentId, container.translationModels, container.translator,
+                            guessLanguage = { text -> LanguageGuess.of(app, text, container.translationModels.codes) },
+                        )
+                    }
+                },
             )
             TextRoute(viewModel = viewModel, startPage = entry.arguments!!.getInt("page"), onBack = { navController.popBackStack() })
         }

@@ -52,7 +52,7 @@ are not layout references (`PLAN.md` §1 still applies to how we build).
 | To Excel (tables) | ✅ from the text, by layout |
 | To PPT | ✅ a page to a slide, text searchable |
 | PDF to images, PDF to long image | ✅ |
-| Photo translation keeping the layout; text translation | ❌ |
+| Photo translation keeping the layout; text translation | 🟡 text translation on the phone, 58 languages |
 | Markdown view and edit | ❌ (low value) |
 
 ### Documents and PDF tools
@@ -169,12 +169,16 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   columns in Word; the read text, copied or saved as .txt, follows the same order.
 - ✅ **Slides to PowerPoint** (2026-10-21): Share → Share as slides; each page fills a slide,
   its text behind the picture so the deck can be searched.
-- **On-device translation** with downloadable language pairs, shown side by side and overlaid
-  on the photo. Licence check done (2026-10-21): Mozilla's Firefox Translations models are
-  MPL-2.0 (their repository's LICENSE; the repository is archived, the models now live on
-  Mozilla's storage), and the bergamot-translator engine is MPL-2.0 too; both fit a GPL app.
-  Next: a native build (NDK, the engine and its ARM matrix library) and a language-pair
-  download screen. dev.davidv.translator on F-Droid shows it can be done (with slimt).
+- 🟡 **On-device translation** (2026-10-24): Text → Translate, from the language the text is in
+  (guessed by Android's own language finder) into any of 58, through English when neither is
+  English. The models are Firefox's own (MPL-2.0, Firefox Remote Settings
+  `translations-models-v2`, the Android sets where Firefox has them), downloaded once per
+  language and checked against their hashes; the engine is bergamot-translator built for
+  WebAssembly (MPL-2.0, as Firefox ships it, 1.2 MB in the APK), run in a WebView that's never
+  shown and can't reach the network, so no NDK build was needed. Read lines are joined back
+  into paragraphs first, so sentences translate whole. slimt was passed over: its licence is
+  GPL-2.0 without "or later", which can't be combined with GPL-3.0. Still to do: translation
+  over the photo, keeping the layout, and keeping translations with the document.
 
 ### 3.4 Capture modes
 - ✅ **Slides / screen mode** (2026-10-21): colours kept, screen patterns reduced, squared up to

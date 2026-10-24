@@ -1,6 +1,8 @@
 package dev.olaf.oscanner.core.data
 
 import android.content.Context
+import dev.olaf.oscanner.core.translate.TranslationModels
+import dev.olaf.oscanner.core.translate.Translator
 import dev.olaf.oscanner.core.data.db.OscannerDatabase
 import dev.olaf.oscanner.core.ocr.Languages
 
@@ -18,4 +20,6 @@ class DataContainer(context: Context) {
     val pages by lazy { PageStore(appContext, database, text, settings) }
     val signatures by lazy { SignatureStore(appContext) }
     val sampleData by lazy { SampleData(appContext, database) }
+    val translationModels by lazy { TranslationModels(appContext) }
+    val translator by lazy { Translator(appContext, translationModels) }
 }

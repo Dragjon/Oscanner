@@ -23,4 +23,25 @@
     <string name="text_export_sheet_description">An Excel .xlsx file: tables and receipts in rows and columns</string>
     <string name="text_export_plain">Plain text</string>
     <string name="text_export_plain_description">A .txt file with just the words</string>
+    <string name="text_translate">Translate</string>
+    <string name="text_translate_from">From</string>
+    <string name="text_translate_to">Into</string>
+    <string name="text_translate_swap">Swap languages</string>
+    <string name="text_translate_language">Language</string>
+    <string name="text_translate_on_phone">On this phone</string>
+    <string name="text_translate_remove">Remove %1$s from this phone</string>
+    <string name="text_translate_close">Close</string>
+    <string name="text_translate_same">Choose two different languages.</string>
+    <string name="text_translate_download">%1$s will be downloaded first (%2$s), once.</string>
+    <string name="text_translate_download_and">Download and translate</string>
+    <string name="text_translate_private">Translation runs on this phone. Your text isn\'t sent anywhere; only the language files are downloaded, from Mozilla.</string>
+    <string name="text_translate_failed">Couldn\'t translate. Check the connection if a language had to be downloaded, then try again.</string>
+    <string name="text_translate_downloading">Downloading languages… %1$d%%</string>
+    <string name="text_translate_preparing">Getting the translator ready…</string>
+    <string name="text_translate_page">Translating page %1$d of %2$d…</string>
+    <string name="text_translate_stop">Stop</string>
+    <string name="text_translation_of">%1$s → %2$s</string>
+    <string name="text_show_original">Show original</string>
+    <string name="text_show_translation">Show translation</string>
+    <string name="text_translation_waiting">Translating this page…</string>
 </resources>

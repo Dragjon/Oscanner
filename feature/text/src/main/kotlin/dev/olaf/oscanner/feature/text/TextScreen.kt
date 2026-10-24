@@ -31,6 +31,7 @@ import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.TableChart
+import androidx.compose.material.icons.rounded.Translate
 import androidx.compose.material.icons.rounded.TextSnippet
 import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.LibraryBooks
@@ -101,6 +102,8 @@ fun TextRoute(viewModel: TextViewModel, startPage: Int, onBack: () -> Unit) {
     val noApp = stringResource(R.string.text_no_app)
     var editingId by rememberSaveable { mutableStateOf<Long?>(null) }
     var exporting by rememberSaveable { mutableStateOf(false) }
+    var translatingOpen by rememberSaveable { mutableStateOf(false) }
+    val translation by viewModel.translation.collectAsStateWithLifecycle()
 
     LaunchedEffect(viewModel) {
         viewModel.exportedFiles.collect { (file, type) -> if (!context.share(listOf(file), type)) snackbar.showSnackbar(noApp) }
@@ -146,7 +149,16 @@ fun TextRoute(viewModel: TextViewModel, startPage: Int, onBack: () -> Unit) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                if (!current.text.isNullOrBlank()) {
+                if (pages.any { !it.text.isNullOrBlank() }) {
+                    IconButton(onClick = {
+                        viewModel.prepareTranslation()
+                        translatingOpen = true
+                    }) {
+                        Icon(Icons.Rounded.Translate, contentDescription = stringResource(R.string.text_translate))
+                    }
+                }
+                // Fixing text is for the page's own words, not a translation of them.
+                if (!current.text.isNullOrBlank() && !(translation.showing && translation.translatedTo != null)) {
                     val editing = editingId == current.id
                     TextButton(onClick = { editingId = if (editing) null else current.id }) {
                         if (!editing) {
@@ -174,6 +186,8 @@ fun TextRoute(viewModel: TextViewModel, startPage: Int, onBack: () -> Unit) {
                     editing = editingId == page.id,
                     onReadNow = viewModel::readNow,
                     onSave = { viewModel.save(page, it) },
+                    translation = translation,
+                    onShowTranslation = viewModel::showTranslation,
                 )
             }
 
@@ -185,12 +199,27 @@ fun TextRoute(viewModel: TextViewModel, startPage: Int, onBack: () -> Unit) {
                     .widthIn(max = 480.dp)
                     .fillMaxWidth(),
             ) {
-                DockAction(Icons.Rounded.LibraryBooks, stringResource(R.string.text_copy_all), { copy(viewModel.allText()) })
-                PrimaryPill(Icons.Rounded.ContentCopy, stringResource(R.string.text_copy), { copy(current.text.orEmpty()) })
+                DockAction(Icons.Rounded.LibraryBooks, stringResource(R.string.text_copy_all), { copy(viewModel.allShownText()) })
+                PrimaryPill(Icons.Rounded.ContentCopy, stringResource(R.string.text_copy), { copy(viewModel.shownText(current).orEmpty()) })
                 DockAction(Icons.Rounded.FileDownload, stringResource(R.string.text_export), { exporting = true })
             }
         }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 104.dp))
+    }
+
+    if (translatingOpen) {
+        TranslateSheet(
+            translation = translation,
+            onFrom = viewModel::setTranslateFrom,
+            onTo = viewModel::setTranslateTo,
+            onTranslate = {
+                editingId = null
+                viewModel.translate()
+            },
+            onCancel = viewModel::cancelTranslation,
+            onRemove = viewModel::removeLanguage,
+            onDismiss = { translatingOpen = false },
+        )
     }
 
     if (exporting) {
@@ -294,6 +323,8 @@ private fun PageText(
     editing: Boolean,
     onReadNow: () -> Unit,
     onSave: (String) -> Unit,
+    translation: TranslationUi,
+    onShowTranslation: (Boolean) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     val image by rememberPageImage(page.thumbPath ?: page.renderPath, maxSide = 400)
@@ -318,7 +349,30 @@ private fun PageText(
         }
         Spacer(Modifier.height(16.dp))
         val text = page.text
+        val translated = translation.pages[page.id]
+        val from = translation.translatedFrom
+        val to = translation.translatedTo
+        if (from != null && to != null && !text.isNullOrBlank()) {
+            TranslationBar(
+                from = translation.languages.firstOrNull { it.code == from }?.name ?: from,
+                to = translation.languages.firstOrNull { it.code == to }?.name ?: to,
+                showing = translation.showing,
+                onShow = onShowTranslation,
+            )
+            Spacer(Modifier.height(8.dp))
+        }
         when {
+            translation.showing && to != null && !text.isNullOrBlank() && translated == null -> {
+                val work = translation.work
+                if (work != null && work != TranslationWork.Failed) {
+                    TranslationProgress(work)
+                } else {
+                    Text(stringResource(R.string.text_translate_failed), style = MaterialTheme.typography.bodyLarge, color = colors.onSurfaceVariant)
+                }
+            }
+            translation.showing && translated != null -> SelectionContainer {
+                Text(translated, style = MaterialTheme.typography.bodyLarge, color = colors.onSurface)
+            }
             text == null && reading -> ReadingProgressView(progress)
             text == null -> Column {
                 Text(stringResource(R.string.text_not_read), style = MaterialTheme.typography.bodyLarge, color = colors.onSurfaceVariant)
@@ -349,6 +403,27 @@ private fun PageText(
             }
         }
         Spacer(Modifier.height(24.dp))
+    }
+}
+
+/** Which languages the page is translated between, and a switch back to its own words. */
+@Composable
+private fun TranslationBar(from: String, to: String, showing: Boolean, onShow: (Boolean) -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Surface(shape = MaterialTheme.shapes.medium, color = colors.secondaryContainer, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.Translate, contentDescription = null, tint = colors.onSecondaryContainer, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(
+                stringResource(R.string.text_translation_of, from, to),
+                style = MaterialTheme.typography.labelLarge,
+                color = colors.onSecondaryContainer,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = { onShow(!showing) }) {
+                Text(stringResource(if (showing) R.string.text_show_original else R.string.text_show_translation), color = colors.onSecondaryContainer)
+            }
+        }
     }
 }
 

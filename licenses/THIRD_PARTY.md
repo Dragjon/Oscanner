@@ -1,7 +1,8 @@
 # Third-party software and data in Oscanner
 
 Oscanner is licensed under the GNU GPL, version 3 (see `LICENSE`). It includes or uses the following;
-the Apache License 2.0 text is in `licenses/Apache-2.0.txt`.
+the Apache License 2.0 text is in `licenses/Apache-2.0.txt`, the Mozilla Public License 2.0 in
+`licenses/MPL-2.0.txt`.
 
 | Component | Use | License |
 |---|---|---|
@@ -16,8 +17,11 @@ the Apache License 2.0 text is in `licenses/Apache-2.0.txt`.
 | [SymSpell](https://github.com/wolfgarbe/SymSpell) English word and word-pair frequency lists, built from [Google Books Ngram](https://storage.googleapis.com/books/ngrams/books/datasetsv2.html) counts and [SCOWL](http://wordlist.aspell.net/) (bundled as `words.dat`, `pairs.dat`) | Correcting misread words | MIT (lists); Google Books Ngram data CC BY 3.0; SCOWL permissive |
 | `pdf.ttf` "GlyphLessFont" from Tesseract | Invisible text layer in searchable PDFs | Apache-2.0 |
 | [ZXing](https://github.com/zxing/zxing) core 3.5 | QR code and barcode reading | Apache-2.0 |
+| [bergamot-translator](https://github.com/mozilla/translations) built for WebAssembly, version 4.0, and its JavaScript loader `bergamot-translator.js`, as Firefox ships them (from Firefox Remote Settings `translations-wasm-v2` and the Firefox source; bundled, unmodified, `core/translate/src/main/assets/bergamot`) | Translating text on the phone | MPL-2.0 |
+| [Firefox Translations models](https://github.com/mozilla/translations) (Mozilla; downloaded on request from Firefox Remote Settings `translations-models-v2`, not bundled; list written by `tools/translation-models/catalog.py`) | Language pairs for translation | MPL-2.0 |
+| [fzstd](https://github.com/101arrowz/fzstd) 0.1.1 (Arjun Barrett; bundled as `core/translate/src/main/assets/bergamot/fzstd.js`) | Unpacking the zstd-compressed engine and models | MIT (`licenses/fzstd-MIT.txt`) |
 | [Figtree](https://github.com/erikdkennedy/figtree) | The app's typeface | SIL Open Font License 1.1 (`licenses/Figtree-OFL.txt`) |
-| AndroidX (Compose, CameraX, Room, DataStore, WorkManager, Biometric, Navigation, Lifecycle, Fragment, ExifInterface) | App framework | Apache-2.0 |
+| AndroidX (Compose, CameraX, Room, DataStore, WorkManager, Biometric, Navigation, Lifecycle, Fragment, ExifInterface, WebKit) | App framework | Apache-2.0 |
 | Kotlin standard library and kotlinx.coroutines | Language runtime | Apache-2.0 |
 
 No Google Play services, Firebase, ML Kit, analytics or crash-reporting SDKs are used.
