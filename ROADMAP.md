@@ -136,7 +136,8 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   edges unchanged, about 40 ms more a page. Bright is left as it was, for the faintest pencil.
   Still to do: pale shading that flattens away (a tinted panel bigger than the paper estimate's
   reach goes white with the shadows), solid shapes hollowed out, and halftone tints inside
-  pictures.
+  pictures. Tried and dropped (2026-10-24): keeping deep shapes that touch the page's edge (a
+  map printed to the edge); it kept dark desk beside a loosely cropped page as a black band.
 - ✅ **Creases, stains and bleed-through** in Clean up. ✅ Show-through (2026-10-21): Clean up →
   Show-through takes out the back page's print, told from faint ink on the front by its soft
   edges and gray colour; pencil, highlighter and pale photos stay (94% found on a staged page,
