@@ -181,4 +181,20 @@ class LibraryViewModel(
         if (name.isBlank()) return
         viewModelScope.launch { selectedFolder.value = folders.createFolder(name) }
     }
+
+    fun renameFolder(id: Long, name: String) {
+        if (name.isBlank()) return
+        viewModelScope.launch { folders.renameFolder(id, name) }
+    }
+
+    suspend fun documentCount(folderId: Long): Int = folders.documentCount(folderId)
+
+    /** Back to All once the folder is gone; documents put in Trash can be brought back with Undo. */
+    fun deleteFolder(id: Long, trashDocuments: Boolean) {
+        if (selectedFolder.value == id) selectedFolder.value = null
+        viewModelScope.launch {
+            val trashed = folders.deleteFolder(id, trashDocuments)
+            if (trashed.isNotEmpty()) events.send(LibraryEvent.Trashed(trashed))
+        }
+    }
 }

@@ -94,6 +94,13 @@ interface DocumentDao {
     @Query("UPDATE documents SET folderId = :folderId WHERE id = :id")
     suspend fun move(id: Long, folderId: Long?)
 
+    @Query("SELECT id FROM documents WHERE folderId = :folderId AND deletedAt IS NULL")
+    suspend fun idsInFolder(folderId: Long): List<Long>
+
+    /** Every document in [folderId], Trash too, leaves it for no folder. */
+    @Query("UPDATE documents SET folderId = NULL WHERE folderId = :folderId")
+    suspend fun emptyFolder(folderId: Long)
+
     @Query("UPDATE documents SET updatedAt = :now WHERE id = :id")
     suspend fun touch(id: Long, now: Long)
 
@@ -156,6 +163,12 @@ interface FolderDao {
 
     @Insert
     suspend fun insert(folder: FolderEntity): Long
+
+    @Query("UPDATE folders SET name = :name WHERE id = :id")
+    suspend fun rename(id: Long, name: String)
+
+    @Query("DELETE FROM folders WHERE id = :id")
+    suspend fun delete(id: Long)
 
     @Query("DELETE FROM folders")
     suspend fun deleteAll()

@@ -63,6 +63,24 @@ class FolderRepository(private val db: OscannerDatabase) {
 
     suspend fun createFolder(name: String): Long =
         db.folders().insert(FolderEntity(name = name.trim(), createdAt = System.currentTimeMillis()))
+
+    suspend fun renameFolder(id: Long, name: String) = db.folders().rename(id, name.trim())
+
+    /** How many documents (outside Trash) are in [id]. */
+    suspend fun documentCount(id: Long): Int = db.documents().idsInFolder(id).size
+
+    /**
+     * Deletes the folder [id]. Its documents stay, in no folder, unless [trashDocuments]: then
+     * they go to Trash, where they can still be restored. Returns the documents trashed.
+     */
+    suspend fun deleteFolder(id: Long, trashDocuments: Boolean): List<Long> = db.withTransaction {
+        val trashed = if (trashDocuments) db.documents().idsInFolder(id) else emptyList()
+        val now = System.currentTimeMillis()
+        trashed.forEach { db.documents().setDeletedAt(it, now) }
+        db.documents().emptyFolder(id)
+        db.folders().delete(id)
+        trashed
+    }
 }
 
 class TagRepository(private val db: OscannerDatabase) {

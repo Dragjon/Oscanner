@@ -1,6 +1,22 @@
 package dev.olaf.oscanner.feature.library
 
 import android.content.Intent
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.DriveFileRenameOutline
+import androidx.compose.material.icons.rounded.FolderDelete
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.text.style.TextOverflow
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
@@ -52,8 +68,6 @@ import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -169,6 +183,9 @@ fun LibraryRoute(
         onFolderSelected = viewModel::onFolderSelected,
         onTagSelected = viewModel::onTagSelected,
         onCreateFolder = viewModel::createFolder,
+        onRenameFolder = viewModel::renameFolder,
+        onDeleteFolder = viewModel::deleteFolder,
+        folderDocumentCount = viewModel::documentCount,
         onSortOrderChange = viewModel::onSortOrderChange,
         onScan = onScan,
         onImport = onImport,
@@ -204,6 +221,9 @@ fun LibraryScreen(
     onFolderSelected: (Long?) -> Unit,
     onTagSelected: (Long) -> Unit,
     onCreateFolder: (String) -> Unit,
+    onRenameFolder: (Long, String) -> Unit,
+    onDeleteFolder: (id: Long, trashDocuments: Boolean) -> Unit,
+    folderDocumentCount: suspend (Long) -> Int,
     onSortOrderChange: (SortOrder) -> Unit,
     onScan: () -> Unit,
     onImport: () -> Unit,
@@ -217,6 +237,8 @@ fun LibraryScreen(
     var showImport by rememberSaveable { mutableStateOf(false) }
     var showNewFolder by rememberSaveable { mutableStateOf(false) }
     var showMoveSelected by rememberSaveable { mutableStateOf(false) }
+    var renaming by rememberSaveable { mutableStateOf<Long?>(null) }
+    var deleting by rememberSaveable { mutableStateOf<Long?>(null) }
     val chosen = selection.chosen
     val statusBar = WindowInsets.statusBars.asPaddingValues()
     val navBar = WindowInsets.navigationBars.asPaddingValues()
@@ -274,6 +296,8 @@ fun LibraryScreen(
                         selectedId = state.selectedFolderId,
                         onSelect = onFolderSelected,
                         onNewFolder = { showNewFolder = true },
+                        onRename = { renaming = it.id },
+                        onDelete = { deleting = it.id },
                     )
                 }
                 if (state.tags.isNotEmpty()) {
@@ -297,14 +321,32 @@ fun LibraryScreen(
                         )
                     }
                 }
-                items(state.documents, key = { it.id }) { document ->
-                    DocumentCard(
-                        document = document,
-                        onClick = { if (chosen != null) selection.toggle(document.id) else onOpenDocument(document.id) },
-                        onLongClick = { if (chosen == null) selection.start(document.id) else selection.toggle(document.id) },
-                        selected = chosen?.let { document.id in it },
-                        modifier = Modifier.animateItem(),
-                    )
+                // Under All, what's in a folder is grouped under the folder's name, after what isn't.
+                val sections = if (state.selectedFolderId == null) {
+                    librarySections(state.documents, state.folders)
+                } else {
+                    listOf(LibrarySection(null, state.documents))
+                }
+                sections.forEach { section ->
+                    section.folder?.let { folder ->
+                        item(key = "section-${folder.id}") {
+                            SectionHeader(
+                                folder = folder,
+                                count = section.documents.size,
+                                onOpen = { onFolderSelected(folder.id) },
+                                modifier = Modifier.animateItem(),
+                            )
+                        }
+                    }
+                    items(section.documents, key = { it.id }) { document ->
+                        DocumentCard(
+                            document = document,
+                            onClick = { if (chosen != null) selection.toggle(document.id) else onOpenDocument(document.id) },
+                            onLongClick = { if (chosen == null) selection.start(document.id) else selection.toggle(document.id) },
+                            selected = chosen?.let { document.id in it },
+                            modifier = Modifier.animateItem(),
+                        )
+                    }
                 }
                 if (state.documents.isNotEmpty()) {
                     // At the end of the list, the snowman with something to say.
@@ -423,6 +465,15 @@ fun LibraryScreen(
                     showMore = false
                     selection.start(null)
                 },
+                folder = state.folders.firstOrNull { it.id == state.selectedFolderId },
+                onRenameFolder = {
+                    showMore = false
+                    renaming = state.selectedFolderId
+                },
+                onDeleteFolder = {
+                    showMore = false
+                    deleting = state.selectedFolderId
+                },
             )
         }
     }
@@ -445,6 +496,31 @@ fun LibraryScreen(
                 onCreateFolder(name)
             },
             onDismiss = { showNewFolder = false },
+        )
+    }
+
+    state.folders.firstOrNull { it.id == renaming }?.let { folder ->
+        NewFolderDialog(
+            onCreate = { name ->
+                renaming = null
+                onRenameFolder(folder.id, name)
+            },
+            onDismiss = { renaming = null },
+            initial = folder.name,
+            title = stringResource(R.string.library_rename_folder),
+            confirm = stringResource(R.string.library_rename),
+        )
+    }
+
+    state.folders.firstOrNull { it.id == deleting }?.let { folder ->
+        DeleteFolderDialog(
+            folder = folder,
+            documentCount = folderDocumentCount,
+            onDelete = { trash ->
+                deleting = null
+                onDeleteFolder(folder.id, trash)
+            },
+            onDismiss = { deleting = null },
         )
     }
 }
@@ -490,7 +566,11 @@ private fun FolderChips(
     selectedId: Long?,
     onSelect: (Long?) -> Unit,
     onNewFolder: () -> Unit,
+    onRename: (Folder) -> Unit,
+    onDelete: (Folder) -> Unit,
 ) {
+    // The folder whose menu is open, from a long press on its chip.
+    var menuFor by remember { mutableStateOf<Long?>(null) }
     LazyRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         contentPadding = PaddingValues(horizontal = 0.dp),
@@ -499,11 +579,66 @@ private fun FolderChips(
             FolderChip(stringResource(R.string.library_all), selected = selectedId == null) { onSelect(null) }
         }
         items(folders, key = { it.id }) { folder ->
-            FolderChip(folder.name, selected = folder.id == selectedId) { onSelect(folder.id) }
+            Box {
+                FolderChip(folder.name, selected = folder.id == selectedId, onLongClick = { menuFor = folder.id }) { onSelect(folder.id) }
+                DropdownMenu(
+                    expanded = menuFor == folder.id,
+                    onDismissRequest = { menuFor = null },
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                ) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.library_rename_folder)) },
+                        leadingIcon = { Icon(Icons.Rounded.DriveFileRenameOutline, contentDescription = null) },
+                        onClick = {
+                            menuFor = null
+                            onRename(folder)
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.library_delete_folder)) },
+                        leadingIcon = { Icon(Icons.Rounded.FolderDelete, contentDescription = null) },
+                        onClick = {
+                            menuFor = null
+                            onDelete(folder)
+                        },
+                    )
+                }
+            }
         }
         item(key = "new") {
             FolderChip(stringResource(R.string.library_new_folder), selected = false, leadingAdd = true, onClick = onNewFolder)
         }
+    }
+}
+
+/** A folder's name over its documents under All; tapping it opens the folder. */
+@Composable
+private fun SectionHeader(folder: Folder, count: Int, onOpen: () -> Unit, modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp)
+            .clip(MaterialTheme.shapes.small)
+            .clickable(onClickLabel = stringResource(R.string.library_open_folder), onClick = onOpen)
+            .semantics(mergeDescendants = true) { heading() }
+            .padding(horizontal = 4.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Rounded.Folder, contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(
+            folder.name,
+            style = MaterialTheme.typography.titleSmall,
+            color = colors.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text("$count", style = MaterialTheme.typography.labelLarge, color = colors.onSurfaceVariant)
+        Spacer(Modifier.weight(1f))
+        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(20.dp))
     }
 }
 
@@ -517,34 +652,44 @@ private fun TagChips(tags: List<Tag>, selectedId: Long?, onSelect: (Long) -> Uni
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FolderChip(
     label: String,
     selected: Boolean,
     leadingAdd: Boolean = false,
+    /** A folder's chip opens its menu on a long press; others have none. */
+    onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
-    FilterChip(
-        selected = selected,
-        onClick = onClick,
-        label = { Text(label, style = MaterialTheme.typography.labelLarge) },
-        leadingIcon = if (leadingAdd) {
-            { Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp)) }
-        } else {
-            null
-        },
-        shape = MaterialTheme.shapes.medium,
-        border = null,
-        colors = FilterChipDefaults.filterChipColors(
-            containerColor = colors.surfaceContainer,
-            labelColor = colors.onSurfaceVariant,
-            iconColor = colors.onSurfaceVariant,
-            selectedContainerColor = colors.primary,
-            selectedLabelColor = colors.onPrimary,
-        ),
-        modifier = Modifier.height(40.dp),
-    )
+    val haptics = LocalHapticFeedback.current
+    val content = if (selected) colors.onPrimary else colors.onSurfaceVariant
+    Row(
+        modifier = Modifier
+            .height(40.dp)
+            .clip(MaterialTheme.shapes.medium)
+            .background(if (selected) colors.primary else colors.surfaceContainer)
+            .combinedClickable(
+                role = Role.Tab,
+                onClick = onClick,
+                onLongClick = onLongClick?.let { open ->
+                    {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        open()
+                    }
+                },
+                onLongClickLabel = onLongClick?.let { stringResource(R.string.library_folder_options) },
+            )
+            .semantics { this.selected = selected }
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (leadingAdd) {
+            Icon(Icons.Rounded.Add, contentDescription = null, tint = content, modifier = Modifier.padding(end = 8.dp).size(18.dp))
+        }
+        Text(label, style = MaterialTheme.typography.labelLarge, color = content)
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -556,6 +701,10 @@ private fun MoreSheet(
     onOpenSettings: () -> Unit,
     onOpenTrash: () -> Unit,
     onSelect: () -> Unit,
+    /** The folder being looked at, which can be renamed or deleted from here. */
+    folder: Folder?,
+    onRenameFolder: () -> Unit,
+    onDeleteFolder: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -570,6 +719,20 @@ private fun MoreSheet(
             description = stringResource(R.string.library_select_description),
             onClick = onSelect,
         )
+        if (folder != null) {
+            SheetAction(
+                icon = Icons.Rounded.DriveFileRenameOutline,
+                title = stringResource(R.string.library_rename_folder),
+                description = folder.name,
+                onClick = onRenameFolder,
+            )
+            SheetAction(
+                icon = Icons.Rounded.FolderDelete,
+                title = stringResource(R.string.library_delete_folder),
+                description = stringResource(R.string.library_delete_folder_description),
+                onClick = onDeleteFolder,
+            )
+        }
         SheetAction(
             icon = Icons.Rounded.CreateNewFolder,
             title = stringResource(R.string.library_new_folder),
@@ -637,14 +800,21 @@ private fun MoreSheet(
     }
 }
 
+/** A folder's name: for a new folder, or, given [initial] and [title], to rename one. */
 @Composable
-private fun NewFolderDialog(onCreate: (String) -> Unit, onDismiss: () -> Unit) {
-    var name by rememberSaveable { mutableStateOf("") }
+private fun NewFolderDialog(
+    onCreate: (String) -> Unit,
+    onDismiss: () -> Unit,
+    initial: String = "",
+    title: String = stringResource(R.string.library_new_folder),
+    confirm: String = stringResource(R.string.library_create),
+) {
+    var name by rememberSaveable { mutableStateOf(initial) }
     val colors = MaterialTheme.colorScheme
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = colors.surfaceContainer,
-        title = { Text(stringResource(R.string.library_new_folder)) },
+        title = { Text(title) },
         text = {
             OutlinedTextField(
                 value = name,
@@ -661,7 +831,68 @@ private fun NewFolderDialog(onCreate: (String) -> Unit, onDismiss: () -> Unit) {
         },
         confirmButton = {
             TextButton(onClick = { onCreate(name) }, enabled = name.isNotBlank()) {
-                Text(stringResource(R.string.library_create))
+                Text(confirm)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.library_cancel), color = colors.onSurfaceVariant)
+            }
+        },
+    )
+}
+
+/**
+ * Confirms deleting [folder]. Its documents are kept, in no folder, unless the person ticks to
+ * put them in Trash too, from where they can still be restored.
+ */
+@Composable
+private fun DeleteFolderDialog(
+    folder: Folder,
+    documentCount: suspend (Long) -> Int,
+    onDelete: (trashDocuments: Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    var count by remember { mutableStateOf<Int?>(null) }
+    var trash by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(folder.id) { count = documentCount(folder.id) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = colors.surfaceContainer,
+        title = { Text(stringResource(R.string.library_delete_folder_confirm, folder.name)) },
+        text = {
+            val n = count
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                when {
+                    n == null -> Unit
+                    n == 0 -> Text(stringResource(R.string.library_delete_folder_empty), color = colors.onSurfaceVariant)
+                    else -> {
+                        Text(
+                            if (trash) {
+                                pluralStringResource(R.plurals.library_delete_folder_trash, n, n)
+                            } else {
+                                pluralStringResource(R.plurals.library_delete_folder_keep, n, n)
+                            },
+                            color = colors.onSurfaceVariant,
+                        )
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(MaterialTheme.shapes.small)
+                                .toggleable(value = trash, role = Role.Checkbox, onValueChange = { trash = it }),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(checked = trash, onCheckedChange = null, modifier = Modifier.padding(8.dp))
+                            Text(stringResource(R.string.library_delete_folder_with_documents), color = colors.onSurface)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onDelete(trash && (count ?: 0) > 0) }, enabled = count != null) {
+                Text(stringResource(R.string.library_delete), color = colors.error)
             }
         },
         dismissButton = {

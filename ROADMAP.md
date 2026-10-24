@@ -199,6 +199,12 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   the picture, such as the catchlights in eyes, is left alone. Torn corners and large stains are
   still to do.
 
+### Library
+- ✅ **Folders** (2026-10-24): long-press a folder's chip, or open the folder and use More, to
+  rename or delete it. Deleting keeps its documents (under All) unless you choose to put them
+  in Trash, with Undo. Under All, documents in folders are grouped under each folder's name,
+  after those in none; tapping the name opens the folder.
+
 ### 3.6 Optional, later
 - **On-device questions and summaries** with a small downloadable model, off by default, so
   the app stays offline-only.
