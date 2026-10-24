@@ -1,6 +1,7 @@
 package dev.olaf.oscanner.core.pdf
 
 import java.io.OutputStream
+import kotlin.math.min
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -58,19 +59,48 @@ object DocxWriter {
         append("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>""")
         append("""<w:document xmlns:w="$W" xmlns:r="$R" xmlns:wp="$WP" xmlns:a="$A" xmlns:pic="$PIC"><w:body>""")
         append("""<w:p><w:pPr><w:pStyle w:val="Title"/></w:pPr><w:r><w:t xml:space="preserve">${escape(title)}</w:t></w:r></w:p>""")
+        // Parts of a page set in two columns become sections of two columns, each started
+        // without a break of its own; the paragraph that ends a section carries its settings.
+        var columns = 1
+        var written = false
+        var lastColumn = 0
+        fun endSection() {
+            if (written) append("""<w:p><w:pPr>${section(columns)}</w:pPr></w:p>""")
+            written = false
+        }
         pages.forEachIndexed { index, page ->
-            if (index > 0) append("""<w:p><w:r><w:br w:type="page"/></w:r></w:p>""")
+            if (index > 0) {
+                if (columns == 2) { endSection(); columns = 1 }
+                append("""<w:p><w:r><w:br w:type="page"/></w:r></w:p>""")
+            }
             for (block in page) {
+                val wanted = if (block.column == 0) 1 else 2
+                if (wanted != columns) {
+                    endSection()
+                    columns = wanted
+                    lastColumn = 0
+                }
+                if (block.column == 2 && lastColumn == 1) append("""<w:p><w:r><w:br w:type="column"/></w:r></w:p>""")
+                lastColumn = block.column
                 when (block) {
                     is LayoutParagraph -> append(paragraph(block))
                     is LayoutPicture -> append(picture(block, pictures.indexOf(block) + 1))
                 }
+                written = true
             }
         }
-        // Letter/A4-neutral margins of 2 cm; the page size is left to the reader's default.
-        append("""<w:sectPr><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="567" w:footer="567" w:gutter="0"/></w:sectPr>""")
+        append(section(columns))
         append("</w:body></w:document>")
     }
+
+    /**
+     * A section's settings: it runs on from the one before on the same page, in [columns]
+     * columns 1 cm apart. Letter/A4-neutral margins of 2 cm; the page size is left to the
+     * reader's default.
+     */
+    private fun section(columns: Int) =
+        """<w:sectPr><w:type w:val="continuous"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="567" w:footer="567" w:gutter="0"/>""" +
+            """<w:cols w:num="$columns" w:space="567"/></w:sectPr>"""
 
     private fun paragraph(p: LayoutParagraph): String {
         val style = when (p.style) {
@@ -92,7 +122,9 @@ object DocxWriter {
 
     /** An inline picture as wide as it was on the page, sized in EMU (914,400 to the inch). */
     private fun picture(p: LayoutPicture, n: Int): String {
-        val cx = (TEXT_WIDTH_EMU * p.widthShare.coerceIn(0.05f, 1f)).toLong()
+        // In a column, no wider than the column.
+        val most = if (p.column == 0) TEXT_WIDTH_EMU else (TEXT_WIDTH_EMU - COLUMN_SPACE_EMU) / 2
+        val cx = min((TEXT_WIDTH_EMU * p.widthShare.coerceIn(0.05f, 1f)).toLong(), most)
         val cy = cx * p.pixelHeight / p.pixelWidth.coerceAtLeast(1)
         val align = if (p.widthShare < 0.9f) """<w:pPr><w:jc w:val="center"/></w:pPr>""" else ""
         return """<w:p>$align<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="$cx" cy="$cy"/>""" +
@@ -139,6 +171,8 @@ object DocxWriter {
     private const val BODY_HALF_POINTS = 22
     /** The text column between 2 cm margins on an A4 page: 17 cm. */
     private const val TEXT_WIDTH_EMU = 6_120_000L
+    /** The space between two columns: 1 cm (567 twips). */
+    private const val COLUMN_SPACE_EMU = 360_000L
 
     private const val CONTENT_TYPES = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="jpeg" ContentType="image/jpeg"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>"""
 

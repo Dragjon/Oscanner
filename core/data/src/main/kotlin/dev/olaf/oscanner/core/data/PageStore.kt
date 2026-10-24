@@ -824,7 +824,7 @@ class PageStore(
             val h = ((area.bottom - area.top) * bitmap.height).toInt().coerceIn(1, bitmap.height - y)
             val crop = android.graphics.Bitmap.createBitmap(bitmap, x, y, w, h)
             val jpeg = java.io.ByteArrayOutputStream().also { crop.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, it) }.toByteArray()
-            LayoutPicture(jpeg, crop.width, crop.height, area.right - area.left, area.top).also { crop.recycle() }
+            LayoutPicture(jpeg, crop.width, crop.height, area.right - area.left, area.top, area.left).also { crop.recycle() }
         }
         render?.recycle()
         // Words inside a picture (a chart's labels) are part of it.
@@ -833,13 +833,7 @@ class PageStore(
             val cy = (w.top + w.bottom) / 2
             areas.any { it.contains(cx, cy) }
         }
-        val blocks = mutableListOf<LayoutBlock>()
-        blocks += PageLayout.paragraphs(text)
-        for (picture in pictures) {
-            val at = blocks.indexOfFirst { it.top > picture.top }.takeIf { it >= 0 } ?: blocks.size
-            blocks.add(at, picture)
-        }
-        return blocks
+        return PageLayout.blocks(text, pictures)
     }
 
     /**

@@ -154,7 +154,8 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   two lines are still to do.
 - ✅ **Better Word export** (2026-10-21): headings, centred lines, paragraphs and letter sizes
   rebuilt from where the read words sit; pictures (photos, charts, logos) cut from the page and
-  put back in reading order. Columns side by side still come out one after the other.
+  put back in reading order. Text in two columns (2026-10-24) is read down each column, not across both, and set in two
+  columns in Word; the read text, copied or saved as .txt, follows the same order.
 - ✅ **Slides to PowerPoint** (2026-10-21): Share → Share as slides; each page fills a slide,
   its text behind the picture so the deck can be searched.
 - **On-device translation** with downloadable language pairs, shown side by side and overlaid

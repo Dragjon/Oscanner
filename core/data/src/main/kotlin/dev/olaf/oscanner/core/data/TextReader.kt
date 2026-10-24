@@ -22,6 +22,7 @@ import dev.olaf.oscanner.core.ocr.PaddleReader
 import dev.olaf.oscanner.core.ocr.PageReader
 import dev.olaf.oscanner.core.ocr.PrintSorter
 import dev.olaf.oscanner.core.ocr.TextRecognizer
+import dev.olaf.oscanner.core.pdf.PageLayout
 import dev.olaf.oscanner.core.pdf.PdfWord
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -126,7 +127,9 @@ class TextReader(
                         // stale and may hold words that must not be kept. It's queued again.
                         if (db.pages().get(page.id)?.editsJson != page.editsJson) continue
                         withContext(Dispatchers.IO) { writeOcr(ocrFile(page), result) }
-                        db.pages().setText(page.id, result.text)
+                        // Text in two columns reads down each column, not across both.
+                        val words = result.words.map { PdfWord(it.text, it.left, it.top, it.right, it.bottom) }
+                        db.pages().setText(page.id, PageLayout.columnText(words) ?: result.text)
                     }
                 }
             }
