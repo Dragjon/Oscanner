@@ -1,0 +1,1 @@
+Imported PDFs keep their own text (Android 15+). Send a PDF to a computer on the same Wi-Fi from Share, no account or cable. Two-column pages read down each column and stay in columns in Word. Wrapped table cells stay one cell in Excel. Auto, Bright and Gray sharpen text edges without lifting paper grain.
