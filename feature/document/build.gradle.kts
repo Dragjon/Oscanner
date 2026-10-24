@@ -16,6 +16,7 @@ dependencies {
     implementation(project(":core:data"))
     implementation(project(":core:imaging"))
     implementation(libs.androidx.core.ktx)
+    implementation(libs.zxing.core)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)

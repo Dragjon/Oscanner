@@ -198,7 +198,11 @@ benchmark it belongs to, committed and pushed, released only when everything is 
 ### 3.6 Optional, later
 - **On-device questions and summaries** with a small downloadable model, off by default, so
   the app stays offline-only.
-- **Send to computer without an account**: a local Wi-Fi page or QR hand-off on the same network.
+- ✅ **Send to computer without an account** (2026-10-24): Share → Send to a computer shows an
+  address (and a QR code) to open in a browser on the same Wi-Fi or the phone's hotspot; the
+  phone serves the PDF itself while the dialog is open, at most 15 minutes. The address holds
+  an 8-letter secret and the server stops after 50 wrong guesses. Plain HTTP on the local
+  network, which the dialog says.
 - **Formula to LaTeX**, **counting objects**: only if people ask.
 
 ### Not planned

@@ -46,6 +46,7 @@ sealed interface DocumentEvent {
     data class ShareImages(val files: List<File>) : DocumentEvent
     data class ShareFile(val file: File, val mime: String) : DocumentEvent
     data class Print(val file: File, val title: String) : DocumentEvent
+    data class SendToComputer(val file: File, val title: String) : DocumentEvent
     data object Saved : DocumentEvent
     data object Failed : DocumentEvent
     data object NoFace : DocumentEvent
@@ -97,6 +98,11 @@ class DocumentViewModel(
     }
 
     fun shareSlides() = work(Busy.PreparingImages) { DocumentEvent.ShareFile(store.exportPptx(documentId), PPTX) }
+
+    /** The PDF, to be downloaded by a computer on the same Wi-Fi. */
+    fun sendToComputer() = work(Busy.PreparingPdf) {
+        DocumentEvent.SendToComputer(store.exportPdf(documentId), state.value.document?.title ?: "Scan")
+    }
 
     fun print() = work(Busy.PreparingPdf) {
         DocumentEvent.Print(store.exportPdf(documentId), state.value.document?.title ?: "Scan")

@@ -45,6 +45,7 @@ import androidx.compose.material.icons.rounded.Draw
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.FileOpen
 import androidx.compose.material.icons.rounded.Compress
+import androidx.compose.material.icons.rounded.Computer
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.ViewDay
 import androidx.compose.material.icons.rounded.Lock
@@ -136,6 +137,8 @@ fun DocumentRoute(
     // The page an ID photo is being made from, while its options are asked.
     var idPhotoPage by rememberSaveable { mutableStateOf<Int?>(null) }
     var details by rememberSaveable { mutableStateOf(false) }
+    // The PDF being offered to a computer, with the document's title, while that dialog is open.
+    var sending by remember { mutableStateOf<Pair<java.io.File, String>?>(null) }
 
     val savedText = stringResource(R.string.document_saved)
     val failedText = stringResource(R.string.document_failed)
@@ -150,6 +153,7 @@ fun DocumentRoute(
                 is DocumentEvent.ShareImages -> if (!context.share(event.files, "image/jpeg")) snackbar.showSnackbar(noAppText)
                 is DocumentEvent.ShareFile -> if (!context.share(listOf(event.file), event.mime)) snackbar.showSnackbar(noAppText)
                 is DocumentEvent.Print -> context.printPdf(event.file, event.title)
+                is DocumentEvent.SendToComputer -> sending = event.file to event.title
                 DocumentEvent.Saved -> snackbar.showSnackbar(savedText)
                 DocumentEvent.Failed -> snackbar.showSnackbar(failedText)
                 DocumentEvent.NoFace -> snackbar.showSnackbar(noFaceText)
@@ -334,6 +338,7 @@ fun DocumentRoute(
                             SheetAction(Icons.Rounded.ViewDay, stringResource(R.string.document_share_long), stringResource(R.string.document_share_long_description), act(viewModel::shareLongImage))
                         }
                         SheetAction(Icons.Rounded.Slideshow, stringResource(R.string.document_share_slides), stringResource(R.string.document_share_slides_description), act(viewModel::shareSlides))
+                        SheetAction(Icons.Rounded.Computer, stringResource(R.string.document_send), stringResource(R.string.document_send_description), act(viewModel::sendToComputer))
                         SheetAction(Icons.Rounded.Portrait, stringResource(R.string.document_id_photo), stringResource(R.string.document_id_photo_description), act { idPhotoPage = pagerState.currentPage })
                         SheetSection(stringResource(R.string.document_section_export))
                         SheetAction(Icons.Rounded.SaveAlt, stringResource(R.string.document_save_pdf), stringResource(R.string.document_save_pdf_description), act { saveLauncher.launch("${document.title}.pdf") })
@@ -412,6 +417,9 @@ fun DocumentRoute(
             },
             onDismiss = { idPhotoPage = null },
         )
+    }
+    sending?.let { (file, title) ->
+        SendToComputerDialog(file, title, onDismiss = { sending = null })
     }
     if (protecting) {
         PasswordDialog(

@@ -30,6 +30,7 @@ follows, in [`PLAN.md`](PLAN.md).
   become a document to sign, mark up, black out, clean and merge like a scan.
 - **Everywhere**: share sheet in and out as PDF, a smaller PDF, separate pictures or one long
   picture; save to any file provider, print, a Scan shortcut, Quick Settings tile and widget.
+  Send to a computer on the same Wi-Fi: it downloads the PDF in a browser, no account or cable.
 
 What's next, measured against CamScanner, is in [`ROADMAP.md`](ROADMAP.md).
 

@@ -228,4 +228,16 @@
     <string name="document_failed">Something went wrong. Nothing was changed.</string>
     <string name="document_no_share_app">No app on this phone can receive it.</string>
     <string name="document_still_enhancing">Enhancing…</string>
+    <string name="document_send">Send to a computer</string>
+    <string name="document_send_description">Download it in a browser on a computer on the same Wi-Fi, no account or cable</string>
+    <string name="document_send_title">Send to a computer</string>
+    <string name="document_send_body">On a computer on the same Wi-Fi, type this address into a browser:</string>
+    <string name="document_send_qr">The same address as a QR code</string>
+    <string name="document_send_waiting">Waiting for the computer…</string>
+    <string name="document_send_sent">Downloaded by %1$s</string>
+    <string name="document_send_privacy">Anyone on this Wi-Fi who has the address can download the PDF while this stays open. Closing it stops sharing.</string>
+    <string name="document_send_no_wifi">This phone isn\'t on a Wi-Fi network. Connect it to the same Wi-Fi as the computer, or turn on its hotspot and connect the computer to that.</string>
+    <string name="document_send_stopped">Sharing stopped after 15 minutes. Close this and send it again if you still need it.</string>
+    <string name="document_send_retry">Try again</string>
+    <string name="document_send_stop">Stop sharing</string>
 </resources>
