@@ -19,17 +19,75 @@ object TableLayout {
         // Within a row, words closer than about a letter's width are one phrase ("Total due").
         val phrases = rows.map { row -> phrases(row, height * PHRASE_GAP) }
         val columns = columns(phrases, height)
-        return phrases.map { row ->
+        val built = rows.zip(phrases) { row, rowPhrases ->
             val cells = MutableList(columns.size) { "" }
-            for (p in row) {
+            for (p in rowPhrases) {
                 val middle = (p.left + p.right) / 2
                 val col = columns.indexOfFirst { middle >= it.first && middle <= it.second }.takeIf { it >= 0 }
                     ?: columns.indices.minBy { i -> distance(middle, columns[i]) }
                 cells[col] = if (cells[col].isEmpty()) p.text else cells[col] + " " + p.text
             }
-            cells
+            Row(cells, row.minOf { it.top }, row.maxOf { it.bottom })
         }
+        return joinWrapped(built, height).map { it.cells }
     }
+
+    private class Row(val cells: List<String>, val top: Float, val bottom: Float) {
+        val filled = cells.indices.filter { cells[it].isNotEmpty() }.toSet()
+    }
+
+    /**
+     * A cell whose text wraps onto a second line gives a row of its own holding only that
+     * column's words, set as close under (or, with the row's other cells centred on it, above)
+     * as lines of one paragraph. Such a row is folded into the fuller row it belongs to: the
+     * nearer one when it sits between two.
+     */
+    private fun joinWrapped(rows: List<Row>, height: Float): List<Row> {
+        // Whether [part] can be a wrapped piece of [whole], and how far apart they are.
+        fun gapIfWraps(part: Row, whole: Row): Float? {
+            val gap = if (whole.top < part.top) part.top - whole.bottom else whole.top - part.bottom
+            val wraps = whole.filled.size >= 2 && part.filled.isNotEmpty() && whole.filled.containsAll(part.filled) &&
+                part.filled.size < whole.filled.size && gap < WRAP_GAP * height
+            return gap.takeIf { wraps }
+        }
+        // For each row: -1 to fold into the one above, 1 into the one below, 0 to stay.
+        val direction = rows.indices.map { i ->
+            val up = rows.getOrNull(i - 1)?.let { gapIfWraps(rows[i], it) }
+            val down = rows.getOrNull(i + 1)?.let { gapIfWraps(rows[i], it) }
+            when {
+                up != null && (down == null || up <= down) -> -1
+                down != null -> 1
+                else -> 0
+            }
+        }
+        val out = mutableListOf<Row>()
+        var pending: Row? = null
+        rows.forEachIndexed { i, row ->
+            val current = pending?.let { combine(it, row) } ?: row
+            pending = null
+            when {
+                direction[i] == 1 -> pending = current
+                direction[i] == -1 && out.isNotEmpty() -> out[out.lastIndex] = combine(out.last(), current)
+                else -> out += current
+            }
+        }
+        pending?.let { out += it }
+        return out
+    }
+
+    /** Two rows as one, each cell's text top to bottom; a word broken with a hyphen is mended. */
+    private fun combine(upper: Row, lower: Row) = Row(
+        upper.cells.zip(lower.cells) { a, b ->
+            when {
+                a.isEmpty() -> b
+                b.isEmpty() -> a
+                a.endsWith("-") && b.first().isLowerCase() -> a.dropLast(1) + b
+                else -> "$a $b"
+            }
+        },
+        min(upper.top, lower.top),
+        max(upper.bottom, lower.bottom),
+    )
 
     private data class Phrase(val text: String, val left: Float, val right: Float)
 
@@ -101,6 +159,8 @@ object TableLayout {
 
     /** Words closer than this many line heights are one phrase. */
     private const val PHRASE_GAP = 0.9f
+    /** A row this close (in line heights) to a fuller one can be a cell's wrapped line. */
+    private const val WRAP_GAP = 0.6f
     /** Column gaps narrower than this many line heights are closed. */
     private const val COLUMN_GAP = 0.5f
 }

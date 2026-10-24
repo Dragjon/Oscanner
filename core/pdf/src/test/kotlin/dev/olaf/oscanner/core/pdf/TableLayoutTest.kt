@@ -41,6 +41,49 @@ class TableLayoutTest {
         assertEquals(listOf("Rent", "1200"), cells[1])
     }
 
+    /** A word at column x (in letters) on a line at y (in lines, fractions allowed). */
+    private fun wordAt(text: String, x: Int, y: Float) =
+        PdfWord(text, x / 100f, y / 60f, (x + text.length) / 100f, (y + 0.8f) / 60f)
+
+    @Test
+    fun aCellWrappedOntoTwoLinesStaysOneCell() {
+        // A ruled table: rows 2 lines apart, the description wrapping at single spacing.
+        val words = listOf(
+            wordAt("Item", 5, 10f), wordAt("Description", 20, 10f), wordAt("Price", 60, 10f),
+            wordAt("A1", 5, 12f), wordAt("Steel", 20, 12f), wordAt("bracket,", 26, 12f), wordAt("4.50", 60, 12f),
+            wordAt("zinc", 20, 13f), wordAt("plated", 25, 13f),
+            wordAt("B2", 5, 15f), wordAt("Hinge", 20, 15f), wordAt("2.10", 60, 15f),
+        )
+        assertEquals(
+            listOf(
+                listOf("Item", "Description", "Price"),
+                listOf("A1", "Steel bracket, zinc plated", "4.50"),
+                listOf("B2", "Hinge", "2.10"),
+            ),
+            TableLayout.cells(words),
+        )
+    }
+
+    @Test
+    fun aCellWrappedAroundCentredNeighboursStaysOneCell() {
+        // The item and price sit on the middle of three description lines.
+        val words = listOf(
+            wordAt("Code", 5, 10f), wordAt("Description", 20, 10f), wordAt("Price", 60, 10f),
+            wordAt("long", 20, 12f), wordAt("descrip-", 25, 12f),
+            wordAt("C3", 5, 13f), wordAt("tion", 20, 13f), wordAt("of", 25, 13f), wordAt("9.99", 60, 13f),
+            wordAt("the", 20, 14f), wordAt("part", 24, 14f),
+            wordAt("D4", 5, 16f), wordAt("Nut", 20, 16f), wordAt("0.20", 60, 16f),
+        )
+        assertEquals(
+            listOf(
+                listOf("Code", "Description", "Price"),
+                listOf("C3", "long description of the part", "9.99"),
+                listOf("D4", "Nut", "0.20"),
+            ),
+            TableLayout.cells(words),
+        )
+    }
+
     @Test
     fun plainTextIsOneColumn() {
         val words = listOf(word("Dear", 5, 1), word("Sam,", 10, 1), word("Thank", 5, 3), word("you.", 11, 3))

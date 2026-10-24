@@ -150,8 +150,8 @@ benchmark it belongs to, committed and pushed, released only when everything is 
 
 ### 3.3 Office and language
 - ✅ **Tables to Excel** (2026-10-21): Text → Export → Spreadsheet places read words in rows
-  and columns by where they sit; numbers stay numbers. Ruled tables with cells that wrap onto
-  two lines are still to do.
+  and columns by where they sit; numbers stay numbers. A cell whose text wraps onto
+  more lines (2026-10-24) stays one cell, also when its row's other cells sit centred on it.
 - ✅ **Better Word export** (2026-10-21): headings, centred lines, paragraphs and letter sizes
   rebuilt from where the read words sit; pictures (photos, charts, logos) cut from the page and
   put back in reading order. Text in two columns (2026-10-24) is read down each column, not across both, and set in two
