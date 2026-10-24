@@ -42,7 +42,8 @@ sealed interface TranslationWork {
 
 /**
  * The document's text in another language: [from] and [to], the [languages] to choose from,
- * what's being done, and the pages translated so far ([pages], by page id). The page shows the
+ * what's being done, and the pages translated so far ([pages], by page id), with [pictures] of
+ * those pages with the translation set in place of their own words. The page shows the
  * translation while [showing].
  */
 data class TranslationUi(
@@ -51,6 +52,7 @@ data class TranslationUi(
     val languages: List<TranslationLanguage> = emptyList(),
     val work: TranslationWork? = null,
     val pages: Map<Long, String> = emptyMap(),
+    val pictures: Map<Long, File> = emptyMap(),
     val translatedFrom: String? = null,
     val translatedTo: String? = null,
     val showing: Boolean = false,
@@ -82,8 +84,8 @@ class TextViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TextUiState())
 
     /** A finished export and the MIME type to share it as. */
-    private val exports = Channel<Pair<File, String>>(Channel.BUFFERED)
-    val exportedFiles: Flow<Pair<File, String>> = exports.receiveAsFlow()
+    private val exports = Channel<Pair<List<File>, String>>(Channel.BUFFERED)
+    val exportedFiles: Flow<Pair<List<File>, String>> = exports.receiveAsFlow()
 
     /** Every page's text, pages separated by a blank line. */
     fun allText(): String = state.value.pages.mapNotNull { it.text?.takeIf(String::isNotBlank) }.joinToString("\n\n")
@@ -114,15 +116,26 @@ class TextViewModel(
         val (from, to) = kept.first().let { it.from to it.to }
         if (kept.any { it.from != from || it.to != to }) return
         val languages = models.languages()
+        var restored = false
         _translation.update {
             // A translation started meanwhile wins.
             if (it.translatedTo != null) it
             else it.copy(
                 from = from, to = to, languages = languages, translatedFrom = from, translatedTo = to, showing = true,
                 pages = pages.zip(kept).associate { (page, t) -> page.id to t.text },
-            )
+            ).also { restored = true }
+        }
+        if (!restored) return
+        // The pictures are drawn again, from the page as it is now.
+        pages.zip(kept).forEach { (page, t) ->
+            val picture = drawn(page, t.onPage) ?: return@forEach
+            _translation.update { if (it.translatedTo == to && it.pages[page.id] == t.text) it.copy(pictures = it.pictures + (page.id to picture)) else it }
         }
     }
+
+    private suspend fun drawn(page: Page, onPage: List<String>): File? =
+        if (onPage.isEmpty()) null
+        else runCatching { store.drawTranslation(page, onPage) }.onFailure { Log.w("TextViewModel", "Couldn't draw the translation", it) }.getOrNull()
 
     /**
      * Sets up the translate sheet: the text's language guessed, the target the one used last
@@ -157,16 +170,23 @@ class TextViewModel(
                 missing.forEachIndexed { i, code ->
                     models.download(code) { f -> _translation.update { it.copy(work = TranslationWork.Downloading((i + f) / missing.size)) } }
                 }
-                _translation.update { it.copy(work = TranslationWork.Preparing, languages = models.languages(), pages = emptyMap(), translatedFrom = from, translatedTo = to, showing = true) }
+                _translation.update { it.copy(work = TranslationWork.Preparing, languages = models.languages(), pages = emptyMap(), pictures = emptyMap(), translatedFrom = from, translatedTo = to, showing = true) }
                 val pages = state.value.pages.filter { !it.text.isNullOrBlank() }
                 pages.forEachIndexed { index, page ->
                     // The first page also waits for the engine to start: that shows as preparing.
                     if (index > 0) _translation.update { it.copy(work = TranslationWork.Translating(index + 1, pages.size)) }
-                    val paragraphs = Paragraphs.of(page.text.orEmpty())
-                    val translated = translator.translate(from, to, paragraphs).joinToString("\n")
+                    // The paragraphs as they sit on the page, to set the translation back in their
+                    // places; they serve for the text too unless it's been fixed since it was read.
+                    val placed = store.paragraphsOnPage(page)
+                    val asRead = placed.isNotEmpty() && sameWords(placed.joinToString(" "), page.text.orEmpty())
+                    val own = if (asRead) emptyList() else Paragraphs.of(page.text.orEmpty())
+                    val out = translator.translate(from, to, own + placed)
+                    val onPage = out.drop(own.size)
+                    val translated = (if (asRead) onPage else out.take(own.size)).joinToString("\n")
                     _translation.update { it.copy(pages = it.pages + (page.id to translated)) }
+                    drawn(page, onPage)?.let { picture -> _translation.update { it.copy(pictures = it.pictures + (page.id to picture)) } }
                     // Kept with the page, so it's there next time without translating again.
-                    runCatching { store.keepTranslation(page, PageTranslation(from, to, translated)) }
+                    runCatching { store.keepTranslation(page, PageTranslation(from, to, translated, onPage)) }
                         .onFailure { Log.w("TextViewModel", "Couldn't keep the translation", it) }
                 }
                 _translation.update { it.copy(work = null) }
@@ -204,19 +224,37 @@ class TextViewModel(
     /** Every page as shown, pages separated by a blank line. */
     fun allShownText(): String = state.value.pages.mapNotNull { shownText(it)?.takeIf(String::isNotBlank) }.joinToString("\n\n")
 
+    /** The pictures of the translated pages, to share. */
+    fun exportTranslatedPictures() {
+        val t = _translation.value
+        val pictures = state.value.pages.mapNotNull { t.pictures[it.id] }
+        val language = t.languages.firstOrNull { it.code == t.translatedTo }?.name ?: t.translatedTo ?: return
+        if (pictures.isEmpty()) return
+        viewModelScope.launch {
+            runCatching { store.exportTranslatedPictures(documentId, pictures, language) }
+                .onSuccess { if (it.isNotEmpty()) exports.send(it to "image/jpeg") }
+        }
+    }
+
     fun exportText() {
-        viewModelScope.launch { runCatching { store.exportText(documentId) }.onSuccess { exports.send(it to "text/plain") } }
+        viewModelScope.launch { runCatching { store.exportText(documentId) }.onSuccess { exports.send(listOf(it) to "text/plain") } }
     }
 
     fun exportWord() {
-        viewModelScope.launch { runCatching { store.exportDocx(documentId) }.onSuccess { exports.send(it to DOCX) } }
+        viewModelScope.launch { runCatching { store.exportDocx(documentId) }.onSuccess { exports.send(listOf(it) to DOCX) } }
     }
 
     fun exportSpreadsheet() {
-        viewModelScope.launch { runCatching { store.exportXlsx(documentId) }.onSuccess { exports.send(it to XLSX) } }
+        viewModelScope.launch { runCatching { store.exportXlsx(documentId) }.onSuccess { exports.send(listOf(it) to XLSX) } }
     }
 
     private companion object {
+        /** The same letters and digits, however the lines were broken and words hyphenated. */
+        fun sameWords(a: String, b: String): Boolean {
+            fun letters(s: String) = s.filter(Char::isLetterOrDigit).toList().sorted()
+            return letters(a) == letters(b)
+        }
+
         const val DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         const val XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     }

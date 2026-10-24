@@ -44,4 +44,9 @@
     <string name="text_show_original">Show original</string>
     <string name="text_show_translation">Show translation</string>
     <string name="text_translation_waiting">Translating this page…</string>
+    <string name="text_export_translated">Translated pages</string>
+    <string name="text_export_translated_description">Pictures of the pages with the translation in place of their words</string>
+    <string name="text_picture">The page</string>
+    <string name="text_picture_open">See the page</string>
+    <string name="text_picture_share">Share translated pages</string>
 </resources>

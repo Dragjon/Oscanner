@@ -52,7 +52,7 @@ are not layout references (`PLAN.md` §1 still applies to how we build).
 | To Excel (tables) | ✅ from the text, by layout |
 | To PPT | ✅ a page to a slide, text searchable |
 | PDF to images, PDF to long image | ✅ |
-| Photo translation keeping the layout; text translation | 🟡 text translation on the phone, 58 languages |
+| Photo translation keeping the layout; text translation | ✅ on the phone, 58 languages |
 | Markdown view and edit | ❌ (low value) |
 
 ### Documents and PDF tools
@@ -169,7 +169,7 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   columns in Word; the read text, copied or saved as .txt, follows the same order.
 - ✅ **Slides to PowerPoint** (2026-10-21): Share → Share as slides; each page fills a slide,
   its text behind the picture so the deck can be searched.
-- 🟡 **On-device translation** (2026-10-24): Text → Translate, from the language the text is in
+- ✅ **On-device translation** (2026-10-24): Text → Translate, from the language the text is in
   (guessed by Android's own language finder) into any of 58, through English when neither is
   English. The models are Firefox's own (MPL-2.0, Firefox Remote Settings
   `translations-models-v2`, the Android sets where Firefox has them), downloaded once per
@@ -177,9 +177,15 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   WebAssembly (MPL-2.0, as Firefox ships it, 1.2 MB in the APK), run in a WebView that's never
   shown and can't reach the network, so no NDK build was needed. Read lines are joined back
   into paragraphs first, so sentences translate whole. slimt was passed over: its licence is
-  GPL-2.0 without "or later", which can't be combined with GPL-3.0. Still to do: translation
-  over the photo, keeping the layout. A page's translation is kept beside its files (2026-10-24)
-  and shown again next time, until its text is fixed.
+  GPL-2.0 without "or later", which can't be combined with GPL-3.0. A page's translation is
+  kept beside its files and shown again next time, until its text is fixed. Over the photo:
+  each paragraph found by the page layout is translated on its own, painted over in the
+  paper's colour around it and its translation written in its place in its ink's colour, as
+  big as the page's letters or smaller to fit; a single line may run into the room beside it,
+  and a date set against the right margin stays there. Shown as the page's picture on the
+  Text screen (tap for full screen) and shared as pictures. Later: matching the page's own
+  typeface (serif or not), and text inside photos and coloured boxes, which is painted over
+  flat.
 
 ### 3.4 Capture modes
 - ✅ **Slides / screen mode** (2026-10-21): colours kept, screen patterns reduced, squared up to

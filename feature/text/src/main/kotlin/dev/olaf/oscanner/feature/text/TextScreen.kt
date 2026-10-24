@@ -30,6 +30,8 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.rounded.TableChart
 import androidx.compose.material.icons.rounded.Translate
 import androidx.compose.material.icons.rounded.TextSnippet
@@ -104,9 +106,10 @@ fun TextRoute(viewModel: TextViewModel, startPage: Int, onBack: () -> Unit) {
     var exporting by rememberSaveable { mutableStateOf(false) }
     var translatingOpen by rememberSaveable { mutableStateOf(false) }
     val translation by viewModel.translation.collectAsStateWithLifecycle()
+    var viewing by rememberSaveable { mutableStateOf<String?>(null) }
 
     LaunchedEffect(viewModel) {
-        viewModel.exportedFiles.collect { (file, type) -> if (!context.share(listOf(file), type)) snackbar.showSnackbar(noApp) }
+        viewModel.exportedFiles.collect { (files, type) -> if (!context.share(files, type)) snackbar.showSnackbar(noApp) }
     }
 
     val pages = state.pages
@@ -188,6 +191,7 @@ fun TextRoute(viewModel: TextViewModel, startPage: Int, onBack: () -> Unit) {
                     onSave = { viewModel.save(page, it) },
                     translation = translation,
                     onShowTranslation = viewModel::showTranslation,
+                    onOpenPicture = { viewing = it },
                 )
             }
 
@@ -236,14 +240,30 @@ fun TextRoute(viewModel: TextViewModel, startPage: Int, onBack: () -> Unit) {
                 exporting = false
                 viewModel.exportSpreadsheet()
             },
+            // Offered while the translation is shown and has pictures to send.
+            onTranslatedPictures = {
+                exporting = false
+                viewModel.exportTranslatedPictures()
+            }.takeIf { translation.showing && translation.pictures.isNotEmpty() },
             onDismiss = { exporting = false },
+        )
+    }
+
+    viewing?.let { path ->
+        PictureViewer(
+            path = path,
+            description = stringResource(R.string.text_picture),
+            // Only translated pictures are shared from here; the page itself is shared from
+            // the document.
+            onShare = viewModel::exportTranslatedPictures.takeIf { translation.pictures.values.any { it.path == path } },
+            onDismiss = { viewing = null },
         )
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ExportSheet(onWord: () -> Unit, onPlain: () -> Unit, onSpreadsheet: () -> Unit, onDismiss: () -> Unit) {
+private fun ExportSheet(onWord: () -> Unit, onPlain: () -> Unit, onSpreadsheet: () -> Unit, onTranslatedPictures: (() -> Unit)?, onDismiss: () -> Unit) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -259,6 +279,9 @@ private fun ExportSheet(onWord: () -> Unit, onPlain: () -> Unit, onSpreadsheet: 
             SheetAction(Icons.Rounded.Description, stringResource(R.string.text_export_word), stringResource(R.string.text_export_word_description), onWord)
             SheetAction(Icons.Rounded.TableChart, stringResource(R.string.text_export_sheet), stringResource(R.string.text_export_sheet_description), onSpreadsheet)
             SheetAction(Icons.Rounded.TextSnippet, stringResource(R.string.text_export_plain), stringResource(R.string.text_export_plain_description), onPlain)
+            if (onTranslatedPictures != null) {
+                SheetAction(Icons.Rounded.Image, stringResource(R.string.text_export_translated), stringResource(R.string.text_export_translated_description), onTranslatedPictures)
+            }
         }
     }
 }
@@ -325,9 +348,13 @@ private fun PageText(
     onSave: (String) -> Unit,
     translation: TranslationUi,
     onShowTranslation: (Boolean) -> Unit,
+    onOpenPicture: (String) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
-    val image by rememberPageImage(page.thumbPath ?: page.renderPath, maxSide = 400)
+    // With the translation shown, the page with the translation in place of its words.
+    val translatedPicture = translation.pictures[page.id]?.path?.takeIf { translation.showing }
+    val image by rememberPageImage(translatedPicture ?: page.thumbPath ?: page.renderPath, maxSide = 400)
+    val bigPicture = translatedPicture ?: page.renderPath
     Column(
         Modifier
             .fillMaxSize()
@@ -339,7 +366,9 @@ private fun PageText(
             color = colors.surfaceContainer,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(180.dp),
+                .height(180.dp)
+                .clip(MaterialTheme.shapes.large)
+                .then(if (bigPicture != null) Modifier.clickable(onClickLabel = stringResource(R.string.text_picture_open)) { onOpenPicture(bigPicture) } else Modifier),
         ) {
             Box(contentAlignment = Alignment.Center) {
                 image?.let {

@@ -16,7 +16,7 @@ class PageTranslationTest {
 
     @Test
     fun aKeptTranslationComesBackForTheSameText() {
-        val kept = PageTranslation("en", "fr", "Bonjour le monde")
+        val kept = PageTranslation("en", "fr", "Bonjour\nle monde", listOf("Bonjour", "le monde"))
         PageTranslation.write(file(), "Hello world", kept)
         assertEquals(kept, PageTranslation.read(file(), "Hello world"))
     }

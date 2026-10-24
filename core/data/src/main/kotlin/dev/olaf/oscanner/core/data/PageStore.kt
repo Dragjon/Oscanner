@@ -908,6 +908,61 @@ class PageStore(
         page.text?.let { PageTranslation.read(PageTranslation.file(page.originalPath), it) }
     }
 
+    /**
+     * The text of the page's paragraphs as they sit on it, to translate and set back in their
+     * places with [drawTranslation]; empty without word boxes.
+     */
+    suspend fun paragraphsOnPage(page: Page): List<String> = placedParagraphs(page).map { it.text }
+
+    private suspend fun placedParagraphs(page: Page): List<LayoutParagraph> = withContext(Dispatchers.IO) {
+        val entity = db.pages().get(page.id) ?: return@withContext emptyList()
+        PageLayout.paragraphs(visibleWords(entity))
+    }
+
+    /**
+     * A picture of [page] with [texts], one for each of its [paragraphsOnPage], written over them
+     * in their places (see [TranslatedPage]), kept in the cache; null when the page has no
+     * picture yet or its paragraphs have changed.
+     */
+    suspend fun drawTranslation(page: Page, texts: List<String>): File? {
+        val paragraphs = placedParagraphs(page).takeIf { it.size == texts.size && it.isNotEmpty() } ?: return null
+        return drawTranslation(page, paragraphs, texts)
+    }
+
+    private suspend fun drawTranslation(page: Page, paragraphs: List<LayoutParagraph>, texts: List<String>): File? = withContext(Dispatchers.Default) {
+        val render = page.renderPath?.let(::File)?.takeIf(File::exists) ?: return@withContext null
+        val bitmap = android.graphics.BitmapFactory.decodeFile(render.path) ?: return@withContext null
+        val drawn = try { TranslatedPage.draw(bitmap, paragraphs, texts) } finally { bitmap.recycle() }
+        val dir = File(context.cacheDir, "translated").apply { mkdirs() }
+        // A new name for each translation, so a picture shown before isn't taken for it.
+        dir.listFiles { f -> f.name.startsWith("${page.id}-") }?.forEach(File::delete)
+        val file = File(dir, "${page.id}-${UUID.randomUUID()}.jpg")
+        try {
+            file.outputStream().use { drawn.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, it) }
+        } finally {
+            drawn.recycle()
+        }
+        file
+    }
+
+    /** [pictures] of translated pages ready to share, named after the document and [language]. */
+    suspend fun exportTranslatedPictures(documentId: Long, pictures: List<File>, language: String): List<File> {
+        val watermark = settings.settings.first().watermark
+        val title = safeName("${db.documents().getRow(documentId)?.title ?: "Scan"} ($language)")
+        return withContext(Dispatchers.IO) {
+            val dir = File(exportsDir, UUID.randomUUID().toString()).apply { mkdirs() }
+            pictures.filter(File::exists).mapIndexed { index, picture ->
+                val name = if (pictures.size == 1) "$title.jpg" else "$title ${index + 1}.jpg"
+                if (watermark.isBlank()) {
+                    picture.copyTo(File(dir, name), overwrite = true)
+                } else {
+                    compress(picture, PdfQuality.Best, watermark, dir).renameTo(File(dir, name))
+                    File(dir, name)
+                }
+            }
+        }
+    }
+
     /** Keeps [translation] of the page's current text, in place of any earlier one. */
     suspend fun keepTranslation(page: Page, translation: PageTranslation) = withContext(Dispatchers.IO) {
         page.text?.let { PageTranslation.write(PageTranslation.file(page.originalPath), it, translation) }

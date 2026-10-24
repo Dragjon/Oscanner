@@ -16,7 +16,9 @@ enum class ParagraphStyle { Heading1, Heading2, Body }
 
 /**
  * A paragraph: its lines joined into one run of text. [size] is its letter height relative to
- * the page's body text (1 = body), so an export can scale the font.
+ * the page's body text (1 = body), so an export can scale the font. [left], [right] and
+ * [bottom] close its box with [top], and [lineHeight] is its letters' height, all normalized:
+ * enough to set other words in its place.
  */
 data class LayoutParagraph(
     val text: String,
@@ -25,6 +27,10 @@ data class LayoutParagraph(
     val size: Float,
     override val top: Float,
     override val column: Int = 0,
+    val left: Float = 0f,
+    val right: Float = 1f,
+    val bottom: Float = top,
+    val lineHeight: Float = 0f,
 ) : LayoutBlock
 
 /**
@@ -149,7 +155,11 @@ object PageLayout {
                 short && size >= HEADING2 -> ParagraphStyle.Heading2
                 else -> ParagraphStyle.Body
             }
-            LayoutParagraph(text, style, group.all(::centered), size, group.first().top)
+            LayoutParagraph(
+                text, style, group.all(::centered), size, group.first().top,
+                left = group.minOf { it.left }, right = group.maxOf { it.right }, bottom = group.maxOf { it.bottom },
+                lineHeight = group.map { it.height }.average().toFloat(),
+            )
         }
     }
 
