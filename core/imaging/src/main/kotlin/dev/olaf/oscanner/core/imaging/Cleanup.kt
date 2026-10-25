@@ -731,6 +731,16 @@ internal object Cleanup {
         // the confident ones while its neighbors don't. Notes in the margin beside a line are
         // further out than a word gap and still go.
         val zero = Scalar(0.0)
+        // With print found mark by mark, a sign the reader didn't box (the + in "1/2 + 1/4 =",
+        // an x, a %) is still print when it sits between two printed words on their line and is
+        // no bigger than a letter: an answer written after the last word has print on one side only.
+        val boxes = if (exact) printed.map { doubleArrayOf(it.left * w.toDouble(), it.top * h.toDouble(), it.right * w.toDouble(), it.bottom * h.toDouble()) } else emptyList()
+        fun betweenPrint(x: Double, y: Double, bw: Double, bh: Double): Boolean {
+            val cy = y + bh / 2
+            val row = boxes.filter { b -> cy > b[1] && cy < b[3] && max(bw, bh) <= (b[3] - b[1]) * SIGN_SIZE }
+            val gap = row.map { it[3] - it[1] }.maxOrNull() ?: return false
+            return row.any { b -> b[2] <= x && x - b[2] < gap * 1.5 } && row.any { b -> b[0] >= x + bw && b[0] - (x + bw) < gap * 1.5 }
+        }
         if (exact) {
             // Each stretch of printed marks, with a pixel or two for the strokes' soft edges.
             val pad = max(2.0, side * 0.002)
@@ -777,6 +787,7 @@ internal object Cleanup {
             val x = stats.get(label, Imgproc.CC_STAT_LEFT)[0]
             val y = stats.get(label, Imgproc.CC_STAT_TOP)[0]
             if (pictures.any { p -> x >= p[0] && y >= p[1] && x + bw <= p[2] && y + bh <= p[3] }) continue
+            if (exact && betweenPrint(x, y, bw, bh)) continue
             // Ruled lines and table borders: long and thin.
             if (max(bw, bh) > longLine && min(bw, bh) < thin) continue
             // Logos, photos, black boxes: big and mostly solid; crests and drawings: tall.
@@ -968,4 +979,7 @@ internal object Cleanup {
     private const val SHOW_SUNK = 0.9
     /** A solid shape is at least this many of those wide and tall. */
     private const val SOLID_PIECE = 3.0
+
+    /** A printed sign between words is at most this share of its line's height across. */
+    private const val SIGN_SIZE = 0.9
 }
