@@ -207,9 +207,12 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   paper's colour around it and its translation written in its place in its ink's colour, as
   big as the page's letters or smaller to fit; a single line may run into the room beside it,
   and a date set against the right margin stays there. Shown as the page's picture on the
-  Text screen (tap for full screen) and shared as pictures. Later: matching the page's own
-  typeface (serif or not), and text inside photos and coloured boxes, which is painted over
-  flat.
+  Text screen (tap for full screen) and shared as pictures. ✅ The page's typeface
+  (2026-10-25): serif print gets the phone's serif face, told by how its strokes vary in width
+  (upright strokes over level ones: 1.15 to 1.43 for Times, Georgia, Cambria, Garamond and Book
+  Antiqua, 0.94 to 1.10 for Arial, Calibri, Verdana, Segoe and Tahoma, all 30 told apart at
+  20 to 48 px); headings stay bold. Print smaller than 18 px keeps the plain face. Later: text
+  inside photos and coloured boxes, which is painted over flat.
 
 ### 3.4 Capture modes
 - ✅ **Slides / screen mode** (2026-10-21): colours kept, screen patterns reduced, squared up to

@@ -19,7 +19,7 @@ import kotlin.math.min
  * A page with its paragraphs set in another language where they were: each paragraph is
  * painted over in the paper's colour around it and its translation written into its place in
  * the colour of its ink, as large as the page's letters were, smaller when the translation
- * needs more room than the paragraph had.
+ * needs more room than the paragraph had, and with serifs when the page's print has them.
  */
 object TranslatedPage {
 
@@ -35,6 +35,8 @@ object TranslatedPage {
         val frameRight = placed.maxOf { it.right } * w
         // Colours come from the page as it was, before any paragraph is painted over.
         val colours = placed.map { inks(page, it) }
+        val serif = serif(page, placed, colours)
+        val face = if (serif) Typeface.SERIF else Typeface.DEFAULT
         val fill = Paint().apply { style = Paint.Style.FILL }
         paragraphs.zip(texts).forEach { (p, text) ->
             val i = placed.indexOf(p).takeIf { it >= 0 } ?: return@forEach
@@ -43,7 +45,7 @@ object TranslatedPage {
             val box = RectF(p.left * w, p.top * h, p.right * w, p.bottom * h)
             val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = ink
-                typeface = if (p.style == ParagraphStyle.Body) Typeface.DEFAULT else Typeface.DEFAULT_BOLD
+                typeface = if (p.style == ParagraphStyle.Body) face else Typeface.create(face, Typeface.BOLD)
             }
             val oneLine = box.height() < line * 1.6f
             val alignment = when {
@@ -141,6 +143,26 @@ object TranslatedPage {
             Color.rgb(far.map(Color::red).average().toInt(), far.map(Color::green).average().toInt(), far.map(Color::blue).average().toInt())
         }
         return paper to ink
+    }
+
+    /** Whether the print of the body paragraphs in [placed] has serifs (see [PrintedFace]). */
+    private fun serif(page: Bitmap, placed: List<LayoutParagraph>, colours: List<Pair<Int, Int>>): Boolean {
+        val face = PrintedFace()
+        val w = page.width
+        val h = page.height
+        placed.forEachIndexed { i, p ->
+            if (p.style != ParagraphStyle.Body) return@forEachIndexed
+            val (paper, ink) = colours[i]
+            val x0 = (p.left * w).toInt().coerceIn(0, w - 1)
+            val y0 = (p.top * h).toInt().coerceIn(0, h - 1)
+            val x1 = (p.right * w).toInt().coerceIn(x0 + 1, w)
+            val y1 = (p.bottom * h).toInt().coerceIn(y0 + 1, h)
+            val pixels = IntArray((x1 - x0) * (y1 - y0))
+            page.getPixels(pixels, 0, x1 - x0, x0, y0, x1 - x0, y1 - y0)
+            val lumas = IntArray(pixels.size) { luma(pixels[it]) }
+            face.add(lumas, x1 - x0, (luma(paper) + luma(ink)) / 2, light = luma(ink) > luma(paper), size = p.lineHeight * h * LETTER)
+        }
+        return face.serif == true
     }
 
     private fun luma(c: Int) = (Color.red(c) * 299 + Color.green(c) * 587 + Color.blue(c) * 114) / 1000
