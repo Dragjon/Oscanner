@@ -114,16 +114,40 @@ internal object PatchFill {
             val grownBytes = ByteArray(w * h)
             grown.get(0, 0, grownBytes)
             grown.release()
+            // Pieces come from near the hole: what's beside a torn corner (water by a shore) goes
+            // on into it, where a match from across the picture (houses up the bank) would put a
+            // piece of somewhere else in the middle of it. Near is within twice the hole's size.
+            val outside = Mat()
+            Core.bitwise_not(hole, outside)
+            val away = Mat()
+            Imgproc.distanceTransform(outside, away, Imgproc.DIST_L2, 3)
+            outside.release()
+            val awayPx = FloatArray(w * h).also { away.get(0, 0, it) }
+            away.release()
+            val reach = (NEAR * kotlin.math.sqrt(Core.countNonZero(hole).toDouble())).toFloat().coerceAtLeast(PATCH * 4f)
             val s = ArrayList<Int>()
             val t = ArrayList<Int>()
             for (y in R until h - R) for (x in R until w - R) {
                 val p = y * w + x
                 if (grownBytes[p] == 0.toByte()) {
-                    source[p] = true
-                    s += p
+                    if (awayPx[p] <= reach) {
+                        source[p] = true
+                        s += p
+                    }
                 } else {
                     index[p] = t.size
                     t += p
+                }
+            }
+            // Too little near (a hole most of the picture): from anywhere, then.
+            if (s.size < t.size * 2) {
+                s.clear()
+                for (y in R until h - R) for (x in R until w - R) {
+                    val p = y * w + x
+                    if (grownBytes[p] == 0.toByte()) {
+                        source[p] = true
+                        s += p
+                    }
                 }
             }
             sources = s.toIntArray()
@@ -292,6 +316,8 @@ internal object PatchFill {
     private const val WORK_SIDE = 1024
     /** The smallest copy's long side. */
     private const val COARSEST = 48
+    /** Pieces come from within this many times the hole's size (the root of its area) of it. */
+    private const val NEAR = 2.0
     private const val COARSE_ROUNDS = 8
     private const val ROUNDS = 4
     private const val FINE_ROUNDS = 2

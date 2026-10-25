@@ -26,7 +26,8 @@ the Apache License 2.0 text is in `licenses/Apache-2.0.txt`, the Mozilla Public 
 
 ## Pictures
 
-The welcome tour's old-photo tile (`app/src/main/res/drawable-nodpi/welcome_photo_*.webp`) is made
+The welcome tour's old-photo tile (`app/src/main/res/drawable-nodpi/welcome_photo_*.webp`) and the
+torn-print test picture (`core/imaging/src/test/resources/torn-print.jpg`) are made
 from "Biloxi Light House, Miss." (Detroit Photographic Co., 1901), public domain, via
 [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Detroit_Photographic_Company_(0473)_-_Biloxi_MS_Lighthouse.jpg)
 from the Library of Congress photochrom collection. See `tools/welcome-assets/`.

@@ -278,8 +278,12 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   ground with nothing else standing out within 12 px, so a printed caption's letters, ripples
   on water and a weathervane's arms stay. Scratches from 1.5% of the photo's side count there.
   On the 1901 lighthouse print: the sky's scratch and pale specks gone, everything else as
-  before. Not yet: large stains on photos, and tears where the desk is too patterned to have
-  one color.
+  before. ✅ Tears filled from beside them (2026-10-26): pieces for a gap now come from within
+  twice its size of it. Matched from anywhere, a corner torn off over water took in rocks and a
+  jetty from up the bank, where the same fence runs; now it's water (on the 1901 print, 70% of
+  the gap close in color to the water beside it before, 94% after). The fill there is a little
+  smoother than the ripples around it. Not yet: large stains on photos, and tears where the desk
+  is too patterned to have one color.
 
 ### Library
 - ✅ **Names that say what a document is** (2026-10-24): once read, a document still called
