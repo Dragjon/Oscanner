@@ -51,6 +51,8 @@
     <string name="versus_footnote">CamScanner\'s free tier and prices as seen in October 2026.</string>
     <string name="welcome_promise">Free, private, no ads. Ever.</string>
     <string name="welcome_compare">How it compares to CamScanner</string>
+    <string name="welcome_compare_us" translatable="false">Oscanner</string>
+    <string name="welcome_compare_them" translatable="false">CamScanner</string>
     <string name="welcome_tile_receipt">Clean up a receipt</string>
     <string name="welcome_tile_receipt_detail">Finds the page\'s edges, squares it up and makes it look scanned, not photographed.</string>
     <string name="welcome_tile_pen">Lift the pen off</string>

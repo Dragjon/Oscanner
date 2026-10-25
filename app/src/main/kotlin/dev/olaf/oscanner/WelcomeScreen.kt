@@ -445,8 +445,8 @@ private fun CompareSheet(onDismiss: () -> Unit) {
             Spacer(Modifier.height(16.dp))
             Row(Modifier.padding(vertical = 6.dp)) {
                 Spacer(Modifier.weight(1.1f))
-                Text("Oscanner", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = colors.onSurface, modifier = Modifier.weight(1f))
-                Text("CamScanner", style = MaterialTheme.typography.labelLarge, color = colors.onSurfaceVariant, modifier = Modifier.weight(1f))
+                Text(stringResource(R.string.welcome_compare_us), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = colors.onSurface, modifier = Modifier.weight(1f))
+                Text(stringResource(R.string.welcome_compare_them), style = MaterialTheme.typography.labelLarge, color = colors.onSurfaceVariant, modifier = Modifier.weight(1f))
             }
             for (row in COMPARISON) {
                 Row(Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.Top) {
