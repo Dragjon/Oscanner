@@ -182,8 +182,13 @@ data class PageEdits(
  * How text lines bend on a straightened page (before it's turned). Each line is
  * y = c0 + c1·x + c2·x² + c3·x³ in normalized page coordinates, measured between [CurveLine.from]
  * and [CurveLine.to] and held level beyond. Lines are top to bottom and never cross.
+ *
+ * Where the paper turns away from the camera, toward a book's spine, it's also squeezed from
+ * side to side: [columns] are where, across the straightened page, evenly spaced columns of the
+ * flat page come from (first 0, last 1, rising), and [widen] is how much wider the page is once
+ * flat. Empty when the page isn't squeezed.
  */
-data class PageCurve(val lines: List<CurveLine>)
+data class PageCurve(val lines: List<CurveLine>, val columns: List<Float> = emptyList(), val widen: Float = 1f)
 
 data class CurveLine(val coefficients: List<Float>, val from: Float, val to: Float)
 

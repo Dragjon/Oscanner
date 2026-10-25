@@ -154,6 +154,14 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   only where they are, so the lines of text above and below them now join the fit (a page with
   a table on top, bent 46 px, was left as it was; now within 2 px), and strongly bent lines of
   text are no longer turned away for their tall outline (81 px of bend now within 6 px, from 10).
+  ✅ Squeeze toward the spine (2026-10-25): paper nearer the camera looks bigger, so how far
+  apart the lines spread, strip by strip across the page, shows how high the paper stands;
+  where it drops into the spine, each column is widened back to the paper's true width. The
+  camera's place comes from the crop's corners and the photo's focal length (a 26 mm phone lens
+  when the photo doesn't say). On rendered book pages, columns that were 15 to 58 px out of
+  place (of 1500) end within 3 to 7; with the camera guessed a quarter too near or far, within
+  25. In the app (emulator, imported photo of a page curving into its spine): margin ticks
+  within 9 px of evenly spaced. Not yet tried on photos of real books.
 - ✅ **Creases, stains and bleed-through** in Clean up. ✅ Show-through (2026-10-21): Clean up →
   Show-through takes out the back page's print, told from faint ink on the front by its soft
   edges and gray colour; pencil, highlighter and pale photos stay (94% found on a staged page,

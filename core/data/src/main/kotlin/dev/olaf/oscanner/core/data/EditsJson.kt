@@ -50,6 +50,8 @@ internal object EditsJson {
         .apply {
             edits.curve?.let { curve ->
                 put("bend", JSONArray().apply { curve.lines.forEach { put(writeLine(it)) } })
+                put("columns", JSONArray().apply { curve.columns.forEach { put(it.toDouble()) } })
+                if (curve.widen != 1f) put("widen", curve.widen.toDouble())
             }
         }
         .apply {
@@ -170,10 +172,18 @@ internal object EditsJson {
             descreen = obj.optBoolean("descreen"),
             // "curve" held bends measured the old way, which made pages worse: left unread, they're
             // measured again.
-            curve = obj.optJSONArray("bend")?.let { a ->
+            // Bends measured before the squeeze toward a spine was are measured again.
+            curve = obj.optJSONArray("bend")?.takeIf { obj.has("columns") }?.let { a ->
                 // All lines or none: a partial bend would distort the page.
                 val lines = (0 until a.length()).map { readLine(a.optJSONArray(it)) }
-                PageCurve(if (lines.all { it != null }) lines.filterNotNull() else emptyList())
+                val columns = obj.optJSONArray("columns")?.let { c -> List(c.length()) { c.optDouble(it).toFloat() } }.orEmpty()
+                val sound = columns.none(Float::isNaN) && columns.zipWithNext().all { (p, q) -> q >= p }
+                val widen = obj.optDouble("widen", 1.0).toFloat().takeIf { it in 1f..2f } ?: 1f
+                if (lines.all { it != null }) {
+                    PageCurve(lines.filterNotNull(), if (sound) columns else emptyList(), if (sound) widen else 1f)
+                } else {
+                    PageCurve(emptyList())
+                }
             },
             redactions = obj.optJSONArray("redact")?.let { a -> (0 until a.length()).mapNotNull { readPoints(a.optJSONArray(it), 3) } }.orEmpty(),
         )

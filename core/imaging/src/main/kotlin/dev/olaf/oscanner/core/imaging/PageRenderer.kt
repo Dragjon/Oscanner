@@ -363,13 +363,20 @@ object PageRenderer {
 
     /**
      * How text lines bend on this page as cropped: what [PageEdits.curve] holds once
-     * flattening is turned on. Empty when there aren't enough clear lines to tell.
+     * flattening is turned on. Empty when there aren't enough clear lines to tell. [focal35] is
+     * the photo's 35 mm equivalent focal length, if known, for where the camera was.
      */
-    fun measureCurve(source: Bitmap, edits: PageEdits): PageCurve {
+    fun measureCurve(source: Bitmap, edits: PageEdits, focal35: Double? = null): PageCurve {
         ensureLoaded()
         val straight = warp(source, edits.copy(flatten = false, rotation = 0), MEASURE_SIDE)
-        return CurveDetector.detect(straight).also { straight.release() }
+        val view = Viewpoint.fromQuad(edits.quad, source.width, source.height, straight.cols().toDouble(), straight.rows().toDouble(), focal35)
+        return CurveDetector.detect(straight, view).also { straight.release() }
     }
+
+    /** The 35 mm equivalent focal length [path] was taken at, when its EXIF says. */
+    fun focal35(path: String): Double? = runCatching {
+        ExifInterface(path).getAttributeInt(ExifInterface.TAG_FOCAL_LENGTH_IN_35MM_FILM, 0).takeIf { it > 0 }?.toDouble()
+    }.getOrNull()
 
     private fun warp(source: Bitmap, edits: PageEdits, maxSide: Int): Mat {
         val rgb = toRgb(source)
@@ -400,7 +407,8 @@ object PageRenderer {
         listOf(rgb, src, dst, transform).forEach(Mat::release)
         val curve = edits.curve
         val flat = if (edits.flatten && curve != null && curve.lines.isNotEmpty()) {
-            CurveDetector.flatten(out, curve).also { out.release() }
+            // A chosen paper size already says how wide the page is.
+            CurveDetector.flatten(out, curve, if (edits.aspect == null) curve.widen else 1f).also { out.release() }
         } else {
             out
         }

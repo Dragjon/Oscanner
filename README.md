@@ -13,7 +13,7 @@ follows, in [`PLAN.md`](PLAN.md).
 - **Scan**: live page detection (with a small learned page finder for white pages on pale or busy
   surfaces) with auto-capture, a glare warning, batch scanning, crop with a
   magnifier, and the looks Original, Auto, Bright, Gray, Ink and Board, with shadow and grain
-  removal and neutral paper under tinted light. Curved pages are flattened; photos of screens can
+  removal and neutral paper under tinted light. Curved pages are flattened, lines straightened and text squeezed toward a book's spine widened back out; photos of screens can
   have their moiré patterns reduced. Modes for ID cards (printed at true size), books (split at
   the spine), whiteboards, and QR codes or barcodes.
 - **Text**: on-device OCR (PP-OCR models for English, with doubtful words corrected from word

@@ -605,7 +605,7 @@ class PageStore(
     private fun measureCurve(originalPath: String, edits: PageEdits): PageCurve =
         runCatching {
             val source = PageRenderer.loadUpright(originalPath, MEASURE_SIDE)
-            PageRenderer.measureCurve(source, edits).also { source.recycle() }
+            PageRenderer.measureCurve(source, edits, PageRenderer.focal35(originalPath)).also { source.recycle() }
         }.onFailure { Log.w(TAG, "Couldn't measure the page's bend", it) }.getOrDefault(PageCurve(emptyList()))
 
     /**

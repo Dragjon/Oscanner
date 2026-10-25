@@ -7,7 +7,7 @@ import dev.olaf.oscanner.core.model.Quad
  * A 3×3 projective map, row-major, with the last entry 1. [squareTo] is the classic closed form
  * for mapping the unit square onto a quad (Heckbert, "Fundamentals of Texture Mapping", 1989).
  */
-internal class Homography(private val m: DoubleArray) {
+internal class Homography(internal val m: DoubleArray) {
 
     fun map(x: Double, y: Double): Corner {
         val w = m[6] * x + m[7] * y + m[8]

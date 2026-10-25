@@ -217,8 +217,9 @@ object QuadGeometry {
         val curve = edits.curve?.takeIf { edits.flatten && it.lines.isNotEmpty() }
             ?: return pageToSource(edits.quad, edits.rotation, point)
         val (u, v) = unturn(point, edits.rotation)
-        val bent = Bend.unflatten(curve, u.toFloat(), v.toFloat())
-        return Homography.squareTo(edits.quad).map(u, bent.toDouble())
+        val x = Bend.sourceX(curve, u.toFloat())
+        val bent = Bend.unflatten(curve, x, v.toFloat())
+        return Homography.squareTo(edits.quad).map(x.toDouble(), bent.toDouble())
     }
 
     /** The inverse of [pageToSource] for a whole recipe. */
@@ -226,7 +227,7 @@ object QuadGeometry {
         val curve = edits.curve?.takeIf { edits.flatten && it.lines.isNotEmpty() }
             ?: return sourceToPage(edits.quad, edits.rotation, point)
         val p = Homography.squareTo(edits.quad).inverse().map(point.x.toDouble(), point.y.toDouble())
-        return turn(Corner(p.x, Bend.flatten(curve, p.x, p.y)), edits.rotation)
+        return turn(Corner(Bend.pageX(curve, p.x), Bend.flatten(curve, p.x, p.y)), edits.rotation)
     }
 
     /** Each blacked-out area of [edits] as a polygon on the page as shown. */

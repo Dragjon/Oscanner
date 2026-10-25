@@ -8,7 +8,9 @@ import org.opencv.core.Mat
 import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
 import kotlin.math.abs
+import kotlin.math.hypot
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.sqrt
 
@@ -20,11 +22,18 @@ import kotlin.math.sqrt
  * Fitting each line on its own and blending between them followed every wobble of handwriting
  * and every slanted line, and bent flat pages. One surface, d(x, t) = Σ a_jk·(x − ½)^j·t^k for
  * j = 1…3 and k = 0…2, can only bend the way paper does, and lines it can't explain are dropped.
+ *
+ * The bend also shows how the paper stands off the table, and so how it's squeezed from side to
+ * side where it turns away toward a spine: paper nearer the camera looks bigger about the point
+ * under it, so lines spread apart from that point where the page rises and close up where it
+ * sinks. How fast the spread changes across the page is the paper's slope, and the slope how
+ * much wider each column is once laid flat.
  */
 object CurveDetector {
 
-    /** [page] is RGB, straightened and not yet turned. */
-    fun detect(page: Mat): PageCurve {
+    /** [page] is RGB, straightened and not yet turned; [view] is where the camera was over it. */
+    fun detect(page: Mat, view: Viewpoint? = null): PageCurve {
+        val aspect = page.rows().toDouble() / page.cols()
         val scale = WORK_WIDTH.toDouble() / page.cols()
         val small = Mat()
         Imgproc.resize(page, small, Size(WORK_WIDTH.toDouble(), (page.rows() * scale).coerceAtLeast(1.0)), 0.0, 0.0, Imgproc.INTER_AREA)
@@ -38,7 +47,8 @@ object CurveDetector {
         gray.release()
         val bend = fit(traced) ?: return PageCurve(emptyList())
         if (bend.size() < MIN_BEND) return PageCurve(emptyList())
-        return bend.asLines()
+        val squeeze = bend.unsqueeze(view ?: Viewpoint.above(aspect))
+        return bend.asLines().copy(columns = squeeze?.first.orEmpty(), widen = squeeze?.second ?: 1f)
     }
 
     private class Traced(val xs: FloatArray, val ys: FloatArray) {
@@ -143,8 +153,11 @@ object CurveDetector {
         return out
     }
 
-    /** The fitted bend: [a] by term, measured between levels [t0] and [t1], across [x0]…[x1]. */
-    private class Surface(val a: DoubleArray, val t0: Float, val t1: Float, val x0: Float, val x1: Float) {
+    /**
+     * The fitted bend: [a] by term, measured between levels [t0] and [t1], across [x0]…[x1], on
+     * the [lines] it was fitted to.
+     */
+    private class Surface(val a: DoubleArray, val t0: Float, val t1: Float, val x0: Float, val x1: Float, val lines: List<Traced>) {
 
         /** Up or down from its level, at x, on the line that sits at level t. */
         fun d(x: Double, t: Double): Double {
@@ -171,6 +184,114 @@ object CurveDetector {
                 for (i in xs.indices) worst = max(worst, abs(ds[i] - md - slope * (xs[i] - mx)))
             }
             return worst.toFloat()
+        }
+
+        /**
+         * How much lines spread apart per unit of height, dd/dt, in each of [STRIPS] strips from
+         * [x0] to [x1]: a straight fit of where the lines are in the strip against their levels.
+         * Measured strip by strip rather than read off the surface, which is too smooth to
+         * follow paper dropping sharply into a spine. Null when too few lines cross most strips.
+         */
+        fun spreads(): DoubleArray? {
+            // Each line's own height, set by the surface so its samples line up with it.
+            val heights = lines.map { line -> line.xs.indices.sumOf { line.ys[it] - d(line.xs[it].toDouble(), line.level.toDouble()) } / line.xs.size }
+            val measured = DoubleArray(STRIPS) { Double.NaN }
+            for (b in 0 until STRIPS) {
+                val from = x0 + (x1 - x0) * b / STRIPS
+                val to = x0 + (x1 - x0) * (b + 1) / STRIPS
+                val ts = ArrayList<Double>()
+                val vs = ArrayList<Double>()
+                lines.forEachIndexed { l, line ->
+                    var sum = 0.0
+                    var n = 0
+                    for (i in line.xs.indices) if (line.xs[i] in from..to) {
+                        sum += line.ys[i] - heights[l]
+                        n++
+                    }
+                    if (n > 0) {
+                        ts += line.level.toDouble()
+                        vs += sum / n
+                    }
+                }
+                if (ts.size < MIN_STRIP_LINES) continue
+                val mt = ts.average()
+                val mv = vs.average()
+                val stt = ts.sumOf { (it - mt) * (it - mt) }
+                if (stt <= 0) continue
+                measured[b] = ts.indices.sumOf { (ts[it] - mt) * (vs[it] - mv) } / stt
+            }
+            if (measured.count { !it.isNaN() } < STRIPS * 2 / 3) return null
+            // Gaps take their neighbors' values, then each strip the middle of it and its two.
+            val known = measured.indices.filter { !measured[it].isNaN() }
+            val filled = DoubleArray(STRIPS) { b ->
+                if (!measured[b].isNaN()) return@DoubleArray measured[b]
+                val before = known.lastOrNull { it < b }
+                val after = known.firstOrNull { it > b }
+                when {
+                    before == null -> measured[after!!]
+                    after == null -> measured[before]
+                    else -> measured[before] + (measured[after] - measured[before]) * (b - before) / (after - before)
+                }
+            }
+            return DoubleArray(STRIPS) { b -> listOf(filled[(b - 1).coerceAtLeast(0)], filled[b], filled[(b + 1).coerceAtMost(STRIPS - 1)]).sorted()[1] }
+        }
+
+        /**
+         * Where the flat page's columns come from, and how much wider it is, as seen from [view];
+         * null when the bend fits no paper seen from there. Paper at height z looks bigger by
+         * g = D / (D − z), so lines spread by g − 1 per unit of height. Lines only show the
+         * spread up to a level of their own, and only where they reach; the page's sides, where
+         * the crop's corners are, lie on the table. So the paper's slope at each end of the lines
+         * is followed down to the side, and the lower of the two sides is the table; beyond the
+         * lines the paper comes down to it in a straight slope, since the steepest part, into a
+         * spine, is often where the text has already ended.
+         */
+        fun unsqueeze(view: Viewpoint): Pair<List<Float>, Float>? {
+            val measured = spreads() ?: return null
+            fun spread(x: Double): Double {
+                val at = ((x - x0) / (x1 - x0) * STRIPS - 0.5).coerceIn(0.0, STRIPS - 1.0)
+                val b = at.toInt().coerceAtMost(STRIPS - 2)
+                return measured[b] + (at - b) * (measured[b + 1] - measured[b])
+            }
+            val n = 400
+            val first = spread(x0.toDouble())
+            val last = spread(x1.toDouble())
+            val reach = (x1 - x0) / STRIPS * 3.0
+            val left = min(first, first - (spread(x0 + reach) - first) / reach * x0)
+            val right = min(last, last + (last - spread(x1 - reach)) / reach * (1 - x1))
+            val table = min(left, right)
+            val across = DoubleArray(n + 1)
+            val heights = DoubleArray(n + 1)
+            for (i in 0..n) {
+                val x = i.toDouble() / n
+                val s = when {
+                    x < x0 -> table + (first - table) * x / x0
+                    x > x1 -> table + (last - table) * (1 - x) / (1 - x1)
+                    else -> spread(x)
+                }
+                // Spread is g over the lines' own g, less 1: the ratio is the paper's to the table's.
+                val g = (1 + s) / (1 + table)
+                if (g !in 0.6..1.6) return null
+                // In page widths: where the paper is under the camera's view of it, and how high.
+                heights[i] = view.distance * (1 - 1 / g)
+                across[i] = view.x + (x - view.x) / g
+            }
+            val along = DoubleArray(n + 1)
+            for (i in 1..n) {
+                val dx = across[i] - across[i - 1]
+                if (dx <= 0) return null
+                along[i] = along[i - 1] + min(hypot(dx, heights[i] - heights[i - 1]), dx * MAX_STRETCH)
+            }
+            val widen = (along[n] / (across[n] - across[0])).toFloat()
+            if (widen < MIN_WIDEN) return null
+            var i = 0
+            val columns = List(COLUMNS) { k ->
+                val s = along[n] * k / (COLUMNS - 1)
+                while (i < n - 1 && along[i + 1] < s) i++
+                val step = along[i + 1] - along[i]
+                ((i + if (step > 0) ((s - along[i]) / step).coerceIn(0.0, 1.0) else 0.0) / n).toFloat()
+            }
+            return columns to widen
         }
 
         /**
@@ -239,7 +360,7 @@ object CurveDetector {
         // Only as far across as at least three lines reach: one line alone can't vouch for a bend.
         val starts = keep.map { it.xs.min() }.sorted()
         val ends = keep.map { it.xs.max() }.sortedDescending()
-        return Surface(a, keep.minOf { it.level }, keep.maxOf { it.level }, starts[2], ends[2])
+        return Surface(a, keep.minOf { it.level }, keep.maxOf { it.level }, starts[2], ends[2], keep)
     }
 
     /** Each sample's terms less the line's average, so the line's own height cancels out. */
@@ -271,16 +392,21 @@ object CurveDetector {
 
     /**
      * Rows of [Bend.unflatten] for [page] in bands, so the full-size lookup map never has to be
-     * held at once. Returns a new Mat the same size and type.
+     * held at once. Returns a new Mat of the same type, [widen] times as wide: the page's own
+     * widening, or 1 to keep its size (a chosen paper size), unsqueezing within it.
      */
-    fun flatten(page: Mat, curve: PageCurve): Mat {
-        val w = page.cols()
+    fun flatten(page: Mat, curve: PageCurve, widen: Float = curve.widen): Mat {
+        val sw = page.cols()
         val h = page.rows()
+        val w = max(1, Math.round(sw * widen))
         val out = Mat(h, w, page.type())
         val lines = curve.lines
         val levels = FloatArray(lines.size) { Bend.level(lines[it]) }
-        // Each line's bend in every column, in pixels: offsets[i][x].
-        val offsets = Array(lines.size) { i -> FloatArray(w) { x -> (Bend.lineY(lines[i], (x + 0.5f) / w) - levels[i]) * h } }
+        // The straightened page's column for each flat one, normalized, and each line's bend
+        // there, in pixels: offsets[i][x].
+        val from = FloatArray(w) { x -> Bend.sourceX(curve, (x + 0.5f) / w) }
+        val offsets = Array(lines.size) { i -> FloatArray(w) { x -> (Bend.lineY(lines[i], from[x]) - levels[i]) * h } }
+        val columns = FloatArray(w) { x -> from[x] * sw - 0.5f }
         val band = 128
         val mapX = Mat()
         val mapY = Mat()
@@ -303,7 +429,7 @@ object CurveDetector {
                 val ob = offsets[b]
                 val base = r * w
                 for (x in 0 until w) {
-                    xs[base + x] = x.toFloat()
+                    xs[base + x] = columns[x]
                     ys[base + x] = y + (1 - wt) * oa[x] + wt * ob[x]
                 }
             }
@@ -339,6 +465,16 @@ object CurveDetector {
     private const val MISS_FACTOR = 2.5
     /** Less bend than this, as a share of page height, is a flat page: left as it is. */
     private const val MIN_BEND = 0.004f
+    /** How many strips across the page the lines' spread is measured in. */
+    private const val STRIPS = 40
+    /** A strip crossed by fewer lines than this can't tell their spread. */
+    private const val MIN_STRIP_LINES = 6
+    /** Paper steeper than this (about 70°) is taken as this steep: steeper can't be read. */
+    private const val MAX_STRETCH = 3.0
+    /** Less widening than this is no squeeze worth undoing. */
+    private const val MIN_WIDEN = 1.002f
+    /** How many columns the squeeze is handed to [flatten] as. */
+    private const val COLUMNS = 65
     /** How many level lines the bend is handed to [flatten] as. */
     private const val LINES = 12
 }

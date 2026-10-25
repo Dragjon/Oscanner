@@ -1,5 +1,6 @@
 package dev.olaf.oscanner.core.imaging
 
+import dev.olaf.oscanner.core.model.PageCurve
 import org.junit.Assert.assertTrue
 import org.junit.BeforeClass
 import org.junit.Test
@@ -74,14 +75,15 @@ class CurveDetectorTest {
     private fun crooked(m: Mat): Double {
         val gray = Mat()
         Imgproc.cvtColor(m, gray, Imgproc.COLOR_RGB2GRAY)
-        val px = ByteArray(W * H)
+        val w = gray.cols()
+        val px = ByteArray(w * H)
         gray.get(0, 0, px)
         fun centre(x: Int, around: Double): Double? {
             var mass = 0.0
             var at = 0.0
             for (y in (around - 12).toInt()..(around + 12).toInt()) {
                 if (y !in 0 until H) continue
-                val v = 255 - (px[y * W + x].toInt() and 255)
+                val v = 255 - (px[y * w + x].toInt() and 255)
                 if (v > 30) {
                     mass += v
                     at += v * y
@@ -91,9 +93,9 @@ class CurveDetectorTest {
         }
         var worst = 0.0
         for (start in 150 until H - 100 step 100) {
-            val mid = centre(W / 2, start.toDouble()) ?: continue
+            val mid = centre(w / 2, start.toDouble()) ?: continue
             val ys = mutableListOf(mid)
-            for (side in listOf(W / 2 + 1 until W - 100, (W / 2 - 1) downTo 100)) {
+            for (side in listOf(w / 2 + 1 until w - 100, (w / 2 - 1) downTo 100)) {
                 var c = mid
                 for (x in side) c = centre(x, c)?.also { ys += it } ?: break
             }
@@ -106,7 +108,9 @@ class CurveDetectorTest {
     private fun leftOver(page: Mat, amount: Double): Double {
         val curve = CurveDetector.detect(bend(page, amount))
         val bent = bend(probe(), amount)
-        return crooked(if (curve.lines.isEmpty()) bent else CurveDetector.flatten(bent, curve))
+        // The lines only: this bend isn't one paper makes, so it says nothing true of the squeeze
+        // (see SpineSqueezeTest).
+        return crooked(if (curve.lines.isEmpty()) bent else CurveDetector.flatten(bent, PageCurve(curve.lines)))
     }
 
     @Test
