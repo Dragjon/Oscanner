@@ -75,4 +75,36 @@ class OldPhotoTest {
         // The black window in the wall isn't dust: it stays dark.
         assertTrue(mean(out, Rect(1070, 520, 40, 40))[0] < 60)
     }
+
+    @Test
+    fun takesOutFaintDustAndShortScratchesOnPlainSky() {
+        nu.pattern.OpenCV.loadLocally()
+        val old = fade(scene())
+        // On a faded sky, as pale as the paper, dust and scratches stand out by only 20 or so
+        // levels; stretching the colors back makes them plain to see.
+        fun paler(p: Point): Scalar {
+            val m = Core.mean(old.submat(Rect(p.x.toInt() - 6, p.y.toInt() - 6, 12, 12))).`val`
+            return Scalar(m[0] + 22, m[1] + 22, m[2] + 22)
+        }
+        val dust = listOf(Point(250.0, 150.0), Point(900.0, 220.0), Point(1350.0, 330.0), Point(650.0, 80.0))
+        dust.forEach { Imgproc.circle(old, it, 2, paler(it), -1) }
+        // A short scratch, 3% of the photo's width, a pixel wide.
+        Imgproc.line(old, Point(1100.0, 100.0), Point(1104.0, 150.0), paler(Point(1102.0, 125.0)), 1)
+        // A white pole against the sky is the picture's own: long, and it stays.
+        Imgproc.line(old, Point(820.0, 330.0), Point(820.0, 600.0), Scalar(250.0, 248.0, 240.0), 3)
+
+        val out = Filters.apply(old, PageFilter.Photo)
+
+        for (p in dust) {
+            val spot = mean(out, Rect(p.x.toInt() - 1, p.y.toInt() - 1, 3, 3))
+            val near = mean(out, Rect(p.x.toInt() + 10, p.y.toInt() - 1, 3, 3))
+            assertTrue("faint dust at $p left: ${spot.toList()} vs ${near.toList()}", (0..2).all { abs(spot[it] - near[it]) < 10 })
+        }
+        val onScratch = mean(out, Rect(1102, 120, 1, 10))
+        val besideIt = mean(out, Rect(1112, 120, 1, 10))
+        assertTrue("short scratch left: ${onScratch.toList()} vs ${besideIt.toList()}", (0..2).all { abs(onScratch[it] - besideIt[it]) < 10 })
+        val pole = mean(out, Rect(819, 400, 3, 100))
+        val sky = mean(out, Rect(840, 400, 3, 100))
+        assertTrue("pole lost: ${pole.toList()} vs ${sky.toList()}", pole[0] - sky[0] > 40)
+    }
 }

@@ -272,8 +272,14 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   with the white paper core along the tear, and fills it with more of the picture: small
   squares matched from the rest of it, coarse to fine (PatchMatch), so grass goes on as grass
   and a horizon runs on through. A pale sky reaching the edge of a photo on a pale desk stays:
-  a gap must have a sharp edge against the picture. Not yet: large stains on photos, and tears
-  where the desk is too patterned to have one color.
+  a gap must have a sharp edge against the picture. ✅ Faint dust and short scratches
+  (2026-10-26): on a faded print's pale sky, dust and scratches stand out by only 20 or so
+  levels and the color stretch then makes them plain; now they're found too, but only on plain
+  ground with nothing else standing out within 12 px, so a printed caption's letters, ripples
+  on water and a weathervane's arms stay. Scratches from 1.5% of the photo's side count there.
+  On the 1901 lighthouse print: the sky's scratch and pale specks gone, everything else as
+  before. Not yet: large stains on photos, and tears where the desk is too patterned to have
+  one color.
 
 ### Library
 - ✅ **Names that say what a document is** (2026-10-24): once read, a document still called

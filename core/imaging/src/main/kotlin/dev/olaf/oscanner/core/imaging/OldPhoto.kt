@@ -99,43 +99,13 @@ internal object OldPhoto {
         Core.subtract(sq, f, sq)
         val busyPx = FloatArray(sq.total().toInt()).also { sq.get(0, 0, it) }
         listOf(f, sq, around).forEach(Mat::release)
-        val marks = Mat()
-        Imgproc.threshold(bright, bright, SPECK_STEP, 255.0, Imgproc.THRESH_BINARY)
-        Imgproc.threshold(dark, dark, SPECK_STEP, 255.0, Imgproc.THRESH_BINARY)
-        Core.bitwise_or(bright, dark, marks)
-
-        // Keep marks that are small, or thin bright lines; detail in the picture (hair, leaves,
-        // text) comes in big connected patches and stays.
-        val labels = Mat()
-        val stats = Mat()
-        val centroids = Mat()
-        val n = Imgproc.connectedComponentsWithStats(marks, labels, stats, centroids, 8, CvType.CV_32S)
-        val speck = (side * SPECK_SIZE).let { it * it }
-        val long = side * SCRATCH_LENGTH
-        val brightPx = ByteArray(bright.total().toInt()).also { bright.get(0, 0, it) }
-        val labelPx = IntArray(labels.total().toInt()).also { labels.get(0, 0, it) }
-        val brightCount = IntArray(n)
-        for (i in labelPx.indices) if (labelPx[i] > 0 && brightPx[i] != 0.toByte()) brightCount[labelPx[i]]++
-        val keep = BooleanArray(n) { k ->
-            if (k == 0) return@BooleanArray false
-            val area = stats.get(k, Imgproc.CC_STAT_AREA)[0]
-            val w = stats.get(k, Imgproc.CC_STAT_WIDTH)[0]
-            val h = stats.get(k, Imgproc.CC_STAT_HEIGHT)[0]
-            val cx = (stats.get(k, Imgproc.CC_STAT_LEFT)[0] + w / 2).toInt()
-            val cy = (stats.get(k, Imgproc.CC_STAT_TOP)[0] + h / 2).toInt()
-            val busy = busyPx[cy * gray.cols() + cx]
-            val smooth = busy < SMOOTH * SMOOTH
-            val small = area <= speck && max(w, h) <= side * SPECK_SIDE && smooth
-            // A scratch: long, thin (its pixels fill little of its length), bright, and nearly
-            // straight; a highlight running round something curved, like a rim, isn't one.
-            // Around its middle, too, the picture is fairly plain: a rim's highlight sits on an edge.
-            val thin = max(w, h) >= long && area <= max(w, h) * SCRATCH_WIDTH && brightCount[k] >= area * 0.8 &&
-                busy < 4 * SMOOTH * SMOOTH && straight(labelPx, gray.cols(), k, stats)
-            small || thin
-        }
-        val mask = Mat(gray.size(), CvType.CV_8UC1)
-        mask.put(0, 0, ByteArray(labelPx.size) { if (keep[labelPx[it]]) -1 else 0 })
-        listOf(gray, bright, dark, marks, labels, stats, centroids).forEach(Mat::release)
+        // Marks that stand out plainly, then fainter ones: a faded print's paler sky is as pale
+        // as the paper, so its dust stands out by only 20 or so levels, and stretching the colors
+        // back makes that plain.
+        val mask = marks(bright, dark, busyPx, side, SPECK_STEP, faint = false)
+        val faint = marks(bright, dark, busyPx, side, FAINT_STEP, faint = true)
+        Core.bitwise_or(mask, faint, mask)
+        listOf(gray, bright, dark, faint).forEach(Mat::release)
         if (Core.countNonZero(mask) == 0) {
             mask.release()
             return
@@ -255,6 +225,79 @@ internal object OldPhoto {
         return full
     }
 
+    /**
+     * Of the pixels standing [step] levels out of [bright] or [dark], those that are dust or a
+     * scratch. Detail in the picture (hair, leaves, text) comes in big connected patches and stays.
+     * A [faint] mark counts only on plain ground with nothing else standing out close by: a
+     * printed caption's letters, ripples on water and a weathervane's arms are faint marks too,
+     * but in company.
+     */
+    private fun marks(bright: Mat, dark: Mat, busyPx: FloatArray, side: Int, step: Double, faint: Boolean): Mat {
+        val b = Mat()
+        val d = Mat()
+        val marks = Mat()
+        Imgproc.threshold(bright, b, step, 255.0, Imgproc.THRESH_BINARY)
+        Imgproc.threshold(dark, d, step, 255.0, Imgproc.THRESH_BINARY)
+        Core.bitwise_or(b, d, marks)
+        d.release()
+        val cols = marks.cols()
+        val rows = marks.rows()
+        val labels = Mat()
+        val stats = Mat()
+        val centroids = Mat()
+        val n = Imgproc.connectedComponentsWithStats(marks, labels, stats, centroids, 8, CvType.CV_32S)
+        val brightPx = ByteArray(b.total().toInt()).also { b.get(0, 0, it) }
+        val labelPx = IntArray(labels.total().toInt()).also { labels.get(0, 0, it) }
+        val brightCount = IntArray(n)
+        for (i in labelPx.indices) if (labelPx[i] > 0 && brightPx[i] != 0.toByte()) brightCount[labelPx[i]]++
+        // How many marked pixels lie in any box, for telling a lone mark from one in company.
+        val sums = if (faint) {
+            val ones = Mat()
+            Imgproc.threshold(marks, ones, 0.0, 1.0, Imgproc.THRESH_BINARY)
+            val sum = Mat()
+            Imgproc.integral(ones, sum, CvType.CV_32S)
+            ones.release()
+            IntArray(sum.total().toInt()).also { sum.get(0, 0, it); sum.release() }
+        } else null
+        val speck = (side * SPECK_SIZE).let { it * it }
+        val long = side * SCRATCH_LENGTH
+        val keep = BooleanArray(n) { k ->
+            if (k == 0) return@BooleanArray false
+            val area = stats.get(k, Imgproc.CC_STAT_AREA)[0]
+            val x0 = stats.get(k, Imgproc.CC_STAT_LEFT)[0].toInt()
+            val y0 = stats.get(k, Imgproc.CC_STAT_TOP)[0].toInt()
+            val w = stats.get(k, Imgproc.CC_STAT_WIDTH)[0].toInt()
+            val h = stats.get(k, Imgproc.CC_STAT_HEIGHT)[0].toInt()
+            val length = max(w, h)
+            val busy = busyPx[(y0 + h / 2) * cols + x0 + w / 2]
+            if (sums != null) {
+                if (busy >= PLAIN * PLAIN) return@BooleanArray false
+                val r = ALONE
+                val left = max(0, x0 - r)
+                val top = max(0, y0 - r)
+                val right = min(cols, x0 + w + r)
+                val bottom = min(rows, y0 + h + r)
+                val s = cols + 1
+                val inBox = sums[bottom * s + right] - sums[top * s + right] - sums[bottom * s + left] + sums[top * s + left]
+                if (inBox - area > area / 2 + 2) return@BooleanArray false
+            }
+            val smooth = busy < SMOOTH * SMOOTH
+            val small = area <= speck && length <= side * SPECK_SIDE && smooth
+            // A scratch: long, thin (its pixels fill little of its length), bright, and nearly
+            // straight; a highlight running round something curved, like a rim, isn't one.
+            // Around its middle, too, the picture is fairly plain: a rim's highlight sits on an edge.
+            // Alone on plain ground, a short one a pixel or two wide is one too.
+            val reach = length >= long || sums != null && length >= side * SHORT_SCRATCH && area <= length * 2.5
+            val thin = reach && area <= length * SCRATCH_WIDTH && brightCount[k] >= area * 0.8 &&
+                busy < 4 * SMOOTH * SMOOTH && straight(labelPx, cols, k, stats)
+            small || thin
+        }
+        val mask = Mat(marks.size(), CvType.CV_8UC1)
+        mask.put(0, 0, ByteArray(labelPx.size) { if (keep[labelPx[it]]) -1 else 0 })
+        listOf(b, marks, labels, stats, centroids).forEach(Mat::release)
+        return mask
+    }
+
     /** Whether component [k] of [labels] fits in a rotated rectangle a few pixels wide. */
     private fun straight(labels: IntArray, cols: Int, k: Int, stats: Mat): Boolean {
         val x0 = stats.get(k, Imgproc.CC_STAT_LEFT)[0].toInt()
@@ -276,6 +319,14 @@ internal object OldPhoto {
     private const val SATURATION = 1.15
     /** A mark stands this many levels above or below what's around it. */
     private const val SPECK_STEP = 40.0
+    /** Or this many, where the picture around is [PLAIN]. */
+    private const val FAINT_STEP = 16.0
+    /** Plainer than [SMOOTH]: sky, a wall (gray levels, standard deviation). */
+    private const val PLAIN = 5.0
+    /** On plain ground, a scratch this share of the long side long is one. */
+    private const val SHORT_SCRATCH = 0.015
+    /** A faint mark is alone with nothing else standing out within this many pixels. */
+    private const val ALONE = 12
     private const val MAX_MEDIAN = 15
     /** Around a speck the picture varies by less than this (gray levels, standard deviation). */
     private const val SMOOTH = 12.0
