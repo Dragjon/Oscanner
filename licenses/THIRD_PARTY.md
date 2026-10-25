@@ -24,6 +24,13 @@ the Apache License 2.0 text is in `licenses/Apache-2.0.txt`, the Mozilla Public 
 | AndroidX (Compose, CameraX, Room, DataStore, WorkManager, Biometric, Navigation, Lifecycle, Fragment, ExifInterface, WebKit) | App framework | Apache-2.0 |
 | Kotlin standard library and kotlinx.coroutines | Language runtime | Apache-2.0 |
 
+## Pictures
+
+The welcome tour's old-photo tile (`app/src/main/res/drawable-nodpi/welcome_photo_*.webp`) is made
+from "Biloxi Light House, Miss." (Detroit Photographic Co., 1901), public domain, via
+[Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Detroit_Photographic_Company_(0473)_-_Biloxi_MS_Lighthouse.jpg)
+from the Library of Congress photochrom collection. See `tools/welcome-assets/`.
+
 No Google Play services, Firebase, ML Kit, analytics or crash-reporting SDKs are used.
 
 ## For F-Droid

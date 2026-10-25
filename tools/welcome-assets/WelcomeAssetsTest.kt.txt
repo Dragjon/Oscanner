@@ -1,0 +1,58 @@
+package dev.olaf.oscanner.core.imaging
+
+import dev.olaf.oscanner.core.model.PageFilter
+import org.junit.Test
+import org.opencv.core.Mat
+import org.opencv.core.MatOfPoint2f
+import org.opencv.core.Point
+import org.opencv.core.Rect
+import org.opencv.core.Scalar
+import org.opencv.core.Size
+import org.opencv.imgcodecs.Imgcodecs
+import org.opencv.imgproc.Imgproc
+
+/** Local only: the welcome tour's "after" pictures, made by the app's own code from the scenes in WELCOME_SCENES. */
+class WelcomeAssetsTest {
+    @Test
+    fun make() {
+        val dir = System.getenv("WELCOME_SCENES") ?: return
+        nu.pattern.OpenCV.loadLocally()
+        fun read(name: String): Mat = Mat().also { Imgproc.cvtColor(Imgcodecs.imread("$dir/$name"), it, Imgproc.COLOR_BGR2RGB) }
+        fun write(name: String, rgb: Mat) = Mat().also { Imgproc.cvtColor(rgb, it, Imgproc.COLOR_RGB2BGR); Imgcodecs.imwrite("$dir/$name", it) }
+
+        // Receipt: found, squared up, the Auto look.
+        val receipt = read("receipt.jpg")
+        val gray = Mat().also { Imgproc.cvtColor(receipt, it, Imgproc.COLOR_RGB2GRAY) }
+        val quad = DocumentDetector().detect(gray).quad ?: error("no receipt found")
+        println("RECEIPT quad ${quad.corners}")
+        val (w, h) = QuadGeometry.warpSize(quad, receipt.cols(), receipt.rows())
+        val src = MatOfPoint2f(*quad.corners.map { Point(it.x * receipt.cols().toDouble(), it.y * receipt.rows().toDouble()) }.toTypedArray())
+        val dst = MatOfPoint2f(Point(0.0, 0.0), Point(w.toDouble(), 0.0), Point(w.toDouble(), h.toDouble()), Point(0.0, h.toDouble()))
+        val flat = Mat()
+        Imgproc.warpPerspective(receipt, flat, Imgproc.getPerspectiveTransform(src, dst), Size(w.toDouble(), h.toDouble()), Imgproc.INTER_CUBIC)
+        write("receipt-after.jpg", Filters.apply(flat, PageFilter.Auto))
+
+        // Book page: found as the camera would, its bend measured and flattened, the Auto look.
+        fun crop(rgb: Mat, name: String): Mat {
+            val g = Mat().also { Imgproc.cvtColor(rgb, it, Imgproc.COLOR_RGB2GRAY) }
+            val q = DocumentDetector().detect(g).quad ?: error("no page found in $name")
+            println("CROP $name ${q.corners}")
+            val (w, h) = QuadGeometry.warpSize(q, rgb.cols(), rgb.rows())
+            val from = MatOfPoint2f(*q.corners.map { Point(it.x * rgb.cols().toDouble(), it.y * rgb.rows().toDouble()) }.toTypedArray())
+            val to = MatOfPoint2f(Point(0.0, 0.0), Point(w.toDouble(), 0.0), Point(w.toDouble(), h.toDouble()), Point(0.0, h.toDouble()))
+            return Mat().also { Imgproc.warpPerspective(rgb, it, Imgproc.getPerspectiveTransform(from, to), Size(w.toDouble(), h.toDouble()), Imgproc.INTER_CUBIC) }
+        }
+        val book = crop(read("bookpage.jpg"), "book")
+        write("book-before.jpg", book)
+        val curve = CurveDetector.detect(book)
+        println("BOOK lines ${curve.lines.size} widen ${curve.widen}")
+        write("book-after.jpg", Filters.apply(CurveDetector.flatten(book, curve), PageFilter.Auto))
+
+        // Old print: cropped as the camera would, the torn corner mended, then the Photo look.
+        val print = crop(read("oldprint.jpg"), "print")
+        write("photo-before.jpg", print)
+        val mended = print.clone()
+        OldPhoto.mendTorn(mended, Scalar(112.0, 82.0, 58.0))
+        write("photo-after.jpg", OldPhoto.restore(mended))
+    }
+}
