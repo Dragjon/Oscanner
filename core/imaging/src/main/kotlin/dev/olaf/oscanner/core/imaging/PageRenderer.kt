@@ -1,5 +1,7 @@
 package dev.olaf.oscanner.core.imaging
 
+import kotlin.math.hypot
+import dev.olaf.oscanner.core.model.Quad
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -40,6 +42,9 @@ object PageRenderer {
     const val OCR_SIDE = 3400
     /** Plenty to trace text lines; the detector works at 1200 wide anyway. */
     private const val MEASURE_SIDE = 2000
+    /** The desk around a crop is looked at this share of the photo's diagonal outside it, at this many points a side. */
+    private const val DESK_REACH = 0.015
+    private const val DESK_SAMPLES = 12
     /** Paper is judged on a copy this big; it is brighter than this share of the page's brightest, and less saturated than this. */
     private const val PAPER_SIDE = 400.0
     private const val PAPER_BRIGHT = 0.75
@@ -115,7 +120,9 @@ object PageRenderer {
         ensureLoaded()
         val warped = warp(source, edits, maxSide)
         paperOverRedactions(warped, edits)
-        Cleanup.apply(warped, edits)
+        // A photo's torn corners are told by the desk showing through them.
+        val desk = if (edits.fillEdges && edits.filter == PageFilter.Photo) deskAround(source, edits.quad) else null
+        Cleanup.apply(warped, edits, desk)
         val filtered = Filters.apply(warped, edits.filter)
         warped.release()
         val adjusted = Filters.adjust(filtered, edits.filter, edits.brightness, edits.contrast, edits.detail)
@@ -421,6 +428,45 @@ object PageRenderer {
         }
         if (turn != null) Core.rotate(warped, warped, turn)
         return warped
+    }
+
+    /**
+     * The color of what [quad] lies on in [source]: the middle color a little outside each of its
+     * sides. Null when the crop takes in the whole photo, so there's nothing outside to see.
+     */
+    internal fun deskAround(source: Bitmap, quad: Quad): Scalar? {
+        val w = source.width
+        val h = source.height
+        val corners = quad.corners.map { it.x * w to it.y * h }
+        val cx = corners.sumOf { it.first.toDouble() } / 4
+        val cy = corners.sumOf { it.second.toDouble() } / 4
+        val reach = DESK_REACH * hypot(w.toDouble(), h.toDouble())
+        val reds = ArrayList<Int>()
+        val greens = ArrayList<Int>()
+        val blues = ArrayList<Int>()
+        for (i in 0 until 4) {
+            val (ax, ay) = corners[i]
+            val (bx, by) = corners[(i + 1) % 4]
+            for (s in 1 until DESK_SAMPLES) {
+                val t = s.toDouble() / DESK_SAMPLES
+                val x = ax + (bx - ax) * t
+                val y = ay + (by - ay) * t
+                // Out from the middle of the crop, past its side.
+                val dx = x - cx
+                val dy = y - cy
+                val length = hypot(dx, dy).coerceAtLeast(1.0)
+                val ox = (x + dx / length * reach).toInt()
+                val oy = (y + dy / length * reach).toInt()
+                if (ox !in 0 until w || oy !in 0 until h) continue
+                val c = source.getPixel(ox, oy)
+                reds += android.graphics.Color.red(c)
+                greens += android.graphics.Color.green(c)
+                blues += android.graphics.Color.blue(c)
+            }
+        }
+        if (reds.size < DESK_SAMPLES) return null
+        fun middle(values: List<Int>) = values.sorted()[values.size / 2].toDouble()
+        return Scalar(middle(reds), middle(greens), middle(blues))
     }
 
     private fun toRgb(bitmap: Bitmap): Mat {

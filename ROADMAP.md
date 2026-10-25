@@ -240,8 +240,14 @@ benchmark it belongs to, committed and pushed, released only when everything is 
 - ✅ **Restore old photo** (2026-10-21): the Photo look stretches each colour back between its
   own darkest and lightest (undoing fading and its yellow or magenta cast), gives back a little
   colour, and fills in dust specks on plain areas and thin straight bright scratches. Detail in
-  the picture, such as the catchlights in eyes, is left alone. Torn corners and large stains are
-  still to do.
+  the picture, such as the catchlights in eyes, is left alone. ✅ Torn corners and edges
+  (2026-10-25): with the Photo look, Clean up → Edges finds where the desk the print lay on
+  shows inside the crop at its edge (its color sampled just outside the crop in the photo),
+  with the white paper core along the tear, and fills it with more of the picture: small
+  squares matched from the rest of it, coarse to fine (PatchMatch), so grass goes on as grass
+  and a horizon runs on through. A pale sky reaching the edge of a photo on a pale desk stays:
+  a gap must have a sharp edge against the picture. Not yet: large stains on photos, and tears
+  where the desk is too patterned to have one color.
 
 ### Library
 - ✅ **Names that say what a document is** (2026-10-24): once read, a document still called

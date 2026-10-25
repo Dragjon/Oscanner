@@ -1,5 +1,6 @@
 package dev.olaf.oscanner.core.imaging
 
+import dev.olaf.oscanner.core.model.PageFilter
 import dev.olaf.oscanner.core.model.Area
 import dev.olaf.oscanner.core.model.InkMark
 import dev.olaf.oscanner.core.model.PageEdits
@@ -25,11 +26,17 @@ import kotlin.math.min
  */
 internal object Cleanup {
 
-    /** Fills what [edits] removes, in place, and mends ruled lines writing crossed. */
-    fun apply(rgb: Mat, edits: PageEdits) {
+    /**
+     * Fills what [edits] removes, in place, and mends ruled lines writing crossed. [desk] is the
+     * color around the crop in the photo, when known: on a photo, edges are mended from it.
+     */
+    fun apply(rgb: Mat, edits: PageEdits, desk: Scalar? = null) {
         // Stains are taken out first: what's under them is kept, and then judged like the rest.
         if (edits.removeStains) unstain(rgb)
-        if (edits.fillEdges) fillEdges(rgb)
+        if (edits.fillEdges) {
+            // A photo's torn corners are filled with more picture; a page's with paper.
+            if (edits.filter == PageFilter.Photo) desk?.let { OldPhoto.mendTorn(rgb, it) } else fillEdges(rgb)
+        }
         val (mask, mend) = plan(rgb, edits)
         if (mask != null) {
             val paper = paperUnder(rgb, mask)

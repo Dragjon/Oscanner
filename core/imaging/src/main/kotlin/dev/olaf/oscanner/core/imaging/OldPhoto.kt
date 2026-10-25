@@ -18,6 +18,7 @@ import kotlin.math.min
  * between its own darkest and lightest, which undoes all three, and the color that fading
  * drained is given back a little. Dust and the scratches on a print are small, isolated specks
  * and thin bright lines that stand out from what's around them; they're filled in from it.
+ * Where a corner or edge is torn off, [mendTorn] fills the gap with more of the picture.
  */
 internal object OldPhoto {
 
@@ -145,6 +146,115 @@ internal object OldPhoto {
         mask.release()
     }
 
+    /**
+     * A print's torn-off corners and edges, in place: where the desk it lay on, colored [desk],
+     * shows inside the crop, at the edge, along with the white paper core a tear leaves. Each
+     * gap has a sharp edge against the picture; a pale sky reaching the edge, as pale as the
+     * desk, fades into the picture instead, and stays. Filled from the rest of the picture.
+     */
+    internal fun mendTorn(rgb: Mat, desk: Scalar) {
+        val mask = tornMask(rgb, desk) ?: return
+        PatchFill.fill(rgb, mask)
+        mask.release()
+    }
+
+    /** Where [rgb] is torn away, at its full size; null when nothing is. */
+    internal fun tornMask(rgb: Mat, desk: Scalar): Mat? {
+        val scale = min(1.0, TORN_SIDE / max(rgb.cols(), rgb.rows()))
+        val small = Mat()
+        Imgproc.resize(rgb, small, Size(), scale, scale, Imgproc.INTER_AREA)
+        Imgproc.GaussianBlur(small, small, Size(3.0, 3.0), 0.0)
+        val w = small.cols()
+        val h = small.rows()
+        // Near the desk's color, by how different colors look (Lab).
+        val lab = Mat()
+        small.convertTo(lab, CvType.CV_32FC3, 1.0 / 255)
+        Imgproc.cvtColor(lab, lab, Imgproc.COLOR_RGB2Lab)
+        val deskLab = Mat(1, 1, CvType.CV_32FC3)
+        deskLab.put(0, 0, floatArrayOf((desk.`val`[0] / 255).toFloat(), (desk.`val`[1] / 255).toFloat(), (desk.`val`[2] / 255).toFloat()))
+        Imgproc.cvtColor(deskLab, deskLab, Imgproc.COLOR_RGB2Lab)
+        val d = FloatArray(3).also { deskLab.get(0, 0, it) }
+        deskLab.release()
+        val labPx = FloatArray(w * h * 3).also { lab.get(0, 0, it) }
+        lab.release()
+        val near = Mat(h, w, CvType.CV_8UC1)
+        near.put(
+            0, 0,
+            ByteArray(w * h) { i ->
+                val dl = labPx[i * 3] - d[0]
+                val da = labPx[i * 3 + 1] - d[1]
+                val db = labPx[i * 3 + 2] - d[2]
+                if (dl * dl + da * da + db * db < TORN_NEAR * TORN_NEAR) -1 else 0
+            },
+        )
+        val gray = Mat()
+        Imgproc.cvtColor(small, gray, Imgproc.COLOR_RGB2GRAY)
+        val gx = Mat()
+        val gy = Mat()
+        Imgproc.Sobel(gray, gx, CvType.CV_32F, 1, 0)
+        Imgproc.Sobel(gray, gy, CvType.CV_32F, 0, 1)
+        Core.magnitude(gx, gy, gx)
+        val edgePx = FloatArray(w * h).also { gx.get(0, 0, it) }
+        listOf(gx, gy, gray).forEach(Mat::release)
+        val labels = Mat()
+        val stats = Mat()
+        val centroids = Mat()
+        val n = Imgproc.connectedComponentsWithStats(near, labels, stats, centroids, 8, CvType.CV_32S)
+        val labelPx = IntArray(w * h).also { labels.get(0, 0, it) }
+        listOf(labels, centroids, near).forEach(Mat::release)
+        // How sharp each gap's edge is inside the picture: the mean gradient along it, away
+        // from the photo's own edge.
+        val edgeSum = DoubleArray(n)
+        val edgeCount = IntArray(n)
+        for (y in 1 until h - 1) for (x in 1 until w - 1) {
+            val p = y * w + x
+            val k = labelPx[p]
+            if (k == 0) continue
+            if (labelPx[p - 1] != k || labelPx[p + 1] != k || labelPx[p - w] != k || labelPx[p + w] != k) {
+                edgeSum[k] += edgePx[p].toDouble()
+                edgeCount[k]++
+            }
+        }
+        val keep = BooleanArray(n) { k ->
+            if (k == 0 || edgeCount[k] == 0) return@BooleanArray false
+            val x0 = stats.get(k, Imgproc.CC_STAT_LEFT)[0]
+            val y0 = stats.get(k, Imgproc.CC_STAT_TOP)[0]
+            val x1 = x0 + stats.get(k, Imgproc.CC_STAT_WIDTH)[0]
+            val y1 = y0 + stats.get(k, Imgproc.CC_STAT_HEIGHT)[0]
+            val area = stats.get(k, Imgproc.CC_STAT_AREA)[0]
+            val touches = x0 <= 0 || y0 <= 0 || x1 >= w || y1 >= h
+            touches && area >= TORN_LEAST * w * h && area <= TORN_MOST * w * h && edgeSum[k] / edgeCount[k] >= TORN_EDGE
+        }
+        stats.release()
+        val mask = Mat(h, w, CvType.CV_8UC1)
+        mask.put(0, 0, ByteArray(w * h) { if (keep[labelPx[it]]) -1 else 0 })
+        if (Core.countNonZero(mask) == 0) {
+            listOf(mask, small).forEach(Mat::release)
+            return null
+        }
+        // The white core along the tear: pale, colorless, and joined to the gap.
+        val hsv = Mat()
+        Imgproc.cvtColor(small, hsv, Imgproc.COLOR_RGB2HSV)
+        small.release()
+        val white = Mat()
+        Core.inRange(hsv, Scalar(0.0, 0.0, TORN_WHITE), Scalar(180.0, 60.0, 255.0), white)
+        hsv.release()
+        Core.bitwise_or(white, mask, white)
+        val step = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0))
+        repeat(max(2, (max(w, h) * TORN_RIM).toInt())) {
+            Imgproc.dilate(mask, mask, step)
+            Core.bitwise_and(mask, white, mask)
+        }
+        white.release()
+        // And the soft line where it meets the picture.
+        Imgproc.dilate(mask, mask, step, org.opencv.core.Point(-1.0, -1.0), 2)
+        val full = Mat()
+        Imgproc.resize(mask, full, rgb.size(), 0.0, 0.0, Imgproc.INTER_LINEAR)
+        Imgproc.threshold(full, full, 0.0, 255.0, Imgproc.THRESH_BINARY)
+        mask.release()
+        return full
+    }
+
     /** Whether component [k] of [labels] fits in a rotated rectangle a few pixels wide. */
     private fun straight(labels: IntArray, cols: Int, k: Int, stats: Mat): Boolean {
         val x0 = stats.get(k, Imgproc.CC_STAT_LEFT)[0].toInt()
@@ -177,4 +287,16 @@ internal object OldPhoto {
     private const val SCRATCH_WIDTH = 4.0
     /** A straight scratch stays inside a band this many pixels wide along its length. */
     private const val SCRATCH_BEND = 8.0
+    /** Tears are looked for on a copy this big. */
+    private const val TORN_SIDE = 640.0
+    /** As near the desk's color as this (Lab distance) is desk. */
+    private const val TORN_NEAR = 14f
+    /** A gap is between these shares of the photo. */
+    private const val TORN_LEAST = 0.0005
+    private const val TORN_MOST = 0.25
+    /** A gap's edge against the picture is at least this sharp (mean Sobel gradient). */
+    private const val TORN_EDGE = 60.0
+    /** The paper core along a tear: at least this bright, and at most this share of the long side wide. */
+    private const val TORN_WHITE = 190.0
+    private const val TORN_RIM = 0.02
 }
