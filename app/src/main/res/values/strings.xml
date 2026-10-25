@@ -14,42 +14,9 @@
     <string name="app_lock_locked">Oscanner is locked</string>
     <string name="app_lock_unlock">Unlock</string>
     <!-- The welcome tour, on first opening. CamScanner facts as seen on 2026-10-21 (ROADMAP.md §1). -->
-    <string name="welcome_skip">Skip</string>
-    <string name="welcome_next">Next</string>
     <string name="welcome_start">Start scanning</string>
 
     <string name="welcome_hello_title">Hi, I\'m Oscanner</string>
-    <string name="welcome_hello_body">The free CamScanner replacement. No ads. No watermark. No account. No subscription. Not now, not ever.</string>
-    <string name="welcome_hello_rant">Remember CamScanner? The ads in the way of every scan. Its \"Scanned with CamScanner\" stamped across your own documents. The \"free trial\" that quietly turns into $49.99 a year. You can uninstall it now. Everything it charges you for is right here, for nothing.</string>
-
-    <string name="welcome_scan_title">Point, and it scans</string>
-    <string name="welcome_scan_1">Finds the page\'s edges and takes the picture when you hold still</string>
-    <string name="welcome_scan_2">Modes for documents, books (split at the spine), ID cards, whiteboards, slides and screens, and QR codes</string>
-    <string name="welcome_scan_3">Auto-fix cleans every page as it\'s saved: curved pages straightened and the text crowded into a book\'s spine spread back out, fingers and handwriting taken out, desk in the corners made paper</string>
-    <string name="welcome_scan_4">Notices when you scan the same page twice</string>
-    <string name="welcome_scan_5">Import photos, PDFs, and Word, Excel and PowerPoint files you already have</string>
-    <string name="welcome_scan_6">Names each document for what it is, like \"Receipt – Greenleaf Market – 18 Oct\", and keeps them in folders</string>
-
-    <string name="welcome_clean_title">Pages that look scanned, not photographed</string>
-    <string name="welcome_clean_1">Looks for every job: Auto, Bright, Gray, Ink, Board, and Photo for old prints</string>
-    <string name="welcome_clean_2">Clean up takes out handwriting, fingers, coffee stains and the back page showing through</string>
-    <string name="welcome_clean_3">Sign, draw, highlight, add text and stamps, or retype a word on the page</string>
-    <string name="welcome_clean_4">Black out private details: emails and card numbers found for you, removed from the text too</string>
-    <string name="welcome_clean_5">Crop, turn, reorder, merge, split a test into its questions and gather the ones you got wrong to practise</string>
-
-    <string name="welcome_text_title">Text, files and everything in between</string>
-    <string name="welcome_text_1">Reads the text in every page, so you can search, copy and share it</string>
-    <string name="welcome_text_translate">Translates it into 58 languages right on the phone, even over the page\'s own picture</string>
-    <string name="welcome_text_2">Searchable PDFs, small PDFs and password-locked PDFs</string>
-    <string name="welcome_text_3">Word files that keep the page\'s layout, Excel tables, PowerPoint slides</string>
-    <string name="welcome_text_4">Passport and ID photos, with a sheet of copies to print</string>
-    <string name="welcome_text_5">One long picture, separate pictures, or straight to the printer</string>
-
-    <string name="welcome_private_title">Yours, and only yours</string>
-    <string name="welcome_private_1">Everything happens on this phone. Your documents never go to a server, ours or anyone\'s</string>
-    <string name="welcome_private_2">No account to make, no sign-in, no tracking</string>
-    <string name="welcome_private_3">Lock the app with your fingerprint, face or screen lock</string>
-    <string name="welcome_private_4">Free and open source: anyone can check what it does</string>
 
     <string name="versus_title">Oscanner vs CamScanner</string>
     <string name="versus_body">Same job. One of them wants your money, your attention and your account for it.</string>
@@ -82,5 +49,21 @@
     <string name="versus_translate_ours">Free, 58 languages, on your phone</string>
     <string name="versus_translate_theirs">Yes</string>
     <string name="versus_footnote">CamScanner\'s free tier and prices as seen in October 2026.</string>
-    <string name="versus_verdict">Everything you used CamScanner for, without the ads, the stamp or the bill. Go ahead and delete it.</string>
+    <string name="welcome_promise">Free, private, no ads. Ever.</string>
+    <string name="welcome_compare">How it compares to CamScanner</string>
+    <string name="welcome_tile_receipt">Clean up a receipt</string>
+    <string name="welcome_tile_receipt_detail">Finds the page\'s edges, squares it up and makes it look scanned, not photographed.</string>
+    <string name="welcome_tile_pen">Lift the pen off</string>
+    <string name="welcome_tile_pen_detail">Takes out handwriting and keeps the print, so a filled-in test can be done again.</string>
+    <string name="welcome_tile_book">Flatten a book page</string>
+    <string name="welcome_tile_book_detail">Lines bending into the spine come out level, and the text crowded there spreads back out.</string>
+    <string name="welcome_tile_translate">Read it, then translate it</string>
+    <string name="welcome_tile_translate_detail">Every word is read for search and copy, and translated into any of 58 languages on the phone.</string>
+    <string name="welcome_tile_photo">Bring back an old photo</string>
+    <string name="welcome_tile_photo_detail">Brings back faded colour, fills in dust and scratches, and patches torn corners.</string>
+    <string name="welcome_tile_private">Nothing leaves your phone</string>
+    <string name="welcome_tile_private_detail">Free and open source: anyone can check.</string>
+    <string name="welcome_photo_label">Photo</string>
+    <string name="welcome_result_label">Oscanner</string>
+    <string name="welcome_drag_hint">Drag to compare</string>
 </resources>
