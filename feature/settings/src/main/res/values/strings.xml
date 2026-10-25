@@ -87,7 +87,7 @@
     <string name="setup_fix_timestamp">Date and time stamp</string>
     <string name="setup_fix_timestamp_description">When the photo was taken, in a corner of the page</string>
     <string name="setup_orientation">Which way up pages are taken</string>
-    <string name="setup_orientation_auto">Turn with phone</string>
+    <string name="setup_orientation_auto">Auto</string>
     <string name="setup_orientation_portrait">Portrait</string>
     <string name="setup_orientation_landscape">Landscape</string>
     <string name="setup_orientation_description">Lock one way if pages come out sideways when you hold the phone flat over a desk.</string>
