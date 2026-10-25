@@ -43,6 +43,8 @@ class SettingsRepository(context: Context) {
             ),
             cameraOrientation = prefs[CAMERA_ORIENTATION].toEnum(CameraOrientation.Auto),
             welcomed = prefs[WELCOMED] ?: false,
+            // People who saw the tour before there was a setup have chosen in Settings already.
+            setUp = prefs[SET_UP] ?: prefs[WELCOMED] ?: false,
         )
     }
 
@@ -63,8 +65,16 @@ class SettingsRepository(context: Context) {
         store.edit { it[CAMERA_ORIENTATION] = orientation.name }
     }
 
+    /** The tour is done; the setup comes next, unless defaults were already chosen. */
     suspend fun setWelcomed() {
-        store.edit { it[WELCOMED] = true }
+        store.edit {
+            if (it[SET_UP] == null) it[SET_UP] = false
+            it[WELCOMED] = true
+        }
+    }
+
+    suspend fun setSetUp() {
+        store.edit { it[SET_UP] = true }
     }
 
     suspend fun setAppLock(enabled: Boolean) {
@@ -122,6 +132,7 @@ class SettingsRepository(context: Context) {
         val FIX_TIMESTAMP = booleanPreferencesKey("fix_timestamp")
         val FIX_EDGES = booleanPreferencesKey("fix_edges")
         val WELCOMED = booleanPreferencesKey("welcomed")
+        val SET_UP = booleanPreferencesKey("set_up")
         val CAMERA_ORIENTATION = stringPreferencesKey("camera_orientation")
     }
 }

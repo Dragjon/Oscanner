@@ -272,6 +272,8 @@ data class AppSettings(
     val cameraOrientation: CameraOrientation = CameraOrientation.Auto,
     /** The welcome tour was seen (or skipped), so it doesn't show on opening again. */
     val welcomed: Boolean = false,
+    /** Defaults were chosen (or left as they are) after the tour, so the setup doesn't show again. */
+    val setUp: Boolean = false,
 )
 
 /** Which way up the camera takes pages: as the phone is held, or always one way. */

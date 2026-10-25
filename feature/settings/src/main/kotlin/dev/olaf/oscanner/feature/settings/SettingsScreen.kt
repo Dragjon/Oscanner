@@ -35,6 +35,7 @@ import androidx.compose.material.icons.rounded.Celebration
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.LibraryAdd
 import androidx.compose.material.icons.rounded.Translate
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -83,6 +84,8 @@ fun SettingsRoute(
     onOpenLanguages: () -> Unit,
     /** Shows the welcome tour again. */
     onOpenWelcome: () -> Unit,
+    /** Goes through choosing defaults again. */
+    onOpenSetup: () -> Unit,
     /** False when this phone has no fingerprint, face or screen lock to use. */
     appLockAvailable: Boolean,
     /** Confirms with the system prompt, then calls back with whether it succeeded. */
@@ -107,6 +110,7 @@ fun SettingsRoute(
         onPdfQualityChange = viewModel::onPdfQualityChange,
         onWatermarkChange = viewModel::onWatermarkChange,
         onOpenWelcome = onOpenWelcome,
+        onOpenSetup = onOpenSetup,
         appLockAvailable = appLockAvailable,
         onAppLockChange = { enable ->
             // Turning the lock on proves it works first; turning it off also asks, so a passer-by can't.
@@ -136,6 +140,7 @@ fun SettingsScreen(
     onPdfQualityChange: (PdfQuality) -> Unit,
     onWatermarkChange: (String) -> Unit,
     onOpenWelcome: () -> Unit,
+    onOpenSetup: () -> Unit,
     appLockAvailable: Boolean,
     onAppLockChange: (Boolean) -> Unit,
     onFillSampleLibrary: () -> Unit,
@@ -177,6 +182,15 @@ fun SettingsScreen(
                         color = colors.onBackground,
                     )
                 }
+            }
+
+            item(key = "setup") {
+                SheetAction(
+                    icon = Icons.Rounded.Tune,
+                    title = stringResource(R.string.settings_setup_again),
+                    description = stringResource(R.string.settings_setup_again_description),
+                    onClick = onOpenSetup,
+                )
             }
 
             item(key = "appearance") { SectionLabel(stringResource(R.string.settings_appearance)) }
@@ -389,7 +403,7 @@ private fun SectionLabel(text: String) {
 }
 
 @Composable
-private fun SettingsCard(content: @Composable () -> Unit) {
+internal fun SettingsCard(content: @Composable () -> Unit) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
@@ -400,7 +414,7 @@ private fun SettingsCard(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun ThemeChoice(selected: ThemeMode, onSelect: (ThemeMode) -> Unit) = Choice(
+internal fun ThemeChoice(selected: ThemeMode, onSelect: (ThemeMode) -> Unit) = Choice(
     options = listOf(
         ThemeMode.Dark to R.string.settings_theme_dark,
         ThemeMode.Light to R.string.settings_theme_light,
@@ -416,7 +430,7 @@ private fun ThemeChoice(selected: ThemeMode, onSelect: (ThemeMode) -> Unit) = Ch
  * Every segment takes the height of the tallest, so a label that does wrap doesn't stand out.
  */
 @Composable
-private fun <T> Choice(options: List<Pair<T, Int>>, selected: T, onSelect: (T) -> Unit) {
+internal fun <T> Choice(options: List<Pair<T, Int>>, selected: T, onSelect: (T) -> Unit) {
     val colors = MaterialTheme.colorScheme
     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
         options.forEachIndexed { index, (value, label) ->
@@ -450,7 +464,7 @@ private fun <T> Choice(options: List<Pair<T, Int>>, selected: T, onSelect: (T) -
 
 /** A plain-sentence setting; the whole card toggles, not just the switch. */
 @Composable
-private fun SwitchCard(
+internal fun SwitchCard(
     title: String,
     description: String,
     checked: Boolean,

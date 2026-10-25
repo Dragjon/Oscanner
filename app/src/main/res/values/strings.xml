@@ -25,7 +25,7 @@
     <string name="welcome_scan_title">Point, and it scans</string>
     <string name="welcome_scan_1">Finds the page\'s edges and takes the picture when you hold still</string>
     <string name="welcome_scan_2">Modes for documents, books (split at the spine), ID cards, whiteboards, slides and screens, and QR codes</string>
-    <string name="welcome_scan_3">Auto-fix cleans every page as it\'s saved: curved pages straightened, fingers and handwriting taken out, desk in the corners made paper</string>
+    <string name="welcome_scan_3">Auto-fix cleans every page as it\'s saved: curved pages straightened and the text crowded into a book\'s spine spread back out, fingers and handwriting taken out, desk in the corners made paper</string>
     <string name="welcome_scan_4">Notices when you scan the same page twice</string>
     <string name="welcome_scan_5">Import photos and PDFs you already have</string>
     <string name="welcome_scan_6">Names each document for what it is, like \"Receipt – Greenleaf Market – 18 Oct\", and keeps them in folders</string>

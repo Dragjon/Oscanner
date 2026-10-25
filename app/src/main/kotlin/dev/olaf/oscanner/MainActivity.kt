@@ -1,5 +1,6 @@
 package dev.olaf.oscanner
 
+import dev.olaf.oscanner.feature.settings.SetupScreen
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
@@ -87,6 +88,14 @@ class MainActivity : FragmentActivity() {
                     lockOn && locked.value -> LockScreen(onUnlock = { appLock.prompt { ok -> if (ok) locked.value = false } })
                     // The first time the app opens: the tour, once.
                     settings?.welcomed == false -> WelcomeScreen(onDone = { lifecycleScope.launch { container.settings.setWelcomed() } })
+                    // Then choosing defaults, once.
+                    settings?.setUp == false -> SetupScreen(
+                        settings = settings!!,
+                        repository = container.settings,
+                        appLockAvailable = appLock.available(),
+                        confirmLock = appLock::prompt,
+                        onDone = { lifecycleScope.launch { container.settings.setSetUp() } },
+                    )
                     else -> OscannerNavHost(
                         container = container,
                         sharedImages = sharedImages.value,

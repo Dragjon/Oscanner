@@ -1,5 +1,7 @@
 package dev.olaf.oscanner
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.getValue
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -47,6 +49,7 @@ import dev.olaf.oscanner.feature.settings.LanguagesRoute
 import dev.olaf.oscanner.feature.settings.LanguagesViewModel
 import dev.olaf.oscanner.feature.settings.SettingsRoute
 import dev.olaf.oscanner.feature.settings.SettingsViewModel
+import dev.olaf.oscanner.feature.settings.SetupScreen
 import dev.olaf.oscanner.feature.text.TextRoute
 import dev.olaf.oscanner.feature.text.TextViewModel
 import kotlinx.coroutines.launch
@@ -60,6 +63,7 @@ private object Routes {
     const val TRASH = "trash"
     const val LANGUAGES = "languages"
     const val WELCOME = "welcome"
+    const val SETUP = "setup"
     const val CAPTURE = "capture?documentId={documentId}"
     const val REVIEW = "review/{documentId}?page={page}&focus={focus}"
     const val DOCUMENT = "document/{documentId}"
@@ -161,12 +165,25 @@ fun OscannerNavHost(
                 onBack = { navController.popBackStack() },
                 onOpenLanguages = { navController.navigate(Routes.LANGUAGES) { launchSingleTop = true } },
                 onOpenWelcome = { navController.navigate(Routes.WELCOME) { launchSingleTop = true } },
+                onOpenSetup = { navController.navigate(Routes.SETUP) { launchSingleTop = true } },
                 appLockAvailable = appLockAvailable,
                 confirmLock = confirmLock,
             )
         }
         composable(Routes.WELCOME) {
             WelcomeScreen(onDone = { navController.popBackStack() })
+        }
+        composable(Routes.SETUP) {
+            val settings by container.settings.settings.collectAsStateWithLifecycle(initialValue = null)
+            settings?.let {
+                SetupScreen(
+                    settings = it,
+                    repository = container.settings,
+                    appLockAvailable = appLockAvailable,
+                    confirmLock = confirmLock,
+                    onDone = { navController.popBackStack() },
+                )
+            }
         }
         composable(Routes.LANGUAGES) {
             val viewModel: LanguagesViewModel = viewModel(

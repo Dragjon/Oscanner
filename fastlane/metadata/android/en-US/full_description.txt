@@ -3,7 +3,7 @@
 <p><b>Scan</b></p>
 <ul>
 <li>The camera finds the page and takes the picture when you hold steady</li>
-<li>Crop with a magnifier, straighten, rotate and flatten curved pages</li>
+<li>Crop with a magnifier, straighten, rotate and flatten curved pages: lines made level and text crowded into a book's spine spread back out</li>
 <li>Looks: Auto, Bright, Gray, Ink (pure black and white), Board for whiteboards and Photo for old prints; shadows are removed</li>
 <li>Modes for ID cards (printed at true size), open books (split into two pages), whiteboards, slides and screens</li>
 <li>Read QR codes and barcodes; nothing opens unless you tap it</li>
