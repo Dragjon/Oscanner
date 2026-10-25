@@ -1,0 +1,3 @@
+New: import Word, Excel and PowerPoint files as pages, with their text ready to search and copy.
+
+A new welcome tour shows real before-and-after pictures of what the app does. Old photos have torn corners and edges mended. Translated pages keep the print's serifs, and translations over pictures keep the picture. A page with a big picture on it is found whole. Removing handwriting keeps printed signs like + between printed words.
