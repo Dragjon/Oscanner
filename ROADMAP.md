@@ -211,8 +211,11 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   (2026-10-25): serif print gets the phone's serif face, told by how its strokes vary in width
   (upright strokes over level ones: 1.15 to 1.43 for Times, Georgia, Cambria, Garamond and Book
   Antiqua, 0.94 to 1.10 for Arial, Calibri, Verdana, Segoe and Tahoma, all 30 told apart at
-  20 to 48 px); headings stay bold. Print smaller than 18 px keeps the plain face. Later: text
-  inside photos and coloured boxes, which is painted over flat.
+  20 to 48 px); headings stay bold. Print smaller than 18 px keeps the plain face. ✅ Text on
+  pictures (2026-10-25): where the colour round a paragraph varies (a photo, a gradient), only
+  its letters, with the pale rim sharpening leaves, are taken off and filled from the picture
+  around (the same patch fill as torn photos), and the translation is written with a thin edge
+  in the background's colour; on paper or a plain coloured box it's painted over flat as before.
 
 ### 3.4 Capture modes
 - ✅ **Slides / screen mode** (2026-10-21): colours kept, screen patterns reduced, squared up to

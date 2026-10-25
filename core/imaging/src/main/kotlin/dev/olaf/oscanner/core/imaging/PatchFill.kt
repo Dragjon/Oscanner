@@ -51,10 +51,11 @@ internal object PatchFill {
 
     /** [rgb] with [hole] filled, as a new Mat the same size. */
     private fun complete(rgb: Mat, hole: Mat): Mat {
-        // Smaller and smaller copies, down to where the hole is a few squares across.
+        // Smaller and smaller copies, down to where the hole is a few squares across, while the
+        // short side still holds a few squares: a strip shrunk further is all hole.
         val images = mutableListOf(rgb.clone())
         val holes = mutableListOf(hole.clone())
-        while (max(images.last().cols(), images.last().rows()) / 2 >= COARSEST) {
+        while (max(images.last().cols(), images.last().rows()) / 2 >= COARSEST && min(images.last().cols(), images.last().rows()) / 2 >= PATCH * 4) {
             val img = Mat()
             val h = Mat()
             Imgproc.resize(images.last(), img, Size(), 0.5, 0.5, Imgproc.INTER_AREA)

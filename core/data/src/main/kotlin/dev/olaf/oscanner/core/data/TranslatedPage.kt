@@ -9,6 +9,7 @@ import android.graphics.Typeface
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
+import dev.olaf.oscanner.core.imaging.PrintEraser
 import dev.olaf.oscanner.core.pdf.LayoutParagraph
 import dev.olaf.oscanner.core.pdf.ParagraphStyle
 import kotlin.math.abs
@@ -20,6 +21,9 @@ import kotlin.math.min
  * painted over in the paper's colour around it and its translation written into its place in
  * the colour of its ink, as large as the page's letters were, smaller when the translation
  * needs more room than the paragraph had, and with serifs when the page's print has them.
+ * Where the print sits on a picture or a gradient, only its letters are taken off, filled from
+ * the picture around them, and the translation gets a thin edge in the background's colour to
+ * stand out from it.
  */
 object TranslatedPage {
 
@@ -35,6 +39,15 @@ object TranslatedPage {
         val frameRight = placed.maxOf { it.right } * w
         // Colours come from the page as it was, before any paragraph is painted over.
         val colours = placed.map { inks(page, it) }
+        val busy = placed.map { busy(page, it) }
+        // Print on pictures is taken off first, all at once, leaving the picture.
+        PrintEraser.erase(
+            out,
+            placed.indices.filter { busy[it] && texts.getOrNull(paragraphs.indexOf(placed[it])) != null }.map { i ->
+                val p = placed[i]
+                PrintEraser.Print((p.left * w).toInt(), (p.top * h).toInt(), (p.right * w).toInt(), (p.bottom * h).toInt(), colours[i].second, p.lineHeight * h)
+            },
+        )
         val serif = serif(page, placed, colours)
         val face = if (serif) Typeface.SERIF else Typeface.DEFAULT
         val fill = Paint().apply { style = Paint.Style.FILL }
@@ -85,12 +98,23 @@ object TranslatedPage {
                 Layout.Alignment.ALIGN_OPPOSITE -> box.right - wrapWidth
                 else -> box.left
             }
-            val pad = line * PAD
-            fill.color = paper
-            canvas.drawRect(box.left - pad, box.top - pad, box.right + pad, box.bottom + pad, fill)
-            canvas.drawRect(left + leftmost(layout) - pad, box.top - pad, left + leftmost(layout) + widest(layout) + pad, box.top + layout.height + pad, fill)
             canvas.save()
             canvas.translate(left, box.top)
+            if (busy[i]) {
+                // Its edge first, in the background's colour, then the letters over it.
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = paint.textSize * HALO
+                paint.strokeJoin = Paint.Join.ROUND
+                paint.color = paper
+                layout.draw(canvas)
+                paint.style = Paint.Style.FILL
+                paint.color = ink
+            } else {
+                val pad = line * PAD
+                fill.color = paper
+                canvas.drawRect(box.left - left - pad, -pad, box.right - left + pad, box.height() + pad, fill)
+                canvas.drawRect(leftmost(layout) - pad, -pad, leftmost(layout) + widest(layout) + pad, layout.height + pad, fill)
+            }
             layout.draw(canvas)
             canvas.restore()
         }
@@ -165,6 +189,27 @@ object TranslatedPage {
         return face.serif == true
     }
 
+    /**
+     * Whether [p] sits on a picture or a gradient rather than plain paper or a plain box: the
+     * colour just around it varies.
+     */
+    private fun busy(page: Bitmap, p: LayoutParagraph): Boolean {
+        val w = page.width
+        val h = page.height
+        val margin = max(2f, p.lineHeight * h * 0.4f)
+        val l = (p.left * w - margin).toInt().coerceIn(0, w - 1)
+        val t = (p.top * h - margin).toInt().coerceIn(0, h - 1)
+        val r = (p.right * w + margin).toInt().coerceIn(0, w - 1)
+        val b = (p.bottom * h + margin).toInt().coerceIn(0, h - 1)
+        val ring = mutableListOf<Int>()
+        val step = max(1, (r - l + b - t) / 400)
+        for (x in l..r step step) { ring += luma(page.getPixel(x, t)); ring += luma(page.getPixel(x, b)) }
+        for (y in t..b step step) { ring += luma(page.getPixel(l, y)); ring += luma(page.getPixel(r, y)) }
+        val mean = ring.average()
+        val spread = kotlin.math.sqrt(ring.sumOf { (it - mean) * (it - mean) } / ring.size)
+        return spread > BUSY
+    }
+
     private fun luma(c: Int) = (Color.red(c) * 299 + Color.green(c) * 587 + Color.blue(c) * 114) / 1000
 
     /** A word's box is about this share of the type size it was set in. */
@@ -178,4 +223,8 @@ object TranslatedPage {
     /** Kept clear above the next paragraph down, in letter heights. */
     private const val GAP = 0.3f
     private const val MIN_CONTRAST = 40
+    /** Around print on plain paper the colour varies by less than this (luma, standard deviation). */
+    private const val BUSY = 14.0
+    /** The edge round letters set on a picture, as a share of their size. */
+    private const val HALO = 0.14f
 }
