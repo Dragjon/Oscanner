@@ -3,7 +3,7 @@
     <string name="app_name">Oscanner</string>
     <string name="app_share_target">Scan with Oscanner</string>
     <string name="app_import_title">Import %1$s</string>
-    <string name="app_import_failed">Couldn\'t read those files. A PDF locked with a password can\'t be opened.</string>
+    <string name="app_import_failed">Couldn\'t read those files. A PDF locked with a password can\'t be opened, nor an old .doc, .xls or .ppt file.</string>
     <string name="app_open_pdf">Open in Oscanner</string>
     <string name="app_moved_to_trash">Moved to Trash</string>
     <string name="app_undo">Undo</string>
@@ -27,7 +27,7 @@
     <string name="welcome_scan_2">Modes for documents, books (split at the spine), ID cards, whiteboards, slides and screens, and QR codes</string>
     <string name="welcome_scan_3">Auto-fix cleans every page as it\'s saved: curved pages straightened and the text crowded into a book\'s spine spread back out, fingers and handwriting taken out, desk in the corners made paper</string>
     <string name="welcome_scan_4">Notices when you scan the same page twice</string>
-    <string name="welcome_scan_5">Import photos and PDFs you already have</string>
+    <string name="welcome_scan_5">Import photos, PDFs, and Word, Excel and PowerPoint files you already have</string>
     <string name="welcome_scan_6">Names each document for what it is, like \"Receipt – Greenleaf Market – 18 Oct\", and keeps them in folders</string>
 
     <string name="welcome_clean_title">Pages that look scanned, not photographed</string>

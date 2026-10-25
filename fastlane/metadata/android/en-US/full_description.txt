@@ -7,7 +7,7 @@
 <li>Looks: Auto, Bright, Gray, Ink (pure black and white), Board for whiteboards and Photo for old prints; shadows are removed</li>
 <li>Modes for ID cards (printed at true size), open books (split into two pages), whiteboards, slides and screens</li>
 <li>Read QR codes and barcodes; nothing opens unless you tap it</li>
-<li>Import photos and PDFs you already have</li>
+<li>Import photos, PDFs, and Word, Excel and PowerPoint files you already have</li>
 </ul>
 
 <p><b>Text and translation</b></p>

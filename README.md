@@ -34,9 +34,10 @@ follows, in [`PLAN.md`](PLAN.md).
   from the text layer too), password-protected PDFs (AES-256), page and file size options,
   watermark, App lock. Edits can be applied to other pages at once. Test papers: split into
   one question a page, mark the ones answered wrong and gather them to practise again.
-- **PDFs you already have**: import a PDF (or open or share one to Oscanner) and its pages
-  become a document to sign, mark up, black out, clean and merge like a scan. On Android 15
-  and later a PDF's own text is kept, exactly and at once, instead of being read again.
+- **PDFs and Office files you already have**: import a PDF, Word document, Excel workbook or
+  PowerPoint deck (or open or share one to Oscanner) and its pages become a document to sign,
+  mark up, black out, clean and merge like a scan. An Office file's text is kept exactly, and a
+  PDF's too on Android 15 and later, instead of being read again.
 - **Everywhere**: share sheet in and out as PDF, a smaller PDF, separate pictures or one long
   picture; save to any file provider, print, a Scan shortcut, Quick Settings tile and widget.
   Send to a computer on the same Wi-Fi: it downloads the PDF in a browser, no account or cable.

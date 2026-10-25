@@ -40,6 +40,7 @@ import dev.olaf.oscanner.core.ocr.PaddleReader
 import dev.olaf.oscanner.core.pdf.DocxWriter
 import dev.olaf.oscanner.core.pdf.LayoutBlock
 import dev.olaf.oscanner.core.pdf.LayoutParagraph
+import dev.olaf.oscanner.core.pdf.OfficeReader
 import dev.olaf.oscanner.core.pdf.LayoutPicture
 import dev.olaf.oscanner.core.pdf.PageLayout
 import dev.olaf.oscanner.core.pdf.ParagraphStyle
@@ -457,6 +458,9 @@ class PageStore(
                 runCatching {
                     if (isPdf(uri)) {
                         PdfImport.pages(context, uri, dir).map { CapturedImage(it.file, liveQuad = null, flat = true, words = it.text) }
+                    } else if (isOffice(uri)) {
+                        val file = context.contentResolver.openInputStream(uri)!!.use { OfficeReader.read(it) }
+                        OfficePages.render(file, dir).map { CapturedImage(it.file, liveQuad = null, flat = true, words = it.text) }
                     } else {
                         val file = File(dir, "${UUID.randomUUID()}.jpg")
                         context.contentResolver.openInputStream(uri)!!.use { input -> file.outputStream().use { input.copyTo(it) } }
@@ -615,6 +619,16 @@ class PageStore(
     private fun isPdf(uri: Uri): Boolean =
         context.contentResolver.getType(uri) == "application/pdf" ||
             uri.lastPathSegment?.endsWith(".pdf", ignoreCase = true) == true
+
+    private fun isOffice(uri: Uri): Boolean =
+        OfficeReader.handles(displayName(uri) ?: uri.lastPathSegment, context.contentResolver.getType(uri))
+
+    /** The name the file was given, from whatever app holds it. */
+    private fun displayName(uri: Uri): String? = runCatching {
+        context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+            if (c.moveToFirst()) c.getString(0) else null
+        }
+    }.getOrNull()
 
     /** Moves a ready page into the document's folder as its original. */
     private fun adopt(documentId: Long, image: CapturedImage): File {
@@ -1113,6 +1127,8 @@ class PageStore(
 
     companion object {
         const val TRASH_DAYS = 30
+        /** What can be brought in as pages: PDFs, Word, PowerPoint and Excel files, and pictures. */
+        val IMPORTABLE = arrayOf("application/pdf", "image/*") + OfficeReader.MIME_TYPES
         /** ISO/IEC 7810 ID-1: 85.60 × 53.98 mm. */
         const val ID1_ASPECT = 85.60f / 53.98f
         private const val TAG = "PageStore"

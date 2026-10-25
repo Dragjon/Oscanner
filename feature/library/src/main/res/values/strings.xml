@@ -74,5 +74,5 @@
     <string name="library_import_photos">Photos</string>
     <string name="library_import_photos_description">Pictures from your gallery</string>
     <string name="library_import_files">Files</string>
-    <string name="library_import_files_description">PDFs and pictures from Downloads, Drive or any app</string>
+    <string name="library_import_files_description">PDFs, Word, Excel and PowerPoint files and pictures, from Downloads, Drive or any app</string>
 </resources>

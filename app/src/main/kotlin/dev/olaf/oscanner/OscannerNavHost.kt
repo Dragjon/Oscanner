@@ -363,5 +363,4 @@ private fun NavHostController.showDocument(documentId: Long) {
     }
 }
 
-/** What can be brought in as pages: PDFs and pictures. */
-private val IMPORTABLE = arrayOf("application/pdf", "image/*")
+private val IMPORTABLE = dev.olaf.oscanner.core.data.PageStore.IMPORTABLE

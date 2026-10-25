@@ -30,7 +30,7 @@ are not layout references (`PLAN.md` §1 still applies to how we build).
 | ID Photo Maker (passport photo sizes, background colour) | ✅ |
 | Mega Scan (stitch a large object from many shots) | ❌ (⚠ patents) |
 | Import images | ✅ |
-| Import files (PDF, Word, Excel, PPT into the library) | ✅ PDFs and pictures; ❌ Office files |
+| Import files (PDF, Word, Excel, PPT into the library) | ✅ PDFs, pictures, Word, Excel and PowerPoint (.docx, .xlsx, .pptx) |
 
 ### Clean-up and enhance
 | CamScanner | Oscanner |
@@ -177,6 +177,20 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   are left alone. A faint outline of a stain's rim can remain.
 
 ### 3.2 Work with files people already have
+- ✅ **Import Word, Excel and PowerPoint files** (2026-10-25), the same ways as PDFs. Read on
+  the phone straight from their XML (no Office library: Apache POI would add megabytes) and laid
+  out as pages with Android's own text layout, their text kept word by word with where each
+  sits, exactly, so nothing is read from the picture. Word: pages its own size and margins,
+  headings, bold, italic, underline, sizes and colours, centred and justified paragraphs,
+  bullets and numbered lists (by the paragraph or its style), tables with their column widths,
+  pictures at their size, page breaks. PowerPoint: a page a slide at its shape, boxes where the
+  slide or its layout puts them, alignment, sizes and bullets from the slide, its layout and
+  master, fills, pictures, groups, tables; text that doesn't fit is shrunk as autofit does.
+  Excel: each sheet a grid over pages, portrait or landscape by its width, columns at their
+  widths (scaled to fit down to 60%, then onto pages of their own), dates and percentages as
+  Excel shows them, hidden sheets left out. Not read: the old .doc, .xls and .ppt formats,
+  charts drawn by Office itself, headers and footers, text boxes floating in Word, and fonts
+  (the phone's own are used). Files that unpack to more than 256 MB are refused.
 - ✅ **Import PDFs** into the library as documents (2026-10-21): from Import → Files, a
   document's "Add from files", or by sharing or opening a PDF with Oscanner. Pages are rendered
   at 200 dpi and read for text. ✅ A PDF's own text (2026-10-24) is kept instead, word by word
