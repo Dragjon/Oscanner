@@ -153,8 +153,10 @@ class DocumentDetector(
                     inner.whole && inner.polarity == outer.polarity && sharesSide(inner.quad, outer.quad) &&
                         // Two sheets side by side; or a sheet with a strip of darker desk taken in
                         // beside it, out to the edge of a mat or the table, which the camera
-                        // would show one frame and not the next.
-                        (inner.area < UNION_SHARE * outer.area || (inner.area < BAND_SHARE * outer.area && darkerBand(inner.quad, outer.quad, width, height)))
+                        // would show one frame and not the next. Not the paper below a picture
+                        // printed on the page: there the rest is the picture with paper round it.
+                        (inner.area < UNION_SHARE * outer.area || (inner.area < BAND_SHARE * outer.area && darkerBand(inner.quad, outer.quad, width, height))) &&
+                        !pictureBeside(inner.quad, outer.quad, width, height)
                 }
             }
             .maxByOrNull { it.score }
@@ -448,6 +450,38 @@ class DocumentDetector(
         val band = Core.countNonZero(outMask)
         val result = band > 0 && Core.mean(raw.image, outMask).`val`[0] < BAND_DARKER * Core.mean(raw.image, inMask).`val`[0]
         listOf(inMask, outMask, grown, a, b).forEach(Mat::release)
+        return result
+    }
+
+    /**
+     * Whether what [outer] takes in beyond [inner] is part paper and part something darker: a
+     * picture on the page with a margin round it, where [inner] is the paper beside it. A second
+     * sheet is paper nearly all over; a board or desk round a sheet nearly none. Read with text
+     * filled in, so a page of dense print still counts as paper.
+     */
+    private fun pictureBeside(inner: Quad, outer: Quad, width: Int, height: Int): Boolean {
+        fun shape(q: Quad) = MatOfPoint(*q.corners.map { Point(it.x * width.toDouble(), it.y * height.toDouble()) }.toTypedArray())
+        val inMask = Mat.zeros(height, width, CvType.CV_8UC1)
+        val restMask = Mat.zeros(height, width, CvType.CV_8UC1)
+        val a = shape(inner)
+        val b = shape(outer)
+        Imgproc.fillConvexPoly(inMask, a, Scalar(255.0))
+        Imgproc.fillConvexPoly(restMask, b, Scalar(255.0))
+        val grown = Mat()
+        Imgproc.dilate(inMask, grown, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(5.0, 5.0)))
+        Core.subtract(restMask, grown, restMask)
+        val rest = Core.countNonZero(restMask)
+        var result = false
+        if (rest > 0) {
+            val paper = Core.mean(filled.image, inMask).`val`[0]
+            val bright = Mat()
+            Imgproc.threshold(filled.image, bright, PAPER_LIKE * paper, 255.0, Imgproc.THRESH_BINARY)
+            Core.bitwise_and(bright, restMask, bright)
+            val share = Core.countNonZero(bright).toDouble() / rest
+            result = share in PICTURE_PAPER_MIN..PICTURE_PAPER_MAX
+            bright.release()
+        }
+        listOf(inMask, restMask, grown, a, b).forEach(Mat::release)
         return result
     }
 
@@ -1314,6 +1348,10 @@ class DocumentDetector(
         /** Up to this share, an inner sheet still wins if the band beyond it is this much darker than it. */
         private const val BAND_SHARE = 0.97
         private const val BAND_DARKER = 0.92
+        /** Beside a picture on the page, this share of the rest is paper (as bright as this share of it), the rest the picture. */
+        private const val PAPER_LIKE = 0.92
+        private const val PICTURE_PAPER_MIN = 0.04
+        private const val PICTURE_PAPER_MAX = 0.75
         /** Paper darker than its background is rarer, so it needs the stronger outline. */
         private const val DARK_PAGE = 0.8
         private const val REFINE_REACH = 4

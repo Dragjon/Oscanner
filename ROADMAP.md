@@ -122,6 +122,12 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   near misses. The camera's own outline is now kept for the captured photo. Still to do: the
   finder on live frames (off since 0.5.4 for misfiring on real ones), and a benchmark of real
   photos rather than drawn ones.
+  2026-10-25: a page with a big picture printed on it was cut down to the paper beside the
+  picture, taken for a sheet of its own (or the picture for desk beside one). A sheet only
+  splits off now when what's left is not part paper, part darker: drawn pages with a picture at
+  the top, middle, bottom or full width 3 of 40 right before, 31 of 40 after; the 240 drawn
+  scenes unchanged (164); 124 real document photos (Mendeley set, edge search alone) 36 to 39
+  right, 36 to 33 wrong.
 - **Auto filter parity.** Side-by-side test set against our own baseline: whiter paper, no grey
   cast, crisp but not crunchy text, colour kept where it matters. Add a "No shadow" style
   option if Auto can't cover both.
