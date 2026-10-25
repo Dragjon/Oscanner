@@ -75,12 +75,15 @@ import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.olaf.oscanner.core.design.ChalkSnowman
@@ -104,6 +107,8 @@ fun WelcomeScreen(onDone: () -> Unit) {
     val reduced = rememberReducedMotion()
     var open by rememberSaveable { mutableStateOf<Int?>(null) }
     var comparing by rememberSaveable { mutableStateOf(false) }
+    val density = LocalDensity.current
+    var barHeight by remember { mutableStateOf(140.dp) }
 
     Box(
         Modifier
@@ -137,7 +142,7 @@ fun WelcomeScreen(onDone: () -> Unit) {
                 PrivateTile(Modifier.weight(1f).fillMaxHeight())
             }
             // Room to scroll the last tiles clear of the pinned bar.
-            Spacer(Modifier.navigationBarsPadding().height(132.dp))
+            Spacer(Modifier.height(barHeight + 16.dp))
         }
         Box(
             Modifier
@@ -150,7 +155,8 @@ fun WelcomeScreen(onDone: () -> Unit) {
             color = colors.background,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .onGloballyPositioned { barHeight = with(density) { it.size.height.toDp() } },
         ) {
             Column(
                 Modifier
@@ -159,7 +165,7 @@ fun WelcomeScreen(onDone: () -> Unit) {
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 TextButton(onClick = { comparing = true }) {
-                    Text(stringResource(R.string.welcome_compare), color = colors.onSurfaceVariant, style = MaterialTheme.typography.labelLarge)
+                    Text(stringResource(R.string.welcome_compare), color = colors.onSurfaceVariant, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center)
                 }
                 PrimaryPill(
                     icon = Icons.Rounded.DocumentScanner,
@@ -215,10 +221,12 @@ private class Tile(
     @StringRes val detail: Int,
     /** Its pictures' width over height, for showing them whole when opened. */
     val aspect: Float,
+    /** Show the result whole on paper rather than cropped to fill: a receipt's totals sit at its edge. */
+    val whole: Boolean = false,
 )
 
 private val TILES = listOf(
-    Tile(R.drawable.welcome_receipt_before, R.drawable.welcome_receipt_after, R.string.welcome_tile_receipt, R.string.welcome_tile_receipt_detail, 0.6f),
+    Tile(R.drawable.welcome_receipt_before, R.drawable.welcome_receipt_after, R.string.welcome_tile_receipt, R.string.welcome_tile_receipt_detail, 0.6f, whole = true),
     Tile(R.drawable.welcome_pen_before, R.drawable.welcome_pen_after, R.string.welcome_tile_pen, R.string.welcome_tile_pen_detail, 480f / 380),
     Tile(R.drawable.welcome_book_before, R.drawable.welcome_book_after, R.string.welcome_tile_book, R.string.welcome_tile_book_detail, 480f / 380),
     Tile(R.drawable.welcome_translate_before, R.drawable.welcome_translate_after, R.string.welcome_tile_translate, R.string.welcome_tile_translate_detail, 960f / 560),
@@ -282,8 +290,13 @@ private fun WipeTile(tile: Tile, index: Int, reduced: Boolean, modifier: Modifie
 /** [tile]'s result with its photo over the left [shown] of it, and the paper-white line between. */
 @Composable
 private fun Wipe(tile: Tile, shown: Float, modifier: Modifier, line: Dp = 2.dp) {
-    Box(modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
-        Image(painterResource(tile.after), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.matchParentSize())
+    Box(modifier.background(if (tile.whole) RECEIPT_PAPER else MaterialTheme.colorScheme.surfaceContainerHigh)) {
+        Image(
+            painterResource(tile.after),
+            contentDescription = null,
+            contentScale = if (tile.whole) ContentScale.Fit else ContentScale.Crop,
+            modifier = Modifier.matchParentSize(),
+        )
         Image(
             painterResource(tile.before),
             contentDescription = null,
@@ -472,6 +485,8 @@ private val SQUARE = 168.dp
 private val TALL_MIN = 200.dp
 /** Either side of the wipe line, so it shows on white paper as on a photo. */
 private val KEYLINE = Color(0x99161412)
+/** The receipt's own paper, around its result when the tile is taller than the receipt. */
+private val RECEIPT_PAPER = Color(0xFFFFFFFF)
 /** The wipe line and the grip: paper white, as the camera's page outline is. */
 private val PAPER = Color(0xFFF4EEE6)
 private const val HOLD_MS = 1600
