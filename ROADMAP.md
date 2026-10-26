@@ -128,6 +128,24 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   the top, middle, bottom or full width 3 of 40 right before, 31 of 40 after; the 240 drawn
   scenes unchanged (164); 124 real document photos (Mendeley set, edge search alone) 36 to 39
   right, 36 to 33 wrong.
+  **Head to head with CamScanner (2026-10-27).** The 124 Mendeley phone photos (CC BY 4.0),
+  imported into CamScanner 7.27 on the emulator (Import Images, Original look, Auto Crop) and
+  into ours (the same detector, page finder and corner network an import uses). CamScanner's
+  outline was recovered by matching each of its cropped pages back onto the photo (SIFT,
+  RANSAC); 11 near-blank pages couldn't be matched and are left out for both. On 113 photos:
+
+  | | Oscanner 0.8.6 | CamScanner 7.27 |
+  |---|---|---|
+  | mean overlap (IoU) with the true page | 0.79 | 0.88 |
+  | overlap ≥ 0.95 / ≥ 0.90 / ≥ 0.80 | 42% / 59% / 71% | 65% / 79% / 84% |
+  | every corner within 2% / 5% of the frame | 35% / 58% | 57% / 73% |
+  | nothing found (whole photo kept) | 19 | — |
+
+  CamScanner is better on 55 photos, we are on 14, 44 the same. Nearly all of the worst ones are
+  a sheet held up by hand against a pale wall or radiator, where we find nothing; our corner
+  network misses them too (right on 1 of those 19, CamScanner 15). So the gap is finding a pale
+  page on a pale background and a hand over its edge, then a few percent of corner accuracy.
+  Bench: `oscanner-bench/csbench` (CamScanner's outlines, scripts).
 - **Auto filter parity.** Side-by-side test set against our own baseline: whiter paper, no grey
   cast, crisp but not crunchy text, colour kept where it matters. Add a "No shadow" style
   option if Auto can't cover both.
