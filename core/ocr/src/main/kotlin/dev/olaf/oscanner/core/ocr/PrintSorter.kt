@@ -169,12 +169,10 @@ class PrintSorter(context: Context) : AutoCloseable {
             val main = members.filter { height(it) >= 0.3 * med }
             val x0 = main.minOf { left(it) }
             val x1 = main.maxOf { left(it) + width(it) } - 1
-            // Most of its marks' tops and bottoms: a ring or a line drawn round the run, in pieces,
-            // would stretch it, and its letters would look small and scrawled in the windows.
-            val tops = main.map { top(it) }.sorted()
-            val bottoms = main.map { top(it) + height(it) }.sorted()
-            val y0 = tops[tops.size / 5]
-            val y1 = bottoms[bottoms.size * 4 / 5] - 1
+            // Its marks' tops and bottoms, but for those well above or below the rest: a ring or
+            // a line drawn round the run, in pieces, would stretch it, and its letters would look
+            // small and scrawled in the windows.
+            val (y0, y1) = extent(main.map { top(it) }, main.map { top(it) + height(it) }, med)
             val runHeight = y1 - y0 + 1
             // A long line can slope across the page, lower at one end: each window there is placed
             // and sized by the letters under it.
@@ -185,9 +183,7 @@ class PrintSorter(context: Context) : AutoCloseable {
                     if (near.size < 3) {
                         null
                     } else {
-                        val tops = near.map { top(it) }.sorted()
-                        val bottoms = near.map { top(it) + height(it) }.sorted()
-                        tops[tops.size / 5] to bottoms[bottoms.size * 4 / 5] - 1
+                        extent(near.map { top(it) }, near.map { top(it) + height(it) }, med)
                     }
                 }
             } else {
@@ -252,6 +248,18 @@ class PrintSorter(context: Context) : AutoCloseable {
             }
         }
         return areas
+    }
+
+    /**
+     * Top and bottom row of marks with [tops] and (exclusive) [bottoms], leaving out those more
+     * than [STRAY] of a letter height [letter] above the middling top or below the middling bottom.
+     */
+    private fun extent(tops: List<Int>, bottoms: List<Int>, letter: Int): Pair<Int, Int> {
+        val t = tops.sorted()
+        val b = bottoms.sorted()
+        val midTop = t[t.size / 2]
+        val midBottom = b[b.size / 2]
+        return t.first { it >= midTop - STRAY * letter } to b.last { it <= midBottom + STRAY * letter } - 1
     }
 
     /** Chance each window is handwriting. */
@@ -393,6 +401,8 @@ class PrintSorter(context: Context) : AutoCloseable {
         const val JOINED_PRINT = 0.6
         /** A mark taller than this many letter heights spans two lines. */
         const val SPANS_LINES = 2.6
+        /** A mark reaching this many letter heights above or below the rest of its run is no part of the line. */
+        const val STRAY = 0.8
         /** A run longer than this many of its heights is placed window by window. */
         const val LONG_RUN = 15.0
         const val THREADS = 4

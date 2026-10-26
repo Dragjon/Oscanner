@@ -74,7 +74,7 @@ object PenLines {
     }
 
     /** A straight line [length] pixels long through the middle of a square, at [degrees]. */
-    private fun lineKernel(length: Int, degrees: Double): Mat {
+    internal fun lineKernel(length: Int, degrees: Double): Mat {
         val kernel = Mat.zeros(length, length, CvType.CV_8UC1)
         val c = (length - 1) / 2.0
         val dx = cos(Math.toRadians(degrees)) * c

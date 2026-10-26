@@ -94,8 +94,8 @@ data class Quad(
 enum class PageFilter { Original, Auto, Bright, Gray, Ink, Board, Photo }
 
 /** The recipe that turns an original photo into the page people see. Stored, never baked in. */
-/** The print finder's version, see [PageEdits.printFinder]: 2 takes pen lines drawn through print out first. */
-const val PRINT_FINDER = 2
+/** The print finder's version, see [PageEdits.printFinder]: 2 takes pen lines drawn through print out first; 3 measures a run's height as before, less strays. */
+const val PRINT_FINDER = 3
 
 data class PageEdits(
     val quad: Quad = Quad.Full,

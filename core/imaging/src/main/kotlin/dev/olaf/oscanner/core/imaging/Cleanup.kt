@@ -90,10 +90,17 @@ internal object Cleanup {
                 }
                 // Before the mend, too: a bar's straight edges look like rules the writing crossed.
                 Core.subtract(writing, solid, writing)
+                // Lines drawn under the print go even where they touch the words. Near enough
+                // straight, they'd pass for rules: they aren't kept as ones, or drawn on.
+                val drawn = if (sorted?.blank != true) underlines(rgb, solid) else Mat.zeros(h, w, CvType.CV_8UC1)
+                Core.subtract(drawn, solid, drawn)
                 sorted?.let { s ->
                     // Rules stay, and are drawn on through the gaps the writing leaves.
                     val near = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0))
                     val wide = Mat()
+                    Imgproc.dilate(drawn, wide, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(7.0, 7.0)))
+                    Core.subtract(s.rules, wide, s.rules)
+                    Core.subtract(s.bridged, wide, s.bridged)
                     Imgproc.dilate(s.rules, wide, near)
                     Core.subtract(writing, wide, writing)
                     val gaps = Mat()
@@ -103,6 +110,8 @@ internal object Cleanup {
                     mend = gaps to s.lineColor
                     listOf(wide, s.rules, s.bridged).forEach(Mat::release)
                 }
+                Core.bitwise_or(writing, drawn, writing)
+                drawn.release()
                 Core.bitwise_or(mask, writing, mask)
                 writing.release()
             }
@@ -825,6 +834,73 @@ internal object Cleanup {
     }
 
     /**
+     * Lines drawn by hand under (or through) the print on [rgb]: ink running on nearly level for
+     * longer than [UNDERLINE_RUN] letters, which no letter does, and wobbling as a hand does (see
+     * [wobbles]); a printed underline is straight and stays. Only the line's own pixels, so the
+     * letters it touches keep their shape.
+     */
+    private fun underlines(rgb: Mat, solid: Mat): Mat {
+        val side = max(rgb.cols(), rgb.rows())
+        val gray = Mat()
+        Imgproc.cvtColor(rgb, gray, Imgproc.COLOR_RGB2GRAY)
+        val ink = Mat()
+        Imgproc.adaptiveThreshold(gray, ink, 255.0, Imgproc.ADAPTIVE_THRESH_MEAN_C, Imgproc.THRESH_BINARY_INV, max(15, (side / 40) or 1), 18.0)
+        gray.release()
+        // Not along solid shapes: a chart's axis runs on under its bars, and their edges would make it wobble.
+        val nearSolid = Mat()
+        Imgproc.dilate(solid, nearSolid, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(9.0, 9.0)))
+        Core.subtract(ink, nearSolid, ink)
+        nearSolid.release()
+        val labels = Mat()
+        val stats = Mat()
+        val centroids = Mat()
+        var count = Imgproc.connectedComponentsWithStats(ink, labels, stats, centroids, 8, CvType.CV_32S)
+        var st = IntArray(count * 5).also { stats.get(0, 0, it) }
+        val heights = (1 until count).filter { st[it * 5 + 4] >= 6 && st[it * 5 + 3] >= 4 }.map { st[it * 5 + 3] }.sorted()
+        val lines = Mat.zeros(ink.size(), CvType.CV_8UC1)
+        val unit = heights.getOrNull(heights.size / 2)
+        if (unit == null) {
+            listOf(labels, stats, centroids, ink).forEach(Mat::release)
+            return lines
+        }
+        val length = max(15, (UNDERLINE_RUN * unit).toInt() or 1)
+        // A pen line a couple of pixels wide wobbles: thickened a little, it runs straight.
+        val thick = Mat()
+        Imgproc.dilate(ink, thick, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0)))
+        val part = Mat()
+        var degrees = -UNDERLINE_TILT
+        while (degrees <= UNDERLINE_TILT) {
+            val kernel = PenLines.lineKernel(length, degrees)
+            Imgproc.morphologyEx(thick, part, Imgproc.MORPH_OPEN, kernel)
+            Core.bitwise_or(lines, part, lines)
+            kernel.release()
+            degrees += UNDERLINE_STEP
+        }
+        Core.bitwise_and(lines, ink, lines)
+        // Thin strokes only: a chart's bars standing on its axis run level too, and would make it wobble.
+        val dist = Mat()
+        Imgproc.distanceTransform(ink, dist, Imgproc.DIST_L2, 3)
+        val depths = FloatArray(ink.rows() * ink.cols()).also { dist.get(0, 0, it) }
+        val half = depths.filter { it > 0f }.sorted().let { it.getOrElse(it.size / 2) { 0f } }
+        Imgproc.dilate(dist, dist, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(5.0, 5.0)))
+        Imgproc.threshold(dist, part, UNDERLINE_THIN * half, 255.0, Imgproc.THRESH_BINARY)
+        part.convertTo(part, CvType.CV_8UC1)
+        Core.subtract(lines, part, lines)
+        listOf(thick, part, dist).forEach(Mat::release)
+        count = Imgproc.connectedComponentsWithStats(lines, labels, stats, centroids, 8, CvType.CV_32S)
+        st = IntArray(count * 5).also { stats.get(0, 0, it) }
+        val w = ink.cols()
+        val ids = IntArray(w * ink.rows()).also { labels.get(0, 0, it) }
+        val drawn = BooleanArray(count) { label ->
+            label > 0 && st[label * 5 + 2] >= length && st[label * 5 + 2] > st[label * 5 + 3] &&
+                wobbles(ids, w, label, st[label * 5], st[label * 5 + 1], st[label * 5 + 2], st[label * 5 + 3], side)
+        }
+        lines.put(0, 0, ByteArray(ids.size) { if (drawn[ids[it]]) -1 else 0 })
+        listOf(labels, stats, centroids, ink).forEach(Mat::release)
+        return lines
+    }
+
+    /**
      * Whether mark [label] of [ids] (an image [w] wide), in the box at [x], [y], strays from a
      * smooth curve along its length the way a hand-drawn line does: its middle, step by step
      * along it, further than [WOBBLE] of the page's [side] from a parabola fitted to it.
@@ -1058,4 +1134,10 @@ internal object Cleanup {
     private const val BULLET_SOLID = 0.6
     private const val BULLET_ROUND = 1.5
     private const val WOBBLE_MIN = 1.2
+    /** A line drawn under the print runs on, within this many degrees of level, for this many letter heights. */
+    private const val UNDERLINE_TILT = 20.0
+    private const val UNDERLINE_STEP = 5.0
+    private const val UNDERLINE_RUN = 3.0
+    /** ...in a stroke at most this many times as deep as the ink's middling depth. */
+    private const val UNDERLINE_THIN = 3.0
 }
