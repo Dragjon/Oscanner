@@ -112,6 +112,8 @@ internal object Cleanup {
                 }
                 Core.bitwise_or(writing, drawn, writing)
                 drawn.release()
+                // Signs and bullets beside the print stay, whichever way they were taken for writing.
+                if (edits.printByLook) signsBesidePrint(rgb, printed).also { Core.subtract(writing, it, writing); it.release() }
                 Core.bitwise_or(mask, writing, mask)
                 writing.release()
             }
@@ -725,47 +727,40 @@ internal object Cleanup {
         // Darker than its neighborhood by a clear margin: ink, under any lighting.
         val block = (side / 40) or 1
         Imgproc.adaptiveThreshold(gray, ink, 255.0, Imgproc.ADAPTIVE_THRESH_MEAN_C, Imgproc.THRESH_BINARY_INV, max(15, block), 18.0)
+        val grayBytes = ByteArray(w * h).also { gray.get(0, 0, it) }
         gray.release()
         // Any color: pen in shadow is too dark to tell by its color, but it's still outside the
         // print. Logos, photos and skin are big shapes, kept below.
         // Straight rules and table lines come out first, so a signature on a signature line takes
         // only itself away.
         val rules = Mat()
-        val run = (side * 0.06).coerceAtLeast(15.0)
-        val across = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(run, 1.0))
-        val down = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(1.0, run))
+        // A little either side of level or upright: on a photo of bent paper, the rules slope.
+        val run = (side * 0.06).coerceAtLeast(15.0).toInt() or 1
+        val thick = Mat()
+        Imgproc.dilate(ink, thick, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0)))
         val part = Mat()
-        Imgproc.morphologyEx(ink, rules, Imgproc.MORPH_OPEN, across)
-        Imgproc.morphologyEx(ink, part, Imgproc.MORPH_OPEN, down)
-        Core.bitwise_or(rules, part, rules)
+        rules.create(ink.size(), CvType.CV_8UC1)
+        rules.setTo(Scalar(0.0))
+        for (upright in listOf(0.0, 90.0)) {
+            var degrees = upright - RULE_TILT
+            while (degrees <= upright + RULE_TILT) {
+                val kernel = PenLines.lineKernel(run, degrees)
+                Imgproc.morphologyEx(thick, part, Imgproc.MORPH_OPEN, kernel)
+                Core.bitwise_or(rules, part, rules)
+                kernel.release()
+                degrees += RULE_TILT_STEP
+            }
+        }
+        Core.bitwise_and(rules, ink, rules)
         Imgproc.dilate(rules, rules, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0)))
         Core.subtract(ink, rules, ink)
-        listOf(rules, part, across, down).forEach(Mat::release)
+        listOf(rules, part, thick).forEach(Mat::release)
 
         // Print stays: clear ink along every printed line, first word to last. Whole lines rather
         // than words, because a word with pen scribbled across it reads poorly and drops out of
         // the confident ones while its neighbors don't. Notes in the margin beside a line are
         // further out than a word gap and still go.
         val zero = Scalar(0.0)
-        // With print found mark by mark, a sign the reader didn't box (the + in "1/2 + 1/4 =",
-        // an x, a %) is still print when it sits between two printed words on their line and is
-        // no bigger than a letter: an answer written after the last word has print on one side only.
-        val boxes = if (exact) printed.map { doubleArrayOf(it.left * w.toDouble(), it.top * h.toDouble(), it.right * w.toDouble(), it.bottom * h.toDouble()) } else emptyList()
-        fun betweenPrint(x: Double, y: Double, bw: Double, bh: Double): Boolean {
-            val cy = y + bh / 2
-            val row = boxes.filter { b -> cy > b[1] && cy < b[3] && max(bw, bh) <= (b[3] - b[1]) * SIGN_SIZE }
-            val gap = row.map { it[3] - it[1] }.maxOrNull() ?: return false
-            return row.any { b -> b[2] <= x && x - b[2] < gap * 1.5 } && row.any { b -> b[0] >= x + bw && b[0] - (x + bw) < gap * 1.5 }
-        }
-        // A list's bullet: a small solid dot or square just before a printed line, with nothing
-        // printed before it on its row. Alone it doesn't read as print, and a pen's dot is rarely so neat.
-        fun bullet(x: Double, y: Double, bw: Double, bh: Double, area: Double): Boolean {
-            if (area < BULLET_SOLID * bw * bh || max(bw, bh) > BULLET_ROUND * min(bw, bh)) return false
-            val cy = y + bh / 2
-            val row = boxes.filter { b -> cy > b[1] && cy < b[3] && max(bw, bh) <= (b[3] - b[1]) * SIGN_SIZE }
-            val gap = row.map { it[3] - it[1] }.maxOrNull() ?: return false
-            return row.any { b -> b[0] >= x + bw && b[0] - (x + bw) < gap * 2.0 } && row.none { b -> b[2] <= x }
-        }
         if (exact) {
             // Each stretch of printed marks, with a pixel or two for the strokes' soft edges.
             val pad = max(2.0, side * 0.002)
@@ -813,10 +808,14 @@ internal object Cleanup {
             val x = stats.get(label, Imgproc.CC_STAT_LEFT)[0]
             val y = stats.get(label, Imgproc.CC_STAT_TOP)[0]
             if (pictures.any { p -> x >= p[0] && y >= p[1] && x + bw <= p[2] && y + bh <= p[3] }) continue
-            if (exact && (betweenPrint(x, y, bw, bh) || bullet(x, y, bw, bh, area))) continue
-            // Ruled lines and table borders: long, thin and straight (or bowed with the page). A
-            // line drawn by hand under the print wobbles.
-            if (max(bw, bh) > longLine && min(bw, bh) < thin && !wobbles(ids, w, label, x.toInt(), y.toInt(), bw.toInt(), bh.toInt(), side)) continue
+            // Ruled lines and table borders: long, thin all along, and straight or bowed with the
+            // page (so their box can be tall). A line drawn by hand under the print wobbles;
+            // joined-up writing is no thin line most of the way.
+            if (max(bw, bh) > longLine && area / max(bw, bh) < thin) {
+                val shape = lineShape(ids, grayBytes, w, label, x.toInt(), y.toInt(), bw.toInt(), bh.toInt(), heights.getOrNull(heights.size / 2) ?: 0.0)
+                if (shape != null && shape.thickness < thin && shape.alone >= RULE_ALONE && !shape.wobbles) continue
+                if (shape == null && min(bw, bh) < thin) continue
+            }
             // Logos, photos, black boxes: big and mostly solid; crests and drawings: tall.
             if (bw * bh > bigBlob && area / (bw * bh) > 0.45) continue
             if (bh > tall) continue
@@ -845,6 +844,7 @@ internal object Cleanup {
         Imgproc.cvtColor(rgb, gray, Imgproc.COLOR_RGB2GRAY)
         val ink = Mat()
         Imgproc.adaptiveThreshold(gray, ink, 255.0, Imgproc.ADAPTIVE_THRESH_MEAN_C, Imgproc.THRESH_BINARY_INV, max(15, (side / 40) or 1), 18.0)
+        val grayBytes = ByteArray(gray.rows() * gray.cols()).also { gray.get(0, 0, it) }
         gray.release()
         // Not along solid shapes: a chart's axis runs on under its bars, and their edges would make it wobble.
         val nearSolid = Mat()
@@ -893,7 +893,10 @@ internal object Cleanup {
         val ids = IntArray(w * ink.rows()).also { labels.get(0, 0, it) }
         val drawn = BooleanArray(count) { label ->
             label > 0 && st[label * 5 + 2] >= length && st[label * 5 + 2] > st[label * 5 + 3] &&
-                wobbles(ids, w, label, st[label * 5], st[label * 5 + 1], st[label * 5 + 2], st[label * 5 + 3], side)
+                lineShape(ids, grayBytes, w, label, st[label * 5], st[label * 5 + 1], st[label * 5 + 2], st[label * 5 + 3], unit.toDouble())
+                    // A pen line: a thin stroke, on its own most of the way (a line of bold print
+                    // thickened runs level too, but it's letter-high all along), that wobbles.
+                    ?.let { it.thickness <= max(UNDERLINE_STROKE_MIN, UNDERLINE_STROKE * unit) && it.alone >= RULE_ALONE && it.wobbles } == true
         }
         lines.put(0, 0, ByteArray(ids.size) { if (drawn[ids[it]]) -1 else 0 })
         listOf(labels, stats, centroids, ink).forEach(Mat::release)
@@ -901,55 +904,160 @@ internal object Cleanup {
     }
 
     /**
-     * Whether mark [label] of [ids] (an image [w] wide), in the box at [x], [y], strays from a
-     * smooth curve along its length the way a hand-drawn line does: its middle, step by step
-     * along it, further than [WOBBLE] of the page's [side] from a parabola fitted to it.
+     * Print the reader didn't box, beside what it did: a sign (the + in "1/2 + 1/4 =", an x, a %,
+     * a colon) between two printed words on their line and no bigger than a letter, or a list's
+     * bullet, a small solid dot or square just before a printed line with nothing printed before
+     * it on its row. Alone they don't read as print; an answer written after the last word has
+     * print on one side only, and a pen's dot is rarely so neat. Dark and gray only: a sign
+     * written in colored pen goes. A mask, grown as removed writing is, to take out of it.
      */
-    private fun wobbles(ids: IntArray, w: Int, label: Int, x: Int, y: Int, bw: Int, bh: Int, side: Int): Boolean {
+    private fun signsBesidePrint(rgb: Mat, printed: List<Area>): Mat {
+        val w = rgb.cols()
+        val h = rgb.rows()
+        val side = max(w, h)
+        val gray = Mat()
+        Imgproc.cvtColor(rgb, gray, Imgproc.COLOR_RGB2GRAY)
+        val ink = Mat()
+        Imgproc.adaptiveThreshold(gray, ink, 255.0, Imgproc.ADAPTIVE_THRESH_MEAN_C, Imgproc.THRESH_BINARY_INV, max(15, (side / 40) or 1), 18.0)
+        gray.release()
+        val hsv = Mat()
+        Imgproc.cvtColor(rgb, hsv, Imgproc.COLOR_RGB2HSV)
+        val saturation = Mat()
+        Core.extractChannel(hsv, saturation, 1)
+        hsv.release()
+        val boxes = printed.map { doubleArrayOf(it.left * w.toDouble(), it.top * h.toDouble(), it.right * w.toDouble(), it.bottom * h.toDouble()) }
+        fun row(cy: Double, size: Double) = boxes.filter { b -> cy > b[1] && cy < b[3] && size <= (b[3] - b[1]) * SIGN_SIZE }
+        fun betweenPrint(x: Double, y: Double, bw: Double, bh: Double): Boolean {
+            val row = row(y + bh / 2, max(bw, bh))
+            val gap = row.map { it[3] - it[1] }.maxOrNull() ?: return false
+            return row.any { b -> b[2] <= x && x - b[2] < gap * 1.5 } && row.any { b -> b[0] >= x + bw && b[0] - (x + bw) < gap * 1.5 }
+        }
+        fun bullet(x: Double, y: Double, bw: Double, bh: Double, area: Double): Boolean {
+            if (area < BULLET_SOLID * bw * bh || max(bw, bh) > BULLET_ROUND * min(bw, bh)) return false
+            val row = row(y + bh / 2, max(bw, bh))
+            val gap = row.map { it[3] - it[1] }.maxOrNull() ?: return false
+            return row.any { b -> b[0] >= x + bw && b[0] - (x + bw) < gap * 2.0 } && row.none { b -> b[2] <= x }
+        }
+        val labels = Mat()
+        val stats = Mat()
+        val centroids = Mat()
+        val count = Imgproc.connectedComponentsWithStats(ink, labels, stats, centroids, 8, CvType.CV_32S)
+        val st = IntArray(count * 5).also { stats.get(0, 0, it) }
+        val signs = Mat.zeros(h, w, CvType.CV_8UC1)
+        val one = Mat()
+        for (label in 1 until count) {
+            val x = st[label * 5].toDouble()
+            val y = st[label * 5 + 1].toDouble()
+            val bw = st[label * 5 + 2].toDouble()
+            val bh = st[label * 5 + 3].toDouble()
+            val area = st[label * 5 + 4].toDouble()
+            if (!betweenPrint(x, y, bw, bh) && !bullet(x, y, bw, bh, area)) continue
+            Core.compare(labels, Scalar(label.toDouble()), one, Core.CMP_EQ)
+            if (Core.mean(saturation, one).`val`[0] > SIGN_NEUTRAL) continue
+            Core.bitwise_or(signs, one, signs)
+        }
+        listOf(ink, saturation, labels, stats, centroids, one).forEach(Mat::release)
+        // As far out as removed writing is grown (see [darkHandwriting]).
+        val reach = (max(5, side / 220) or 1).toDouble()
+        val grow = Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(reach, reach))
+        Imgproc.dilate(signs, signs, grow, Point(-1.0, -1.0), 2)
+        grow.release()
+        return signs
+    }
+
+    /** How a mark runs, along its length: see [lineShape]. */
+    private class LineShape(
+        /** Its usual thickness across, in pixels. */
+        val thickness: Int,
+        /** The share of its length where it runs on its own, no thicker than that. */
+        val alone: Double,
+        /** Whether it wobbles as a hand does. */
+        val wobbles: Boolean,
+    )
+
+    /**
+     * How mark [label] of [ids] (an image [w] wide, with [gray] its gray levels), in the box at
+     * [x], [y], runs; null if it's too short to tell. It wobbles the way a line drawn by hand does
+     * when its middle along it, from the gray levels
+     * (finer than a pixel, so a printed line's one-pixel steps as it slopes don't count), strays
+     * from a parabola fitted a few letters either way ([WOBBLE_REACH] letter heights [unit]) by
+     * more than [WOBBLE] pixels on average. A printed rule is straight, or bends gently with the
+     * paper, which the parabola follows; the hand trembles. Measured only where the line runs on
+     * its own: where letters or writing touch it, it's thicker.
+     */
+    private fun lineShape(ids: IntArray, gray: ByteArray, w: Int, label: Int, x: Int, y: Int, bw: Int, bh: Int, unit: Double): LineShape? {
         val along = bw >= bh
         val steps = if (along) bw else bh
+        val across = if (along) bh else bw
+        val h = ids.size / w
         val t = DoubleArray(steps)
         val mid = DoubleArray(steps)
+        val extent = IntArray(steps)
         var n = 0
+        fun at(i: Int, j: Int) = if (along) (y + j) * w + x + i else (y + i) * w + x + j
         for (i in 0 until steps) {
-            var sum = 0.0
-            var count = 0
-            for (j in 0 until if (along) bh else bw) {
-                val px = if (along) x + i else x + j
-                val py = if (along) y + j else y + i
-                if (ids[py * w + px] == label) {
-                    sum += j
-                    count++
+            var first = -1
+            var last = -1
+            for (j in 0 until across) {
+                if (ids[at(i, j)] == label) {
+                    if (first < 0) first = j
+                    last = j
                 }
             }
-            if (count == 0) continue
-            t[n] = i.toDouble() / steps
-            mid[n] = sum / count
+            if (first < 0) continue
+            // The middle by how dark it is, a pixel past the mark either side.
+            var weight = 0.0
+            var sum = 0.0
+            for (j in first - 1..last + 1) {
+                val px = if (along) x + i else x + j
+                val py = if (along) y + j else y + i
+                if (px !in 0 until w || py !in 0 until h) continue
+                val dark = 255.0 - (gray[py * w + px].toInt() and 0xFF)
+                weight += dark
+                sum += dark * j
+            }
+            if (weight <= 0.0) continue
+            t[n] = i.toDouble()
+            mid[n] = sum / weight
+            extent[n] = last - first + 1
             n++
         }
-        if (n < 3) return false
-        // Least squares for mid = a + b·t + c·t²: the normal equations, solved by Cramer's rule.
-        val s = DoubleArray(5)
-        val r = DoubleArray(3)
-        for (i in 0 until n) {
-            var p = 1.0
-            for (k in 0..4) {
-                s[k] += p
-                if (k < 3) r[k] += p * mid[i]
-                p *= t[i]
-            }
-        }
+        if (n < 3) return null
+        val thickness = extent.copyOf(n).sorted()[n / 2]
+        val alone = (0 until n).filter { extent[it] <= thickness + 1 }
+        val share = alone.size.toDouble() / n
+        // Mostly touched by other ink, it can't be told.
+        if (share < WOBBLE_ALONE) return LineShape(thickness, share, wobbles = false)
+        val reach = WOBBLE_REACH * unit / 2
         fun det(m: Array<DoubleArray>) = m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0])
-        val a = arrayOf(doubleArrayOf(s[0], s[1], s[2]), doubleArrayOf(s[1], s[2], s[3]), doubleArrayOf(s[2], s[3], s[4]))
-        val d = det(a)
-        if (abs(d) < 1e-12) return false
-        val coef = (0..2).map { col -> det(Array(3) { row -> DoubleArray(3) { k -> if (k == col) r[row] else a[row][k] } }) / d }
         var squares = 0.0
-        for (i in 0 until n) {
-            val e = mid[i] - (coef[0] + coef[1] * t[i] + coef[2] * t[i] * t[i])
+        var counted = 0
+        for (k in alone) {
+            // Least squares for mid = a + b·d + c·d² around this step: its value here is a.
+            val s = DoubleArray(5)
+            val r = DoubleArray(3)
+            var near = 0
+            for (q in alone) {
+                val d = t[q] - t[k]
+                if (abs(d) > reach) continue
+                near++
+                var p = 1.0
+                for (e in 0..4) {
+                    s[e] += p
+                    if (e < 3) r[e] += p * mid[q]
+                    p *= d
+                }
+            }
+            if (near < 4) continue
+            val a = arrayOf(doubleArrayOf(s[0], s[1], s[2]), doubleArrayOf(s[1], s[2], s[3]), doubleArrayOf(s[2], s[3], s[4]))
+            val dd = det(a)
+            if (abs(dd) < 1e-12) continue
+            val here = det(Array(3) { row -> DoubleArray(3) { e -> if (e == 0) r[row] else a[row][e] } }) / dd
+            val e = mid[k] - here
             squares += e * e
+            counted++
         }
-        return sqrt(squares / n) > max(WOBBLE_MIN, WOBBLE * side)
+        return LineShape(thickness, share, wobbles = counted >= 3 && sqrt(squares / counted) > WOBBLE)
     }
 
     /**
@@ -1126,18 +1234,30 @@ internal object Cleanup {
     /** A solid shape is at least this many of those wide and tall. */
     private const val SOLID_PIECE = 3.0
 
-    /** A printed sign between words is at most this share of its line's height across. */
+    /** A printed sign between words is at most this share of its line's height across... */
     private const val SIGN_SIZE = 0.9
-    /** A ruled line's middle strays at most this share of the page's long side from a smooth curve, or [WOBBLE_MIN] pixels. */
-    private const val WOBBLE = 0.0006
+    /** ...and no more saturated than this (0 to 255): a sign in colored pen is writing. */
+    private const val SIGN_NEUTRAL = 60.0
+    /** A ruled line's middle strays at most this many pixels on average from a parabola over [WOBBLE_REACH] letter heights of it... */
+    private const val WOBBLE = 0.35
+    private const val WOBBLE_REACH = 12.0
+    /** ...measured where it runs alone, which must be at least this share of it. */
+    private const val WOBBLE_ALONE = 0.3
+    /** A ruled line runs on its own for at least this share of its length (writing on it aside). */
+    private const val RULE_ALONE = 0.5
+    /** Rules are looked for this many degrees either side of level and upright, in steps of [RULE_TILT_STEP]. */
+    private const val RULE_TILT = 10.0
+    private const val RULE_TILT_STEP = 2.5
     /** A bullet fills at least this share of its box, and is at most this many times longer one way than the other. */
     private const val BULLET_SOLID = 0.6
     private const val BULLET_ROUND = 1.5
-    private const val WOBBLE_MIN = 1.2
     /** A line drawn under the print runs on, within this many degrees of level, for this many letter heights. */
     private const val UNDERLINE_TILT = 20.0
     private const val UNDERLINE_STEP = 5.0
     private const val UNDERLINE_RUN = 3.0
     /** ...in a stroke at most this many times as deep as the ink's middling depth. */
     private const val UNDERLINE_THIN = 3.0
+    /** ...whose stroke is at most this share of a letter's height across, or [UNDERLINE_STROKE_MIN] pixels. */
+    private const val UNDERLINE_STROKE = 0.4
+    private const val UNDERLINE_STROKE_MIN = 4.0
 }

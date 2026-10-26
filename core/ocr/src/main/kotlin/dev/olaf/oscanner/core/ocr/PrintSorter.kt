@@ -143,11 +143,12 @@ class PrintSorter(context: Context) : AutoCloseable {
 
         // Runs: marks a little more than a letter's height apart, side by side, are one run. Each
         // by its middle half, so a line's descenders touching the next line's ascenders don't join
-        // the two; a mark taller still spans both, and joins the run its middle is in.
+        // the two. A mark taller still spans both, and joins the run its middle is in; a small one
+        // (a dot, a comma, a sign) sits high or low on its line, and joins the run beside it.
         val unit = marks.map { height(it) }.sorted()[marks.size / 2]
         val keep = Mat.zeros(h, w, CvType.CV_8UC1)
         for (mark in marks) {
-            if (height(mark) > SPANS_LINES * unit) continue
+            if (height(mark) > SPANS_LINES * unit || height(mark) < SMALL_MARK * unit) continue
             val band = height(mark) / 4
             Imgproc.rectangle(keep, Point(left(mark).toDouble(), (top(mark) + band).toDouble()), Point((left(mark) + width(mark) - 1).toDouble(), (top(mark) + height(mark) - 1 - band).toDouble()), Scalar(255.0), -1)
         }
@@ -158,7 +159,20 @@ class PrintSorter(context: Context) : AutoCloseable {
         val runIds = IntArray(w * h).also { runMat.get(0, 0, it) }
         runMat.release()
         val runs = marks.groupBy { mark ->
-            val run = runIds[(top(mark) + height(mark) / 2) * w + left(mark) + width(mark) / 2]
+            var run = runIds[(top(mark) + height(mark) / 2) * w + left(mark) + width(mark) / 2]
+            if (run == 0 && height(mark) < SMALL_MARK * unit) {
+                // The run most of whose band lies beside it: a letter either way, half a letter up or down.
+                val reach = (unit * 1.2).toInt()
+                val up = unit / 2
+                val counts = HashMap<Int, Int>()
+                for (y in max(0, top(mark) - up) until min(h, top(mark) + height(mark) + up)) {
+                    for (x in max(0, left(mark) - reach) until min(w, left(mark) + width(mark) + reach)) {
+                        val r = runIds[y * w + x]
+                        if (r > 0) counts[r] = (counts[r] ?: 0) + 1
+                    }
+                }
+                run = counts.maxByOrNull { it.value }?.key ?: 0
+            }
             // In no run: a run of its own.
             if (run > 0) run else -mark
         }
@@ -401,6 +415,8 @@ class PrintSorter(context: Context) : AutoCloseable {
         const val JOINED_PRINT = 0.6
         /** A mark taller than this many letter heights spans two lines. */
         const val SPANS_LINES = 2.6
+        /** A mark less than this share of a letter's height is a dot, a comma or a sign. */
+        const val SMALL_MARK = 0.6
         /** A mark reaching this many letter heights above or below the rest of its run is no part of the line. */
         const val STRAY = 0.8
         /** A run longer than this many of its heights is placed window by window. */

@@ -1170,6 +1170,34 @@ class PageStore(
     /** Finishes documents left part-made when the app last stopped: pages not yet rendered. */
     suspend fun finishInterrupted() {
         db.documents().idsInState(ProcessingState.Enhancing.name).forEach { renderDocument(it) }
+        redrawCleanedPages()
+    }
+
+    /**
+     * Pages with handwriting removed are drawn again, once, when the way it's done has changed
+     * ([CLEANUP_VERSION]): their renders were made the old way, and stay until an edit otherwise.
+     * Print an older finder found is found again first ([PRINT_FINDER]). In the background, a
+     * page at a time.
+     */
+    private fun redrawCleanedPages() {
+        scope.launch {
+            val mark = File(context.filesDir, "cleanup-version")
+            val done = withContext(Dispatchers.IO) { mark.takeIf(File::exists)?.readText()?.trim()?.toIntOrNull() } ?: 0
+            if (done >= CLEANUP_VERSION) return@launch
+            for (page in db.pages().withEdits("\"removePenInk\":true")) {
+                val edits = EditsJson.read(page.editsJson)
+                if (!edits.removePenInk) continue
+                val stale = edits.printed == null || !edits.printByLook || edits.printFinder < PRINT_FINDER
+                val printed = if (stale) runCatching { text.printedAreas(page.originalPath, edits) }.getOrNull() else null
+                if (printed != null && db.pages().get(page.id)?.editsJson == page.editsJson) {
+                    setEdits(page.id, edits.copy(printed = printed, printByLook = true, printFinder = PRINT_FINDER))
+                    renderJobs[page.id]?.join()
+                } else {
+                    renderPage(page).join()
+                }
+            }
+            withContext(Dispatchers.IO) { mark.writeText(CLEANUP_VERSION.toString()) }
+        }
     }
 
     /** Deletes documents that have sat in Trash for more than 30 days. */
@@ -1201,6 +1229,11 @@ class PageStore(
         private val PAPER_KINDS = setOf(DocumentKind.Document, DocumentKind.Book, DocumentKind.Whiteboard)
         /** Automatic handwriting removal waits for a page at least this much paper. */
         private const val MIN_PAPER = 0.45
+        /**
+         * Raised when handwriting removal changes how a page comes out, so pages already cleaned
+         * are drawn again (see [redrawCleanedPages]). 1: printed rules kept on bent paper; 2: dots and signs kept; 3: signs kept from color sorting too (0.8.6).
+         */
+        private const val CLEANUP_VERSION = 3
         /** Times a PDF tries to copy a page's render that's being replaced; see [writePdf]. */
         private const val RENDER_TRIES = 3
         private const val PAPER_CHECK_SIDE = 800

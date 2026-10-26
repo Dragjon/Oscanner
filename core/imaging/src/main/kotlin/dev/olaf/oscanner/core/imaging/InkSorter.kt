@@ -66,26 +66,16 @@ internal object InkSorter {
         even.release()
         Core.bitwise_or(faint, dark, faint)
         dark.release()
-        // A scanned rule is rarely level: it drifts a pixel or two over a hand's width. Thickening
-        // the ink a little across before looking for long runs lets a slanted rule count; the
-        // rule is then the ink inside those runs.
-        val run = max(15.0, side * 0.06)
-        val rules = Mat()
-        val down = Mat()
-        val thick = Mat()
-        Imgproc.dilate(faint, thick, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(1.0, 3.0)))
-        Imgproc.morphologyEx(thick, rules, Imgproc.MORPH_OPEN, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(run, 1.0)))
-        Imgproc.dilate(faint, thick, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 1.0)))
-        Imgproc.morphologyEx(thick, down, Imgproc.MORPH_OPEN, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(1.0, run)))
-        Core.bitwise_or(rules, down, rules)
+        // A scanned rule is rarely level: it drifts a pixel or two over a hand's width, and on a
+        // photo of bent paper it slopes. Long runs of ink near level or upright (see [straight])
+        // mark where the rules are.
+        val band = straight(faint, max(15, (side * 0.06).toInt()))
         // That band also holds the stubs of strokes that cross the rule. The rule itself is just
-        // the thin level (or upright) pieces of ink along it; the stubs are marks like any other.
+        // the thin pieces of ink along it, near level (or upright); the stubs are marks like any other.
         val zone = Mat()
-        Imgproc.dilate(rules, zone, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0)))
-        val piece = max(9.0, side * 0.02)
-        Imgproc.morphologyEx(faint, rules, Imgproc.MORPH_OPEN, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(piece, 1.0)))
-        Imgproc.morphologyEx(faint, down, Imgproc.MORPH_OPEN, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(1.0, piece)))
-        Core.bitwise_or(rules, down, rules)
+        Imgproc.dilate(band, zone, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0)))
+        band.release()
+        val rules = straight(faint, max(9, (side * 0.02).toInt()))
         Core.bitwise_and(rules, zone, rules)
         // Where the rule ran under writing: bridged along its length, inside its band.
         val bridged = Mat()
@@ -99,7 +89,7 @@ internal object InkSorter {
         // its color is the picture's, not the print's.
         val reference = lined(rules, gray, max(4, side / 300))
         gray.release()
-        listOf(down, thick, faint, zone, across).forEach(Mat::release)
+        listOf(faint, zone, across).forEach(Mat::release)
         val marks = Mat()
         val rulesWide = Mat()
         Imgproc.dilate(rules, rulesWide, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0)))
@@ -286,6 +276,30 @@ internal object InkSorter {
      * Pixels of [rules] darker by [RULE_CONTRAST] levels of [gray] than the page [d] pixels
      * above and below, or to the left and right: a line, not the edge of something.
      */
+    /**
+     * The ink of [ink] in straight runs at least [length] long, within [TILT] degrees of level or
+     * upright. The ink is thickened a little first: a thin line sloping across pixels steps.
+     */
+    private fun straight(ink: Mat, length: Int): Mat {
+        val thick = Mat()
+        Imgproc.dilate(ink, thick, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0)))
+        val found = Mat.zeros(ink.size(), CvType.CV_8UC1)
+        val part = Mat()
+        for (upright in listOf(0.0, 90.0)) {
+            var degrees = upright - TILT
+            while (degrees <= upright + TILT) {
+                val kernel = PenLines.lineKernel(length or 1, degrees)
+                Imgproc.morphologyEx(thick, part, Imgproc.MORPH_OPEN, kernel)
+                Core.bitwise_or(found, part, found)
+                kernel.release()
+                degrees += TILT_STEP
+            }
+        }
+        Core.bitwise_and(found, ink, found)
+        listOf(thick, part).forEach(Mat::release)
+        return found
+    }
+
     private fun lined(rules: Mat, gray: Mat, d: Int): Mat {
         val w = rules.cols()
         val h = rules.rows()
@@ -320,6 +334,10 @@ internal object InkSorter {
     private const val MIN_GAP = 2.0
     /** How much nearer print than pen, as a share of the gap between them, a sure word must be. */
     private const val PRINT_MARGIN = 0.3
+    /** Rules are looked for this many degrees either side of level and upright, in steps of [TILT_STEP]. */
+    private const val TILT = 10.0
+    private const val TILT_STEP = 2.5
+
     /** Less ink than this share of the page, rules aside, is a blank page. */
     private const val BLANK_SHARE = 0.002
     private const val ROW_SHARE = 0.35

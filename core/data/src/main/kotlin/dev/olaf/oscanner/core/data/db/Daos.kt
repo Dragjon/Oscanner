@@ -134,6 +134,10 @@ interface PageDao {
     @Query("SELECT * FROM pages WHERE id = :id")
     suspend fun get(id: Long): PageEntity?
 
+    /** Pages whose edits mention [text], to find those using a feature. */
+    @Query("SELECT * FROM pages WHERE editsJson LIKE '%' || :text || '%'")
+    suspend fun withEdits(text: String): List<PageEntity>
+
     @Query("SELECT COALESCE(MAX(position), -1) FROM pages WHERE documentId = :documentId")
     suspend fun lastPosition(documentId: Long): Int
 
