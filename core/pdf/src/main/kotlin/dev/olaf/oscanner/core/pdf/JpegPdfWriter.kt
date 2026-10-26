@@ -355,9 +355,12 @@ class JpegPdfWriter(
         const val CARD_SHORT = 53.98 * MM
         /** Advance width of the blank glyph, in 1/1000 em. */
         const val GLYPH_WIDTH = 500
-        /** Tesseract's GlyphLessFont (tessdata/pdf.ttf, Apache-2.0): one blank glyph. */
+        /**
+         * Tesseract's GlyphLessFont (tessdata/pdf.ttf, Apache-2.0): one blank glyph. By its full
+         * path: a release build moves this class to another package, and a path next to it misses.
+         */
         val glyphlessFont: ByteArray by lazy {
-            requireNotNull(JpegPdfWriter::class.java.getResourceAsStream("pdf.ttf")) { "pdf.ttf missing" }.use { it.readBytes() }
+            requireNotNull(JpegPdfWriter::class.java.getResourceAsStream("/dev/olaf/oscanner/core/pdf/pdf.ttf")) { "pdf.ttf missing" }.use { it.readBytes() }
         }
     }
 }
