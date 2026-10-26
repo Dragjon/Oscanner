@@ -282,8 +282,17 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   twice its size of it. Matched from anywhere, a corner torn off over water took in rocks and a
   jetty from up the bank, where the same fence runs; now it's water (on the 1901 print, 70% of
   the gap close in color to the water beside it before, 94% after). The fill there is a little
-  smoother than the ripples around it. Not yet: large stains on photos, and tears where the desk
-  is too patterned to have one color.
+  smoother than the ripples around it. ✅ Big stains (2026-10-26): with the Photo look, a stain
+  brushed over in Clean up is filled with more of the picture, not the paper's color. ✅ Tears
+  on a patterned desk (2026-10-26): the desk around the crop is read as up to four colors (a
+  checked cloth's red and cream, wood's light and dark grain), and a gap is any run of them. A
+  desk color the picture has plenty of too (cream, and a pale sky) only counts among the desk's
+  other colors, as far from them as the pattern is coarse, measured along the photo's edge; and
+  on a desk of several colors a gap must run along the tear's white core for a quarter of its
+  edge, so a dark trunk as dark as one of the desk's colors stays. On the 1901 print laid on a
+  red and cream check, in the app: the torn corner was missed; now it's water. A tear's desk
+  left inside the crop also threw off the Photo look's color stretch (a check's red cast the
+  whole print teal); filled first, that goes too.
 
 ### Library
 - ✅ **Names that say what a document is** (2026-10-24): once read, a document still called

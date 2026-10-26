@@ -28,9 +28,9 @@ internal object Cleanup {
 
     /**
      * Fills what [edits] removes, in place, and mends ruled lines writing crossed. [desk] is the
-     * color around the crop in the photo, when known: on a photo, edges are mended from it.
+     * colors around the crop in the photo, when known: on a photo, edges are mended from it.
      */
-    fun apply(rgb: Mat, edits: PageEdits, desk: Scalar? = null) {
+    fun apply(rgb: Mat, edits: PageEdits, desk: List<Scalar>? = null) {
         // Stains are taken out first: what's under them is kept, and then judged like the rest.
         if (edits.removeStains) unstain(rgb)
         if (edits.fillEdges) {

@@ -121,42 +121,61 @@ internal object OldPhoto {
      * shows inside the crop, at the edge, along with the white paper core a tear leaves. Each
      * gap has a sharp edge against the picture; a pale sky reaching the edge, as pale as the
      * desk, fades into the picture instead, and stays. Filled from the rest of the picture.
+     * [desk] is the colors seen around the crop: one, or several for a checked cloth or wood.
      */
-    internal fun mendTorn(rgb: Mat, desk: Scalar) {
+    internal fun mendTorn(rgb: Mat, desk: List<Scalar>) {
         val mask = tornMask(rgb, desk) ?: return
         PatchFill.fill(rgb, mask)
         mask.release()
     }
 
     /** Where [rgb] is torn away, at its full size; null when nothing is. */
-    internal fun tornMask(rgb: Mat, desk: Scalar): Mat? {
+    internal fun tornMask(rgb: Mat, desk: List<Scalar>): Mat? {
+        val palette = deskPalette(desk)
+        if (palette.isEmpty()) return null
+        val patterned = palette.size > 1
         val scale = min(1.0, TORN_SIDE / max(rgb.cols(), rgb.rows()))
         val small = Mat()
         Imgproc.resize(rgb, small, Size(), scale, scale, Imgproc.INTER_AREA)
         Imgproc.GaussianBlur(small, small, Size(3.0, 3.0), 0.0)
         val w = small.cols()
         val h = small.rows()
-        // Near the desk's color, by how different colors look (Lab).
-        val lab = Mat()
-        small.convertTo(lab, CvType.CV_32FC3, 1.0 / 255)
-        Imgproc.cvtColor(lab, lab, Imgproc.COLOR_RGB2Lab)
-        val deskLab = Mat(1, 1, CvType.CV_32FC3)
-        deskLab.put(0, 0, floatArrayOf((desk.`val`[0] / 255).toFloat(), (desk.`val`[1] / 255).toFloat(), (desk.`val`[2] / 255).toFloat()))
-        Imgproc.cvtColor(deskLab, deskLab, Imgproc.COLOR_RGB2Lab)
-        val d = FloatArray(3).also { deskLab.get(0, 0, it) }
-        deskLab.release()
-        val labPx = FloatArray(w * h * 3).also { lab.get(0, 0, it) }
-        lab.release()
-        val near = Mat(h, w, CvType.CV_8UC1)
-        near.put(
-            0, 0,
-            ByteArray(w * h) { i ->
+        // Near one of the desk's colors, by how different colors look (Lab).
+        val labPx = toLab(small)
+        // Which of the desk's colors each pixel is, or -1.
+        val which = IntArray(w * h) { i ->
+            palette.indexOfFirst { d ->
                 val dl = labPx[i * 3] - d[0]
                 val da = labPx[i * 3 + 1] - d[1]
                 val db = labPx[i * 3 + 2] - d[2]
-                if (dl * dl + da * da + db * db < TORN_NEAR * TORN_NEAR) -1 else 0
-            },
-        )
+                dl * dl + da * da + db * db < TORN_NEAR * TORN_NEAR
+            }
+        }
+        val near = Mat(h, w, CvType.CV_8UC1)
+        near.put(0, 0, ByteArray(w * h) { if (which[it] >= 0) -1 else 0 })
+        if (patterned) {
+            // A desk color the picture has plenty of too (a cream check, and a pale sky) is only
+            // desk among the desk's other colors: as far from them as the pattern is coarse.
+            val shared = sharedColors(which, w, h, palette.size)
+            if (shared.any { it } && !shared.all { it }) {
+                val reach = patternReach(which, w, h, shared)
+                val own = Mat(h, w, CvType.CV_8UC1)
+                own.put(0, 0, ByteArray(w * h) { val c = which[it]; if (c >= 0 && !shared[c]) -1 else 0 })
+                val side = 2.0 * reach + 3
+                Imgproc.dilate(own, own, Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(side, side)))
+                Core.bitwise_and(near, own, near)
+                own.release()
+            }
+            // A pattern's in-between colors (where checks meet, the grain's soft lines) are desk too.
+            Imgproc.morphologyEx(near, near, Imgproc.MORPH_CLOSE, Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(5.0, 5.0)))
+        }
+        // The paper core a tear leaves: pale and colorless.
+        val hsv = Mat()
+        Imgproc.cvtColor(small, hsv, Imgproc.COLOR_RGB2HSV)
+        val white = Mat()
+        Core.inRange(hsv, Scalar(0.0, 0.0, TORN_WHITE), Scalar(180.0, 60.0, 255.0), white)
+        hsv.release()
+        val whitePx = ByteArray(w * h).also { white.get(0, 0, it) }
         val gray = Mat()
         Imgproc.cvtColor(small, gray, Imgproc.COLOR_RGB2GRAY)
         val gx = Mat()
@@ -174,15 +193,20 @@ internal object OldPhoto {
         listOf(labels, centroids, near).forEach(Mat::release)
         // How sharp each gap's edge is inside the picture: the mean gradient along it, away
         // from the photo's own edge.
+        // And how much of it runs along the white core, on it or just past it.
         val edgeSum = DoubleArray(n)
         val edgeCount = IntArray(n)
+        val edgeWhite = IntArray(n)
+        val zero: Byte = 0
         for (y in 1 until h - 1) for (x in 1 until w - 1) {
             val p = y * w + x
             val k = labelPx[p]
             if (k == 0) continue
-            if (labelPx[p - 1] != k || labelPx[p + 1] != k || labelPx[p - w] != k || labelPx[p + w] != k) {
+            val beside = intArrayOf(p - 1, p + 1, p - w, p + w).filter { labelPx[it] != k }
+            if (beside.isNotEmpty()) {
                 edgeSum[k] += edgePx[p].toDouble()
                 edgeCount[k]++
+                if (whitePx[p] != zero || beside.any { whitePx[it] != zero }) edgeWhite[k]++
             }
         }
         val keep = BooleanArray(n) { k ->
@@ -193,22 +217,20 @@ internal object OldPhoto {
             val y1 = y0 + stats.get(k, Imgproc.CC_STAT_HEIGHT)[0]
             val area = stats.get(k, Imgproc.CC_STAT_AREA)[0]
             val touches = x0 <= 0 || y0 <= 0 || x1 >= w || y1 >= h
-            touches && area >= TORN_LEAST * w * h && area <= TORN_MOST * w * h && edgeSum[k] / edgeCount[k] >= TORN_EDGE
+            // With several desk colors, some may well be in the picture too: a gap must show
+            // the tear's white core along its edge as well.
+            val cored = !patterned || edgeWhite[k] >= TORN_CORED * edgeCount[k]
+            touches && area >= TORN_LEAST * w * h && area <= TORN_MOST * w * h && edgeSum[k] / edgeCount[k] >= TORN_EDGE && cored
         }
         stats.release()
         val mask = Mat(h, w, CvType.CV_8UC1)
         mask.put(0, 0, ByteArray(w * h) { if (keep[labelPx[it]]) -1 else 0 })
         if (Core.countNonZero(mask) == 0) {
-            listOf(mask, small).forEach(Mat::release)
+            listOf(mask, small, white).forEach(Mat::release)
             return null
         }
-        // The white core along the tear: pale, colorless, and joined to the gap.
-        val hsv = Mat()
-        Imgproc.cvtColor(small, hsv, Imgproc.COLOR_RGB2HSV)
+        // The white core along the tear, joined to the gap.
         small.release()
-        val white = Mat()
-        Core.inRange(hsv, Scalar(0.0, 0.0, TORN_WHITE), Scalar(180.0, 60.0, 255.0), white)
-        hsv.release()
         Core.bitwise_or(white, mask, white)
         val step = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0))
         repeat(max(2, (max(w, h) * TORN_RIM).toInt())) {
@@ -223,6 +245,90 @@ internal object OldPhoto {
         Imgproc.threshold(full, full, 0.0, 255.0, Imgproc.THRESH_BINARY)
         mask.release()
         return full
+    }
+
+    /** [rgb]'s pixels in Lab, three floats each. */
+    private fun toLab(rgb: Mat): FloatArray {
+        val lab = Mat()
+        rgb.convertTo(lab, CvType.CV_32FC3, 1.0 / 255)
+        Imgproc.cvtColor(lab, lab, Imgproc.COLOR_RGB2Lab)
+        val px = FloatArray(lab.total().toInt() * 3).also { lab.get(0, 0, it) }
+        lab.release()
+        return px
+    }
+
+    /** For each of [colors] desk colors, whether the middle of the picture has plenty of it too. */
+    private fun sharedColors(which: IntArray, w: Int, h: Int, colors: Int): BooleanArray {
+        val counts = IntArray(colors)
+        var total = 0
+        for (y in h / 10 until h * 9 / 10) for (x in w / 10 until w * 9 / 10) {
+            total++
+            val c = which[y * w + x]
+            if (c >= 0) counts[c]++
+        }
+        return BooleanArray(colors) { counts[it] > TORN_SHARED * total }
+    }
+
+    /**
+     * How coarse the desk's pattern is, in pixels: along the photo's edge, through the gap, the
+     * middle length of a stretch of [shared] colors between two of the desk's own.
+     */
+    private fun patternReach(which: IntArray, w: Int, h: Int, shared: BooleanArray): Int {
+        val rim = (0 until w).map { it } + (1 until h).map { it * w + w - 1 } +
+            (w - 2 downTo 0).map { (h - 1) * w + it } + (h - 2 downTo 1).map { it * w }
+        val runs = ArrayList<Int>()
+        var since = -1
+        var sharedSeen = 0
+        rim.forEachIndexed { i, p ->
+            val c = which[p]
+            when {
+                c >= 0 && !shared[c] -> {
+                    // Soft lines between checks are neither color: a run is mostly shared ones.
+                    if (since >= 0 && i - since > 1 && sharedSeen * 2 >= i - since - 1) runs += i - since - 1
+                    since = i
+                    sharedSeen = 0
+                }
+                c >= 0 -> sharedSeen++
+            }
+        }
+        if (runs.isEmpty()) return 2
+        return min(runs.sorted()[runs.size / 2] / 2 + 2, max(w, h) / 10)
+    }
+
+    /**
+     * The few colors a desk is made of, in Lab, from [samples] of it: each sample joins the first
+     * color it is near, and a color only a few samples have (a crumb, a pen lying there) is left out.
+     */
+    internal fun deskPalette(samples: List<Scalar>): List<FloatArray> {
+        if (samples.isEmpty()) return emptyList()
+        val rgb = Mat(1, samples.size, CvType.CV_8UC3)
+        samples.forEachIndexed { i, s -> rgb.put(0, i, s.`val`[0], s.`val`[1], s.`val`[2]) }
+        val px = toLab(rgb)
+        rgb.release()
+        val sums = ArrayList<DoubleArray>()
+        val counts = ArrayList<Int>()
+        for (i in samples.indices) {
+            val k = sums.indices.firstOrNull { k ->
+                val c = sums[k]
+                val n = counts[k]
+                val dl = px[i * 3] - c[0] / n
+                val da = px[i * 3 + 1] - c[1] / n
+                val db = px[i * 3 + 2] - c[2] / n
+                dl * dl + da * da + db * db < TORN_NEAR * TORN_NEAR
+            }
+            if (k == null) {
+                sums += doubleArrayOf(px[i * 3].toDouble(), px[i * 3 + 1].toDouble(), px[i * 3 + 2].toDouble())
+                counts += 1
+            } else {
+                for (c in 0..2) sums[k][c] += px[i * 3 + c].toDouble()
+                counts[k] = counts[k] + 1
+            }
+        }
+        return sums.indices
+            .filter { counts[it] >= TORN_COMMON * samples.size }
+            .sortedByDescending { counts[it] }
+            .take(TORN_COLORS)
+            .map { k -> FloatArray(3) { c -> (sums[k][c] / counts[k]).toFloat() } }
     }
 
     /**
@@ -342,6 +448,13 @@ internal object OldPhoto {
     private const val TORN_SIDE = 640.0
     /** As near the desk's color as this (Lab distance) is desk. */
     private const val TORN_NEAR = 14f
+    /** A desk has at most this many colors, each seen in at least this share of the samples. */
+    private const val TORN_COLORS = 4
+    private const val TORN_COMMON = 0.12
+    /** A desk color covering more than this share of the middle of the picture is the picture's too. */
+    private const val TORN_SHARED = 0.03
+    /** On a desk of several colors, at least this share of a gap's edge runs along the tear's white core. */
+    private const val TORN_CORED = 0.25
     /** A gap is between these shares of the photo. */
     private const val TORN_LEAST = 0.0005
     private const val TORN_MOST = 0.25

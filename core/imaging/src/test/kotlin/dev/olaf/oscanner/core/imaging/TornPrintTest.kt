@@ -31,7 +31,7 @@ class TornPrintTest {
     fun aCornerTornOffOverWaterIsFilledWithWater() {
         val file = File(javaClass.getResource("/torn-print.jpg")!!.toURI())
         val photo = Mat().also { Imgproc.cvtColor(Imgcodecs.imread(file.path), it, Imgproc.COLOR_BGR2RGB) }
-        val desk = Scalar(112.0, 82.0, 58.0)
+        val desk = listOf(Scalar(112.0, 82.0, 58.0))
         val gap = OldPhoto.tornMask(photo, desk)!!
         OldPhoto.mendTorn(photo, desk)
         // The water beside the gap, along the same rows.

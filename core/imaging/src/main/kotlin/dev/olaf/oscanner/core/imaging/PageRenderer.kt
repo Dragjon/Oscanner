@@ -44,7 +44,7 @@ object PageRenderer {
     private const val MEASURE_SIDE = 2000
     /** The desk around a crop is looked at this share of the photo's diagonal outside it, at this many points a side. */
     private const val DESK_REACH = 0.015
-    private const val DESK_SAMPLES = 12
+    private const val DESK_SAMPLES = 24
     /** Paper is judged on a copy this big; it is brighter than this share of the page's brightest, and less saturated than this. */
     private const val PAPER_SIDE = 400.0
     private const val PAPER_BRIGHT = 0.75
@@ -431,23 +431,22 @@ object PageRenderer {
     }
 
     /**
-     * The color of what [quad] lies on in [source]: the middle color a little outside each of its
-     * sides. Null when the crop takes in the whole photo, so there's nothing outside to see.
+     * The colors of what [quad] lies on in [source]: points a little outside each of its sides,
+     * at two distances out, so a checked cloth or wood grain shows all its colors. Null when the
+     * crop takes in the whole photo, so there's nothing outside to see.
      */
-    internal fun deskAround(source: Bitmap, quad: Quad): Scalar? {
+    internal fun deskAround(source: Bitmap, quad: Quad): List<Scalar>? {
         val w = source.width
         val h = source.height
         val corners = quad.corners.map { it.x * w to it.y * h }
         val cx = corners.sumOf { it.first.toDouble() } / 4
         val cy = corners.sumOf { it.second.toDouble() } / 4
         val reach = DESK_REACH * hypot(w.toDouble(), h.toDouble())
-        val reds = ArrayList<Int>()
-        val greens = ArrayList<Int>()
-        val blues = ArrayList<Int>()
+        val seen = ArrayList<Scalar>()
         for (i in 0 until 4) {
             val (ax, ay) = corners[i]
             val (bx, by) = corners[(i + 1) % 4]
-            for (s in 1 until DESK_SAMPLES) {
+            for (s in 1 until DESK_SAMPLES) for (out in 1..2) {
                 val t = s.toDouble() / DESK_SAMPLES
                 val x = ax + (bx - ax) * t
                 val y = ay + (by - ay) * t
@@ -455,18 +454,14 @@ object PageRenderer {
                 val dx = x - cx
                 val dy = y - cy
                 val length = hypot(dx, dy).coerceAtLeast(1.0)
-                val ox = (x + dx / length * reach).toInt()
-                val oy = (y + dy / length * reach).toInt()
+                val ox = (x + dx / length * reach * out).toInt()
+                val oy = (y + dy / length * reach * out).toInt()
                 if (ox !in 0 until w || oy !in 0 until h) continue
                 val c = source.getPixel(ox, oy)
-                reds += android.graphics.Color.red(c)
-                greens += android.graphics.Color.green(c)
-                blues += android.graphics.Color.blue(c)
+                seen += Scalar(android.graphics.Color.red(c).toDouble(), android.graphics.Color.green(c).toDouble(), android.graphics.Color.blue(c).toDouble())
             }
         }
-        if (reds.size < DESK_SAMPLES) return null
-        fun middle(values: List<Int>) = values.sorted()[values.size / 2].toDouble()
-        return Scalar(middle(reds), middle(greens), middle(blues))
+        return seen.takeIf { it.size >= DESK_SAMPLES }
     }
 
     private fun toRgb(bitmap: Bitmap): Mat {

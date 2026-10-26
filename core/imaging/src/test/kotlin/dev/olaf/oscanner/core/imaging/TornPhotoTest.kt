@@ -17,6 +17,7 @@ import org.opencv.core.MatOfPoint
 import org.opencv.core.Point
 import org.opencv.core.Rect
 import org.opencv.core.Scalar
+import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
 import kotlin.random.Random
 
@@ -68,7 +69,7 @@ class TornPhotoTest {
     fun aTornCornerIsFoundAndFilledWithGrass() {
         val photo = landscape()
         val truth = tear(photo)
-        val mask = OldPhoto.tornMask(photo, DESK)!!
+        val mask = OldPhoto.tornMask(photo, listOf(DESK))!!
         val both = Mat()
         val either = Mat()
         Core.bitwise_and(mask, truth, both)
@@ -76,7 +77,7 @@ class TornPhotoTest {
         val overlap = Core.countNonZero(both).toDouble() / Core.countNonZero(either)
         assertTrue("found $overlap of the tear", overlap > 0.8)
 
-        OldPhoto.mendTorn(photo, DESK)
+        OldPhoto.mendTorn(photo, listOf(DESK))
         // What's in the gap now looks like the grass beside it: its color, and its texture.
         val filled = MatOfDouble()
         val filledSpread = MatOfDouble()
@@ -94,7 +95,7 @@ class TornPhotoTest {
         // A half-round bite out of the right edge, across the horizon.
         Imgproc.circle(photo, Point(W.toDouble(), H / 2.0), 150, Scalar(245.0, 243.0, 238.0), -1)
         Imgproc.circle(photo, Point(W.toDouble(), H / 2.0), 140, DESK, -1)
-        OldPhoto.mendTorn(photo, DESK)
+        OldPhoto.mendTorn(photo, listOf(DESK))
         // Above the horizon it's sky again (blue), below it grass (green).
         val above = Core.mean(photo.submat(Rect(W - 60, H / 2 - 100, 50, 60))).`val`
         val below = Core.mean(photo.submat(Rect(W - 60, H / 2 + 40, 50, 60))).`val`
@@ -120,10 +121,80 @@ class TornPhotoTest {
         assertTrue("texture ${spread.toArray()[1]} vs ${grassSpread.toArray()[1]}", spread.toArray()[1] > 0.5 * grassSpread.toArray()[1])
     }
 
+    /** [photo] torn as in [tear], with [desk] showing through the gap; returns the tear and what's seen of the desk. */
+    private fun tearOver(photo: Mat, desk: Mat): Pair<Mat, List<Scalar>> {
+        val gap = Mat.zeros(H, W, CvType.CV_8UC1)
+        val plain = Mat.zeros(H, W, CvType.CV_8UC3)
+        val truth = tear(plain)
+        // Where tear() put the desk's color is the gap.
+        Core.inRange(plain, DESK, DESK, gap)
+        val torn = tear(photo)
+        desk.copyTo(photo, gap)
+        // Points around the crop, as PageRenderer.deskAround looks at them.
+        val r = Random(11)
+        val seen = (0 until 180).map {
+            val c = desk.get(r.nextInt(H), r.nextInt(W))
+            Scalar(c[0], c[1], c[2])
+        }
+        listOf(gap, plain, truth).forEach(Mat::release)
+        return torn to seen
+    }
+
+    private fun overlap(mask: Mat, truth: Mat): Double {
+        val both = Mat()
+        val either = Mat()
+        Core.bitwise_and(mask, truth, both)
+        Core.bitwise_or(mask, truth, either)
+        return Core.countNonZero(both).toDouble() / Core.countNonZero(either)
+    }
+
+    @Test
+    fun aTornCornerOnACheckedClothIsFound() {
+        val cloth = Mat(H, W, CvType.CV_8UC3)
+        for (y in 0 until H step 24) for (x in 0 until W step 24) {
+            val red = ((x + y) / 24) % 2 == 0
+            Imgproc.rectangle(cloth, Rect(x, y, 24, 24), if (red) Scalar(180.0, 40.0, 45.0) else Scalar(235.0, 225.0, 200.0), -1)
+        }
+        Imgproc.GaussianBlur(cloth, cloth, Size(3.0, 3.0), 0.0)
+        val photo = landscape()
+        val (truth, seen) = tearOver(photo, cloth)
+        val mask = OldPhoto.tornMask(photo, seen)!!
+        val found = overlap(mask, truth)
+        assertTrue("found $found of the tear", found > 0.8)
+        OldPhoto.mendTorn(photo, seen)
+        val filled = Core.mean(photo.submat(Rect(W - 120, H - 80, 100, 60))).`val`
+        assertTrue("grass ${filled.toList()}", filled[1] > filled[0] + 30 && filled[1] > filled[2] + 30)
+    }
+
+    @Test
+    fun aTornCornerOnAWoodDeskIsFound() {
+        // Grain: stripes from dark to light brown, wavering.
+        val wood = Mat(H, W, CvType.CV_8UC3)
+        for (x in 0 until W) {
+            val t = 0.5 + 0.5 * kotlin.math.sin(x / 9.0 + kotlin.math.sin(x / 70.0) * 2)
+            Imgproc.line(wood, Point(x.toDouble(), 0.0), Point(x.toDouble(), H.toDouble()), Scalar(110 + 60 * t, 70 + 45 * t, 40 + 30 * t))
+        }
+        val photo = landscape()
+        val (truth, seen) = tearOver(photo, wood)
+        val mask = OldPhoto.tornMask(photo, seen)!!
+        val found = overlap(mask, truth)
+        assertTrue("found $found of the tear", found > 0.8)
+    }
+
+    @Test
+    fun aDarkTrunkOnATwoToneDeskStays() {
+        // A tree trunk standing on the bottom edge, as dark as one of the desk's two colors.
+        val photo = landscape()
+        val bark = Scalar(60.0, 42.0, 30.0)
+        Imgproc.rectangle(photo, Rect(500, 520, 90, H - 520), bark, -1)
+        val seen = List(60) { if (it % 2 == 0) bark else Scalar(175.0, 135.0, 95.0) }
+        assertNull(OldPhoto.tornMask(photo, seen))
+    }
+
     @Test
     fun aPaleSkyOnAPaleDeskStays() {
         // Overcast sky fading in from white at the top, lying on a white scanner lid.
         val photo = landscape { t -> Scalar(240 - 70 * t, 240 - 50 * t, 238 - 20 * t) }
-        assertNull(OldPhoto.tornMask(photo, Scalar(240.0, 240.0, 238.0)))
+        assertNull(OldPhoto.tornMask(photo, listOf(Scalar(240.0, 240.0, 238.0))))
     }
 }
