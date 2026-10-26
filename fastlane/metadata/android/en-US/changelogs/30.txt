@@ -1,0 +1,3 @@
+Removing handwriting now also takes out most lines drawn under the printed words, even where they touch the letters. Printed underlines, table lines and chart axes stay.
+
+A printed letter next to a table border is no longer taken for handwriting.
