@@ -1,0 +1,3 @@
+Removing handwriting no longer erases printed words that a pen line touches, like underlined or circled text, and list bullets stay.
+
+Clean up has "Apply to…" like Filters, copying the switches to other pages. Sharing a PDF right after cleaning up no longer fails. Old photos: dust, short scratches, stains and tears are mended better, also on a checked or wooden desk.

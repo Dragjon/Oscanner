@@ -8,8 +8,8 @@ android {
     namespace = "dev.olaf.oscanner"
     defaultConfig {
         applicationId = "dev.olaf.oscanner"
-        versionCode = 28
-        versionName = "0.8.3"
+        versionCode = 29
+        versionName = "0.8.4"
     }
     applicationVariants.all {
         // Static shortcuts need the real package name, which differs for debug builds.
