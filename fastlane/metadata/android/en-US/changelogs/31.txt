@@ -1,0 +1,3 @@
+Fixed: removing handwriting no longer erases printed lines, such as answer lines with writing on them or the ruled lines of a curled page. Signs like + between printed words, colons and full stops stay too. Pages you already cleaned are fixed once when the app starts.
+
+New: join photos of a poster or plan. Shoot it in overlapping parts, then Edit, Pages, choose them and Join.
