@@ -210,7 +210,7 @@ fun CleanupRoute(viewModel: CleanupViewModel, onDone: () -> Unit) {
                     selected = edits.fillEdges,
                     onClick = { viewModel.setFillEdges(!edits.fillEdges) },
                 )
-                if (state.pages.size > 1 && (edits.removePenInk || edits.removeFingers || edits.removeShowThrough || edits.removeStains)) {
+                if (state.pages.size > 1) {
                     ToolbarButton(Icons.Rounded.CopyAll, stringResource(R.string.document_cleanup_other_pages_short), selected = null, onClick = { choosingPages = true })
                 }
                 VerticalDivider(Modifier.height(36.dp).padding(horizontal = 6.dp), color = colors.outlineVariant)

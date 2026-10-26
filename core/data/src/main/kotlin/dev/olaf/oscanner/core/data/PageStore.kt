@@ -110,6 +110,8 @@ class PageStore(
     /** Full renders hold several large buffers; two at once keeps memory sane on small phones. */
     private val renderPermits = Semaphore(2)
     private val renderJobs = ConcurrentHashMap<Long, Job>()
+    /** Clean-up still on its way to a page (handwriting found later, or copied from another page). */
+    private val cleanupJobs = ConcurrentHashMap<Long, Job>()
     private val docsDir get() = File(context.filesDir, "docs")
     private val exportsDir get() = File(context.cacheDir, "exports")
 
@@ -253,20 +255,25 @@ class PageStore(
      * Turns the automatic clean-ups on for [pageIds] as well: fingers, show-through and stains
      * straight away, handwriting once each page's print is found.
      */
-    fun autoCleanup(pageIds: List<Long>, handwriting: Boolean, fingers: Boolean, showThrough: Boolean = false, stains: Boolean = false) {
-        scope.launch {
-            if (fingers || showThrough || stains) {
-                for (id in pageIds) {
-                    val edits = db.pages().get(id)?.let { EditsJson.read(it.editsJson) } ?: continue
-                    val wanted = edits.copy(
-                        removeFingers = edits.removeFingers || fingers,
-                        removeShowThrough = edits.removeShowThrough || showThrough,
-                        removeStains = edits.removeStains || stains,
-                    )
-                    if (wanted != edits) setEdits(id, wanted)
-                }
+    /**
+     * Gives [pageIds] the clean-up switches of [from], on and off alike, as Filters' "Apply to"
+     * gives them its look. Brush strokes stay with their page: they fit only its picture.
+     * Handwriting removal is turned on once each page's print is found.
+     */
+    fun copyCleanup(pageIds: List<Long>, from: PageEdits) {
+        cleanupLater(pageIds) {
+            for (id in pageIds) {
+                val edits = db.pages().get(id)?.let { EditsJson.read(it.editsJson) } ?: continue
+                val wanted = edits.copy(
+                    removePenInk = edits.removePenInk && from.removePenInk,
+                    removeFingers = from.removeFingers,
+                    removeShowThrough = from.removeShowThrough,
+                    removeStains = from.removeStains,
+                    fillEdges = from.fillEdges,
+                )
+                if (wanted != edits) setEdits(id, wanted)
             }
-            if (handwriting) removeHandwritingLater(pageIds)
+            if (from.removePenInk) removeHandwriting(pageIds)
         }
     }
 
@@ -274,21 +281,21 @@ class PageStore(
      * Turns on handwriting removal for new pages once their print is found (a few seconds a page,
      * in the background). A page edited meanwhile is left as the person has it.
      */
-    private fun removeHandwritingLater(pageIds: List<Long>) {
-        scope.launch {
-            for (id in pageIds) {
-                val entity = db.pages().get(id) ?: continue
-                val edits = EditsJson.read(entity.editsJson)
-                if (edits.removePenInk) continue
-                // Not on a photo of a person or a scene: it's made for paper, and it would blot
-                // whatever it took for ink. It can still be turned on by hand in Clean up.
-                if (!mostlyPaper(entity)) continue
-                val printed = runCatching { text.printedAreas(entity.originalPath, edits) }
-                    .onFailure { Log.w(TAG, "Finding print on page $id failed", it) }
-                    .getOrNull() ?: continue
-                if (db.pages().get(id)?.editsJson != entity.editsJson) continue
-                setEdits(id, edits.copy(removePenInk = true, printed = printed, printByLook = true))
-            }
+    private fun removeHandwritingLater(pageIds: List<Long>) = cleanupLater(pageIds) { removeHandwriting(pageIds) }
+
+    private suspend fun removeHandwriting(pageIds: List<Long>) {
+        for (id in pageIds) {
+            val entity = db.pages().get(id) ?: continue
+            val edits = EditsJson.read(entity.editsJson)
+            if (edits.removePenInk) continue
+            // Not on a photo of a person or a scene: it's made for paper, and it would blot
+            // whatever it took for ink. It can still be turned on by hand in Clean up.
+            if (!mostlyPaper(entity)) continue
+            val printed = runCatching { text.printedAreas(entity.originalPath, edits) }
+                .onFailure { Log.w(TAG, "Finding print on page $id failed", it) }
+                .getOrNull() ?: continue
+            if (db.pages().get(id)?.editsJson != entity.editsJson) continue
+            setEdits(id, edits.copy(removePenInk = true, printed = printed, printByLook = true))
         }
     }
 
@@ -523,9 +530,25 @@ class PageStore(
 
     /** Waits until every page of [documentId] has a current render. */
     suspend fun awaitRenders(documentId: Long) {
-        db.pages().forDocument(documentId).forEach { page ->
-            renderJobs[page.id]?.join()
+        db.pages().forDocument(documentId).forEach { listed ->
+            // Clean-up on its way changes the page and renders it again, deleting the render an
+            // export would be reading.
+            cleanupJobs[listed.id]?.join()
+            renderJobs[listed.id]?.join()
+            val page = db.pages().get(listed.id) ?: return@forEach
             if (page.renderPath == null || !File(page.renderPath).exists()) renderNow(page)
+        }
+    }
+
+    /** [block], run in the background, counted as clean-up on its way to [pageIds]; see [awaitRenders]. */
+    private fun cleanupLater(pageIds: List<Long>, block: suspend () -> Unit) {
+        val job = scope.launch { block() }
+        pageIds.forEach { id ->
+            // Clean-up already on its way to the page is waited for too.
+            val tracked = cleanupJobs.compute(id) { _, before ->
+                if (before == null || before.isCompleted) job else scope.launch { before.join(); job.join() }
+            }!!
+            tracked.invokeOnCompletion { cleanupJobs.remove(id, tracked) }
         }
     }
 
@@ -733,8 +756,18 @@ class PageStore(
         withContext(Dispatchers.IO) {
             val temp = File(context.cacheDir, "pdf-${UUID.randomUUID()}").apply { mkdirs() }
             try {
-                val pages = db.pages().forDocument(documentId).mapNotNull { page ->
-                    val render = page.renderPath?.let(::File)?.takeIf(File::exists) ?: return@mapNotNull null
+                val pages = db.pages().forDocument(documentId).mapNotNull { listed ->
+                    // A page edited meanwhile gets a new render and its old one is deleted: the
+                    // PDF reads its own copy, taken from the page as it is now.
+                    var page = listed
+                    var copy: File? = null
+                    repeat(RENDER_TRIES) {
+                        if (copy != null) return@repeat
+                        page = db.pages().get(listed.id) ?: return@mapNotNull null
+                        val render = page.renderPath?.let(::File) ?: return@mapNotNull null
+                        copy = runCatching { render.copyTo(File(temp, "${UUID.randomUUID()}.jpg")) }.getOrNull()
+                    }
+                    val render = copy ?: return@mapNotNull null.also { Log.w(TAG, "No render of page ${listed.id} for the PDF") }
                     PdfPage(compress(render, quality ?: prefs.pdfQuality, prefs.watermark, temp), visibleWords(page))
                 }
                 val format = when (prefs.pdfPageFormat) {
@@ -1145,6 +1178,8 @@ class PageStore(
         private val PAPER_KINDS = setOf(DocumentKind.Document, DocumentKind.Book, DocumentKind.Whiteboard)
         /** Automatic handwriting removal waits for a page at least this much paper. */
         private const val MIN_PAPER = 0.45
+        /** Times a PDF tries to copy a page's render that's being replaced; see [writePdf]. */
+        private const val RENDER_TRIES = 3
         private const val PAPER_CHECK_SIDE = 800
         private const val DETECT_SIDE = 640
         /** A book's or a card's text is read at this size to tell which way up it is. */

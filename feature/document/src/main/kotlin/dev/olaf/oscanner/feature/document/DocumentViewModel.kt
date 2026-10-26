@@ -1,6 +1,7 @@
 package dev.olaf.oscanner.feature.document
 
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.olaf.oscanner.core.model.PdfQuality
@@ -38,6 +39,7 @@ data class DocumentUiState(
 
 enum class Busy { PreparingPdf, PreparingImages, Saving, Importing, Splitting }
 
+private const val TAG = "DocumentViewModel"
 private const val PPTX = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 
 /** Things the screen does with Android APIs once the files are ready. */
@@ -165,7 +167,10 @@ class DocumentViewModel(
         if (busy.value != null) return
         busy.value = kind
         viewModelScope.launch {
-            val event = runCatching { block() }.getOrElse { DocumentEvent.Failed }
+            val event = runCatching { block() }.getOrElse {
+                Log.w(TAG, "$kind failed", it)
+                DocumentEvent.Failed
+            }
             busy.value = null
             event?.let { events.send(it) }
         }

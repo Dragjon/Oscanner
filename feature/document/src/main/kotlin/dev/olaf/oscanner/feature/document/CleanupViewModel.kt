@@ -116,7 +116,7 @@ class CleanupViewModel(
     fun applyAutoTo(pageIds: Set<Long>) {
         val edits = _state.value.edits ?: return
         if (pageIds.isEmpty()) return
-        store.autoCleanup(pageIds.toList(), handwriting = edits.removePenInk, fingers = edits.removeFingers, showThrough = edits.removeShowThrough, stains = edits.removeStains)
+        store.copyCleanup(pageIds.toList(), edits)
         _state.update { it.copy(appliedTo = pageIds.size) }
     }
 
