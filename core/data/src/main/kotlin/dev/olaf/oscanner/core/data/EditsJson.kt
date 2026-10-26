@@ -43,6 +43,7 @@ internal object EditsJson {
             edits.printed?.let { areas ->
                 put("printed", JSONArray().apply { areas.forEach { put(it.left.toDouble()); put(it.top.toDouble()); put(it.right.toDouble()); put(it.bottom.toDouble()) } })
                 if (edits.printByLook) put("printByLook", true)
+                if (edits.printFinder > 0) put("printFinder", edits.printFinder)
             }
         }
         .apply { if (edits.flatten) put("flatten", true) }
@@ -164,6 +165,7 @@ internal object EditsJson {
             removeStains = obj.optBoolean("removeStains"),
             fillEdges = obj.optBoolean("fillEdges"),
             printByLook = obj.optBoolean("printByLook"),
+            printFinder = obj.optInt("printFinder"),
             printed = obj.optJSONArray("printed")?.let { a ->
                 List(a.length() / 4) { i -> Area(a.optDouble(i * 4).toFloat(), a.optDouble(i * 4 + 1).toFloat(), a.optDouble(i * 4 + 2).toFloat(), a.optDouble(i * 4 + 3).toFloat()) }
                     .filter { listOf(it.left, it.top, it.right, it.bottom).none(Float::isNaN) }

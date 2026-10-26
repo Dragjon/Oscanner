@@ -18,6 +18,7 @@ import org.opencv.photo.Photo
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sqrt
 
 /**
  * Removing things from a straightened page (PLAN.md §5.5, the classical tier). Everything to
@@ -747,6 +748,15 @@ internal object Cleanup {
             val gap = row.map { it[3] - it[1] }.maxOrNull() ?: return false
             return row.any { b -> b[2] <= x && x - b[2] < gap * 1.5 } && row.any { b -> b[0] >= x + bw && b[0] - (x + bw) < gap * 1.5 }
         }
+        // A list's bullet: a small solid dot or square just before a printed line, with nothing
+        // printed before it on its row. Alone it doesn't read as print, and a pen's dot is rarely so neat.
+        fun bullet(x: Double, y: Double, bw: Double, bh: Double, area: Double): Boolean {
+            if (area < BULLET_SOLID * bw * bh || max(bw, bh) > BULLET_ROUND * min(bw, bh)) return false
+            val cy = y + bh / 2
+            val row = boxes.filter { b -> cy > b[1] && cy < b[3] && max(bw, bh) <= (b[3] - b[1]) * SIGN_SIZE }
+            val gap = row.map { it[3] - it[1] }.maxOrNull() ?: return false
+            return row.any { b -> b[0] >= x + bw && b[0] - (x + bw) < gap * 2.0 } && row.none { b -> b[2] <= x }
+        }
         if (exact) {
             // Each stretch of printed marks, with a pixel or two for the strokes' soft edges.
             val pad = max(2.0, side * 0.002)
@@ -785,6 +795,7 @@ internal object Cleanup {
             val y = stats.get(label, Imgproc.CC_STAT_TOP)[0]
             doubleArrayOf(x, y, x + stats.get(label, Imgproc.CC_STAT_WIDTH)[0], y + stats.get(label, Imgproc.CC_STAT_HEIGHT)[0])
         }
+        val ids by lazy { IntArray(w * h).also { labels.get(0, 0, it) } }
         for (label in 1 until count) {
             val area = stats.get(label, Imgproc.CC_STAT_AREA)[0]
             if (area < minArea) continue
@@ -793,9 +804,10 @@ internal object Cleanup {
             val x = stats.get(label, Imgproc.CC_STAT_LEFT)[0]
             val y = stats.get(label, Imgproc.CC_STAT_TOP)[0]
             if (pictures.any { p -> x >= p[0] && y >= p[1] && x + bw <= p[2] && y + bh <= p[3] }) continue
-            if (exact && betweenPrint(x, y, bw, bh)) continue
-            // Ruled lines and table borders: long and thin.
-            if (max(bw, bh) > longLine && min(bw, bh) < thin) continue
+            if (exact && (betweenPrint(x, y, bw, bh) || bullet(x, y, bw, bh, area))) continue
+            // Ruled lines and table borders: long, thin and straight (or bowed with the page). A
+            // line drawn by hand under the print wobbles.
+            if (max(bw, bh) > longLine && min(bw, bh) < thin && !wobbles(ids, w, label, x.toInt(), y.toInt(), bw.toInt(), bh.toInt(), side)) continue
             // Logos, photos, black boxes: big and mostly solid; crests and drawings: tall.
             if (bw * bh > bigBlob && area / (bw * bh) > 0.45) continue
             if (bh > tall) continue
@@ -810,6 +822,58 @@ internal object Cleanup {
         grow.release()
         clearMargin(result, 0.02)
         return result
+    }
+
+    /**
+     * Whether mark [label] of [ids] (an image [w] wide), in the box at [x], [y], strays from a
+     * smooth curve along its length the way a hand-drawn line does: its middle, step by step
+     * along it, further than [WOBBLE] of the page's [side] from a parabola fitted to it.
+     */
+    private fun wobbles(ids: IntArray, w: Int, label: Int, x: Int, y: Int, bw: Int, bh: Int, side: Int): Boolean {
+        val along = bw >= bh
+        val steps = if (along) bw else bh
+        val t = DoubleArray(steps)
+        val mid = DoubleArray(steps)
+        var n = 0
+        for (i in 0 until steps) {
+            var sum = 0.0
+            var count = 0
+            for (j in 0 until if (along) bh else bw) {
+                val px = if (along) x + i else x + j
+                val py = if (along) y + j else y + i
+                if (ids[py * w + px] == label) {
+                    sum += j
+                    count++
+                }
+            }
+            if (count == 0) continue
+            t[n] = i.toDouble() / steps
+            mid[n] = sum / count
+            n++
+        }
+        if (n < 3) return false
+        // Least squares for mid = a + b·t + c·t²: the normal equations, solved by Cramer's rule.
+        val s = DoubleArray(5)
+        val r = DoubleArray(3)
+        for (i in 0 until n) {
+            var p = 1.0
+            for (k in 0..4) {
+                s[k] += p
+                if (k < 3) r[k] += p * mid[i]
+                p *= t[i]
+            }
+        }
+        fun det(m: Array<DoubleArray>) = m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0])
+        val a = arrayOf(doubleArrayOf(s[0], s[1], s[2]), doubleArrayOf(s[1], s[2], s[3]), doubleArrayOf(s[2], s[3], s[4]))
+        val d = det(a)
+        if (abs(d) < 1e-12) return false
+        val coef = (0..2).map { col -> det(Array(3) { row -> DoubleArray(3) { k -> if (k == col) r[row] else a[row][k] } }) / d }
+        var squares = 0.0
+        for (i in 0 until n) {
+            val e = mid[i] - (coef[0] + coef[1] * t[i] + coef[2] * t[i] * t[i])
+            squares += e * e
+        }
+        return sqrt(squares / n) > max(WOBBLE_MIN, WOBBLE * side)
     }
 
     /**
@@ -988,4 +1052,10 @@ internal object Cleanup {
 
     /** A printed sign between words is at most this share of its line's height across. */
     private const val SIGN_SIZE = 0.9
+    /** A ruled line's middle strays at most this share of the page's long side from a smooth curve, or [WOBBLE_MIN] pixels. */
+    private const val WOBBLE = 0.0006
+    /** A bullet fills at least this share of its box, and is at most this many times longer one way than the other. */
+    private const val BULLET_SOLID = 0.6
+    private const val BULLET_ROUND = 1.5
+    private const val WOBBLE_MIN = 1.2
 }

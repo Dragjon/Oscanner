@@ -5,10 +5,14 @@ import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import android.content.Context
 import android.graphics.Bitmap
+import dev.olaf.oscanner.core.imaging.PenLines
 import dev.olaf.oscanner.core.model.Area
 import org.opencv.android.Utils
+import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
+import org.opencv.core.Point
+import org.opencv.core.Scalar
 import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
 import java.nio.FloatBuffer
@@ -49,7 +53,74 @@ class PrintSorter(context: Context) : AutoCloseable {
         val pixels = ByteArray(w * h).also { gray.get(0, 0, it) }
         val text = textInk(gray)
         gray.release()
+        try {
+            return withoutPenLines(text, pixels, w, h)
+        } finally {
+            text.release()
+        }
+    }
 
+    /**
+     * [sort] of [text] with the underlines and rings drawn through the print taken out: they join
+     * its letters into marks that read as handwriting, and go with them. Only from marks whose
+     * pieces then mostly read as print: joined-up handwriting runs on in long strokes too, and
+     * what's left of it once they're out is too little to tell.
+     */
+    private fun withoutPenLines(text: Mat, pixels: ByteArray, w: Int, h: Int): List<Area> {
+        val lines = PenLines.find(text)
+        if (Core.countNonZero(lines) == 0) {
+            lines.release()
+            return sort(text, pixels, w, h)
+        }
+        val stripped = Mat()
+        Core.subtract(text, lines, stripped)
+        val areas = sort(stripped, pixels, w, h)
+        val inPrint = BooleanArray(w * h)
+        for (a in areas) {
+            for (y in (a.top * h).toInt() until (a.bottom * h).toInt()) for (x in (a.left * w).toInt() until (a.right * w).toInt()) inPrint[y * w + x] = true
+        }
+        val labels = Mat()
+        val stats = Mat()
+        val centroids = Mat()
+        val count = Imgproc.connectedComponentsWithStats(text, labels, stats, centroids, 8, CvType.CV_32S)
+        val st = IntArray(count * 5).also { stats.get(0, 0, it) }
+        val ids = IntArray(w * h).also { labels.get(0, 0, it) }
+        listOf(labels, stats, centroids).forEach(Mat::release)
+        val heights = (1 until count).filter { st[it * 5 + 4] >= MIN_AREA && st[it * 5 + 3] >= MIN_HEIGHT }.map { st[it * 5 + 3] }.sorted()
+        val unit = heights.getOrElse(heights.size / 2) { 0 }
+        val line = ByteArray(w * h).also { lines.get(0, 0, it) }
+        val left = ByteArray(w * h).also { stripped.get(0, 0, it) }
+        lines.release()
+        // Per mark a pen line went through: what's left of it, and how much of that reads as print.
+        val rest = IntArray(count)
+        val printed = IntArray(count)
+        val crossed = BooleanArray(count)
+        for (i in ids.indices) {
+            val m = ids[i]
+            if (m == 0) continue
+            if (line[i] != 0.toByte()) crossed[m] = true
+            if (left[i] != 0.toByte()) {
+                rest[m]++
+                if (inPrint[i]) printed[m]++
+            }
+        }
+        val whole = BooleanArray(count) { m -> crossed[m] && (rest[m] < JOINED_REST * unit * unit || printed[m] < JOINED_PRINT * rest[m]) }
+        if (whole.none { it }) {
+            stripped.release()
+            return areas
+        }
+        // Handwriting after all: put back whole and sorted again.
+        val textBytes = ByteArray(w * h).also { text.get(0, 0, it) }
+        stripped.put(0, 0, ByteArray(w * h) { i -> if (whole[ids[i]]) textBytes[i] else left[i] })
+        return try {
+            sort(stripped, pixels, w, h)
+        } finally {
+            stripped.release()
+        }
+    }
+
+    /** Where the print is among the marks of [text] (ink, white on black) on the page's gray [pixels]. */
+    private fun sort(text: Mat, pixels: ByteArray, w: Int, h: Int): List<Area> {
         val labels = Mat()
         val stats = Mat()
         val centroids = Mat()
@@ -64,18 +135,22 @@ class PrintSorter(context: Context) : AutoCloseable {
         fun area(i: Int) = st[i * 5 + 4]
         val marks = (1 until count).filter { area(it) >= MIN_AREA && height(it) >= MIN_HEIGHT }
         if (marks.isEmpty()) {
-            listOf(text, labels).forEach(Mat::release)
+            labels.release()
             return emptyList()
         }
         val ids = IntArray(w * h).also { labels.get(0, 0, it) }
         labels.release()
 
-        // Runs: marks a little more than a letter's height apart, side by side, are one run.
+        // Runs: marks a little more than a letter's height apart, side by side, are one run. Each
+        // by its middle half, so a line's descenders touching the next line's ascenders don't join
+        // the two; a mark taller still spans both, and joins the run its middle is in.
         val unit = marks.map { height(it) }.sorted()[marks.size / 2]
         val keep = Mat.zeros(h, w, CvType.CV_8UC1)
-        val isMark = BooleanArray(count).also { b -> marks.forEach { b[it] = true } }
-        keep.put(0, 0, ByteArray(w * h) { if (isMark[ids[it]]) -1 else 0 })
-        text.release()
+        for (mark in marks) {
+            if (height(mark) > SPANS_LINES * unit) continue
+            val band = height(mark) / 4
+            Imgproc.rectangle(keep, Point(left(mark).toDouble(), (top(mark) + band).toDouble()), Point((left(mark) + width(mark) - 1).toDouble(), (top(mark) + height(mark) - 1 - band).toDouble()), Scalar(255.0), -1)
+        }
         Imgproc.dilate(keep, keep, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(((unit * 1.2).toInt() or 1).toDouble(), 1.0)))
         val runMat = Mat()
         Imgproc.connectedComponents(keep, runMat, 8, CvType.CV_32S)
@@ -83,17 +158,9 @@ class PrintSorter(context: Context) : AutoCloseable {
         val runIds = IntArray(w * h).also { runMat.get(0, 0, it) }
         runMat.release()
         val runs = marks.groupBy { mark ->
-            // Any pixel of the mark tells its run.
-            val x0 = left(mark)
-            val y0 = top(mark)
-            var found = 0
-            loop@ for (y in y0 until y0 + height(mark)) for (x in x0 until x0 + width(mark)) {
-                if (ids[y * w + x] == mark) {
-                    found = runIds[y * w + x]
-                    break@loop
-                }
-            }
-            found
+            val run = runIds[(top(mark) + height(mark) / 2) * w + left(mark) + width(mark) / 2]
+            // In no run: a run of its own.
+            if (run > 0) run else -mark
         }
 
         val areas = mutableListOf<Area>()
@@ -102,10 +169,31 @@ class PrintSorter(context: Context) : AutoCloseable {
             val main = members.filter { height(it) >= 0.3 * med }
             val x0 = main.minOf { left(it) }
             val x1 = main.maxOf { left(it) + width(it) } - 1
-            val y0 = main.minOf { top(it) }
-            val y1 = main.maxOf { top(it) + height(it) } - 1
+            // Most of its marks' tops and bottoms: a ring or a line drawn round the run, in pieces,
+            // would stretch it, and its letters would look small and scrawled in the windows.
+            val tops = main.map { top(it) }.sorted()
+            val bottoms = main.map { top(it) + height(it) }.sorted()
+            val y0 = tops[tops.size / 5]
+            val y1 = bottoms[bottoms.size * 4 / 5] - 1
             val runHeight = y1 - y0 + 1
-            val (windows, centers) = windows(pixels, w, h, x0, x1, (y0 + y1) / 2, runHeight)
+            // A long line can slope across the page, lower at one end: each window there is placed
+            // and sized by the letters under it.
+            val letters = main.filter { height(it) >= 0.5 * med && height(it) <= 1.6 * med && width(it) <= 2 * med }
+            val local = if (x1 - x0 > LONG_RUN * runHeight) {
+                { cx: Int, reach: Int ->
+                    val near = letters.filter { abs(left(it) + width(it) / 2f - cx) <= reach }
+                    if (near.size < 3) {
+                        null
+                    } else {
+                        val tops = near.map { top(it) }.sorted()
+                        val bottoms = near.map { top(it) + height(it) }.sorted()
+                        tops[tops.size / 5] to bottoms[bottoms.size * 4 / 5] - 1
+                    }
+                }
+            } else {
+                null
+            }
+            val (windows, centers) = windows(pixels, w, h, x0, x1, y0, y1, local)
             if (centers.isEmpty()) continue
             val hand = score(windows, centers.size)
             // Each mark: the windows over it, nearer ones counting more.
@@ -189,19 +277,34 @@ class PrintSorter(context: Context) : AutoCloseable {
      * The run's windows, scaled to the network's size and normalized (paper 0, ink 1), with
      * each window's middle column. As in training.
      */
-    private fun windows(pixels: ByteArray, w: Int, h: Int, x0: Int, x1: Int, cy: Int, runHeight: Int): Pair<FloatArray, List<Float>> {
-        val wh = (runHeight * TALL).roundToInt()
-        val ww = (runHeight * WIDE).roundToInt()
+    private fun windows(
+        pixels: ByteArray,
+        w: Int,
+        h: Int,
+        x0: Int,
+        x1: Int,
+        y0: Int,
+        y1: Int,
+        local: ((cx: Int, reach: Int) -> Pair<Int, Int>?)?,
+    ): Pair<FloatArray, List<Float>> {
+        val runHeight = y1 - y0 + 1
+        val runWide = (runHeight * WIDE).roundToInt()
         val step = max(1, (runHeight * STEP).roundToInt())
-        val first = x0 + ww / 2 - ww / 4
-        val last = max(first, x1 - ww / 4)
+        val first = x0 + runWide / 2 - runWide / 4
+        val last = max(first, x1 - runWide / 4)
         val centers = mutableListOf<Float>()
         val all = mutableListOf<FloatArray>()
-        val crop = Mat(wh, ww, CvType.CV_8UC1)
         val small = Mat()
-        val cropPixels = ByteArray(wh * ww)
         var cx = first
         while (cx <= last) {
+            // The run's own top and bottom, or its line's just here (see [sort]).
+            val (top, bottom) = local?.invoke(cx, runWide / 2) ?: (y0 to y1)
+            val height = max(bottom - top + 1, MIN_HEIGHT)
+            val cy = (top + bottom) / 2
+            val wh = (height * TALL).roundToInt()
+            val ww = (height * WIDE).roundToInt()
+            val crop = Mat(wh, ww, CvType.CV_8UC1)
+            val cropPixels = ByteArray(wh * ww)
             val topRow = cy - wh / 2
             val leftCol = cx - ww / 2
             for (y in 0 until wh) for (x in 0 until ww) {
@@ -211,12 +314,13 @@ class PrintSorter(context: Context) : AutoCloseable {
             }
             crop.put(0, 0, cropPixels)
             Imgproc.resize(crop, small, Size(WIN_W.toDouble(), WIN_H.toDouble()), 0.0, 0.0, Imgproc.INTER_AREA)
+            crop.release()
             val px = ByteArray(WIN_W * WIN_H).also { small.get(0, 0, it) }
             all += normalize(px)
             centers += cx.toFloat()
             cx += step
         }
-        listOf(crop, small).forEach(Mat::release)
+        small.release()
         val flat = FloatArray(all.size * WIN_H * WIN_W)
         all.forEachIndexed { i, a -> a.copyInto(flat, i * WIN_H * WIN_W) }
         return flat to centers
@@ -252,10 +356,10 @@ class PrintSorter(context: Context) : AutoCloseable {
         Imgproc.morphologyEx(thick, rules, Imgproc.MORPH_OPEN, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(run, 1.0)))
         Imgproc.dilate(ink, thick, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 1.0)))
         Imgproc.morphologyEx(thick, down, Imgproc.MORPH_OPEN, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(1.0, run)))
-        org.opencv.core.Core.bitwise_or(rules, down, rules)
-        org.opencv.core.Core.bitwise_and(rules, ink, rules)
+        Core.bitwise_or(rules, down, rules)
+        Core.bitwise_and(rules, ink, rules)
         Imgproc.dilate(rules, rules, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0)))
-        org.opencv.core.Core.subtract(ink, rules, ink)
+        Core.subtract(ink, rules, ink)
         listOf(thick, rules, down).forEach(Mat::release)
         return ink
     }
@@ -283,6 +387,14 @@ class PrintSorter(context: Context) : AutoCloseable {
         const val SURE_HAND = 0.85
         const val MIN_HEIGHT = 4
         const val BATCH = 64
+        /** A mark a pen line went through keeps it unless what's left is this many letter heights squared... */
+        const val JOINED_REST = 3.0
+        /** ...and at least this share of it reads as print. */
+        const val JOINED_PRINT = 0.6
+        /** A mark taller than this many letter heights spans two lines. */
+        const val SPANS_LINES = 2.6
+        /** A run longer than this many of its heights is placed window by window. */
+        const val LONG_RUN = 15.0
         const val THREADS = 4
     }
 }

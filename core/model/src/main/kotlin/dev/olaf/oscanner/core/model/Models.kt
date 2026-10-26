@@ -94,6 +94,9 @@ data class Quad(
 enum class PageFilter { Original, Auto, Bright, Gray, Ink, Board, Photo }
 
 /** The recipe that turns an original photo into the page people see. Stored, never baked in. */
+/** The print finder's version, see [PageEdits.printFinder]: 2 takes pen lines drawn through print out first. */
+const val PRINT_FINDER = 2
+
 data class PageEdits(
     val quad: Quad = Quad.Full,
     val filter: PageFilter = PageFilter.Auto,
@@ -134,6 +137,11 @@ data class PageEdits(
      * from the words the reader was sure of (which can include neat handwriting).
      */
     val printByLook: Boolean = false,
+    /**
+     * Which print finder found [printed] by its look ([PRINT_FINDER] for the current one). Print
+     * found by an older one is found again when handwriting removal is next set up.
+     */
+    val printFinder: Int = 0,
     /** Clean-up: remove skin-colored shapes reaching in from the page edge, like holding fingers. */
     val removeFingers: Boolean = false,
     /** Clean-up: remove the back page's print showing through thin paper. */

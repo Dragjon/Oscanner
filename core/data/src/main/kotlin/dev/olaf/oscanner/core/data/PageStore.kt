@@ -26,6 +26,7 @@ import dev.olaf.oscanner.core.model.Corner
 import dev.olaf.oscanner.core.model.DocumentKind
 import dev.olaf.oscanner.core.model.Page
 import dev.olaf.oscanner.core.model.PageCurve
+import dev.olaf.oscanner.core.model.PRINT_FINDER
 import dev.olaf.oscanner.core.model.PageEdits
 import dev.olaf.oscanner.core.model.PageFilter
 import dev.olaf.oscanner.core.model.ProcessingState
@@ -295,7 +296,7 @@ class PageStore(
                 .onFailure { Log.w(TAG, "Finding print on page $id failed", it) }
                 .getOrNull() ?: continue
             if (db.pages().get(id)?.editsJson != entity.editsJson) continue
-            setEdits(id, edits.copy(removePenInk = true, printed = printed, printByLook = true))
+            setEdits(id, edits.copy(removePenInk = true, printed = printed, printByLook = true, printFinder = PRINT_FINDER))
         }
     }
 

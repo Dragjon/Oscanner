@@ -8,6 +8,7 @@ import dev.olaf.oscanner.core.imaging.PageRenderer
 import dev.olaf.oscanner.core.model.Corner
 import dev.olaf.oscanner.core.model.InkMark
 import dev.olaf.oscanner.core.model.Page
+import dev.olaf.oscanner.core.model.PRINT_FINDER
 import dev.olaf.oscanner.core.model.PageEdits
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -78,8 +79,12 @@ class CleanupViewModel(
             }
             _state.update { it.copy(page = page, before = before, edits = page.edits) }
             refresh(immediately = true)
+            // Print an older finder found is found again: it took print a pen line ran through for handwriting.
+            if (page.edits.removePenInk && !currentPrint(page.edits)) findPrint()
         }
     }
+
+    private fun currentPrint(edits: PageEdits) = edits.printed != null && edits.printByLook && edits.printFinder >= PRINT_FINDER
 
     /**
      * Turning handwriting removal on first finds the printed words (once per page; kept in
@@ -89,18 +94,25 @@ class CleanupViewModel(
         val s = _state.value
         val page = s.page ?: return
         val edits = s.edits ?: return
-        // Print found the older way (words the reader was sure of) is found again by its look.
-        if (!on || (edits.printed != null && edits.printByLook)) {
+        // Print found the older way (words the reader was sure of, or an older finder) is found again by its look.
+        if (!on || currentPrint(edits)) {
             edit { it.copy(removePenInk = on) }
             return
         }
+        findPrint()
+    }
+
+    private fun findPrint() {
+        val s = _state.value
+        val page = s.page ?: return
+        val edits = s.edits ?: return
         if (s.findingPrint) return
         _state.update { it.copy(findingPrint = true) }
         viewModelScope.launch {
             val printed = runCatching { store.printedAreas(page, edits) }.getOrNull()
             _state.update { it.copy(findingPrint = false) }
             // Unreadable (no language data, say): colored pen is still found.
-            edit { it.copy(removePenInk = true, printed = printed, printByLook = printed != null) }
+            edit { it.copy(removePenInk = true, printed = printed, printByLook = printed != null, printFinder = if (printed != null) PRINT_FINDER else 0) }
         }
     }
 
