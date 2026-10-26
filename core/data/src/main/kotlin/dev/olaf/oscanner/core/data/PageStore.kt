@@ -434,6 +434,28 @@ class PageStore(
         )
     }
 
+    /**
+     * Pages [pageIds] of [documentId], photos of overlapping parts of something too big for one
+     * shot (a poster, a plan), joined into one new page put just before the first of them; the
+     * parts stay, to delete once the joined page looks right. Each is joined as photographed,
+     * whatever its crop. Returns the new page's id, or null if they don't all overlap.
+     */
+    suspend fun joinPages(documentId: Long, pageIds: List<Long>): Long? {
+        val parts = db.pages().forDocument(documentId).filter { it.id in pageIds }
+        if (parts.size < 2) return null
+        val file = File(context.cacheDir, "join-${UUID.randomUUID()}.jpg")
+        val joined = withContext(Dispatchers.Default) { PageRenderer.joinPhotos(parts.map { it.originalPath }, file) }
+        if (!joined) {
+            file.delete()
+            return null
+        }
+        addPages(documentId, listOf(CapturedImage(file, liveQuad = null)))
+        val pages = db.pages().forDocument(documentId)
+        val added = pages.last()
+        movePage(documentId, pages.lastIndex, pages.indexOfFirst { it.id == parts.first().id })
+        return added.id
+    }
+
     /** Turns pages a quarter clockwise each. */
     suspend fun rotatePages(pageIds: List<Long>) {
         pageIds.forEach { id ->

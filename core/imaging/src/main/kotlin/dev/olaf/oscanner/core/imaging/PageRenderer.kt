@@ -49,6 +49,8 @@ object PageRenderer {
     private const val PAPER_SIDE = 400.0
     private const val PAPER_BRIGHT = 0.75
     private const val PAPER_SATURATION = 60.0
+    /** A joined photo is saved at this JPEG quality. */
+    private const val JOIN_QUALITY = 92
 
     @Volatile private var loaded = false
 
@@ -113,6 +115,22 @@ object PageRenderer {
         return Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, matrix, true).also {
             if (it != decoded) decoded.recycle()
         }
+    }
+
+    /**
+     * The photos at [paths], overlapping parts of one flat thing, joined into one JPEG at [out]
+     * (see [PageStitcher]); false, and nothing written, if they don't all overlap.
+     */
+    fun joinPhotos(paths: List<String>, out: File): Boolean {
+        ensureLoaded()
+        val joined = PageStitcher.stitch(paths.size) { i, side ->
+            val bitmap = loadUpright(paths[i], side)
+            Mat().also { Utils.bitmapToMat(bitmap, it) }.also { bitmap.recycle() }
+        } ?: return false
+        Imgproc.cvtColor(joined, joined, Imgproc.COLOR_RGB2BGR)
+        val written = org.opencv.imgcodecs.Imgcodecs.imwrite(out.path, joined, org.opencv.core.MatOfInt(org.opencv.imgcodecs.Imgcodecs.IMWRITE_JPEG_QUALITY, JOIN_QUALITY))
+        joined.release()
+        return written
     }
 
     /** Crops, straightens, rotates and filters [source] (an upright photo). */

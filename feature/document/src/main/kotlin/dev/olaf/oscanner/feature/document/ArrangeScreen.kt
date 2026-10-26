@@ -37,6 +37,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
+import androidx.compose.material.icons.rounded.CallMerge
 import androidx.compose.material.icons.rounded.CallSplit
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
@@ -84,6 +85,7 @@ import dev.olaf.oscanner.core.design.DockAction
 import dev.olaf.oscanner.core.design.rememberPageImage
 import dev.olaf.oscanner.core.model.Page
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.StateFlow
@@ -102,6 +104,12 @@ class ArrangeViewModel(
 
     private val extracted = Channel<Long>(Channel.BUFFERED)
     val extractedDocuments = extracted.receiveAsFlow()
+
+    /** Pages being joined into one, see [join]. */
+    val joining = MutableStateFlow(false)
+    private val joins = Channel<Boolean>(Channel.BUFFERED)
+    /** Whether each join worked: false when the pages don't all overlap. */
+    val joined = joins.receiveAsFlow()
 
     fun move(from: Int, to: Int) {
         viewModelScope.launch { store.movePage(documentId, from, to) }
@@ -125,6 +133,17 @@ class ArrangeViewModel(
         }
     }
 
+    /** Photos of parts of one big thing, joined into one page; see [PageStore.joinPages]. */
+    fun join(ids: List<Long>) {
+        if (joining.value) return
+        joining.value = true
+        viewModelScope.launch {
+            val page = runCatching { store.joinPages(documentId, ids) }.getOrNull()
+            joining.value = false
+            joins.send(page != null)
+        }
+    }
+
     suspend fun title(): String = documents.observeDocument(documentId).first()?.title.orEmpty()
 }
 
@@ -145,7 +164,20 @@ fun ArrangeRoute(viewModel: ArrangeViewModel, onBack: () -> Unit, onOpenDocument
     val undo = stringResource(R.string.document_undo)
     val open = stringResource(R.string.document_open)
     val extractTitle = stringResource(R.string.document_extract_title)
+    val joinedText = stringResource(R.string.document_joined)
+    val joinFailedText = stringResource(R.string.document_join_failed)
+    val joiningText = stringResource(R.string.document_joining)
+    val joining by viewModel.joining.collectAsStateWithLifecycle()
 
+    LaunchedEffect(viewModel) {
+        viewModel.joined.collect { worked ->
+            snackbar.currentSnackbarData?.dismiss()
+            snackbar.showSnackbar(if (worked) joinedText else joinFailedText, duration = SnackbarDuration.Long)
+        }
+    }
+    LaunchedEffect(joining) {
+        if (joining) snackbar.showSnackbar(joiningText, duration = SnackbarDuration.Indefinite)
+    }
     LaunchedEffect(viewModel) {
         viewModel.extractedDocuments.collect { id ->
             if (snackbar.showSnackbar(extractedText, actionLabel = open, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) {
@@ -331,6 +363,11 @@ fun ArrangeRoute(viewModel: ArrangeViewModel, onBack: () -> Unit, onOpenDocument
                     scope.launch { viewModel.extract(ids, String.format(extractTitle, viewModel.title())) }
                     chosen.clear()
                 }, enabled = any)
+                // Photos of parts of a poster or plan, joined into one page.
+                DockAction(Icons.Rounded.CallMerge, stringResource(R.string.document_join), {
+                    viewModel.join(visible.filter { it.id in picked }.map { it.id })
+                    chosen.clear()
+                }, enabled = picked.size >= 2 && !joining)
                 DockAction(Icons.Rounded.DeleteOutline, stringResource(R.string.document_delete_pages), {
                     val ids = picked
                     chosen.clear()

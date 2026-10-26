@@ -28,7 +28,7 @@ are not layout references (`PLAN.md` §1 still applies to how we build).
 | Incorrect Question / test paper (blank out answers, re-scan missed questions) | ✅ handwriting removal blanks a test; split into questions |
 | Formula (maths to LaTeX) | ❌ |
 | ID Photo Maker (passport photo sizes, background colour) | ✅ |
-| Mega Scan (stitch a large object from many shots) | ❌ (⚠ patents) |
+| Mega Scan (stitch a large object from many shots) | ✅ Edit → Pages → Join (2026-10-26) |
 | Import images | ✅ |
 | Import files (PDF, Word, Excel, PPT into the library) | ✅ PDFs, pictures, Word, Excel and PowerPoint (.docx, .xlsx, .pptx) |
 
@@ -252,7 +252,21 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   (2026-10-24): Edit → Mark wrong on a page, or several at once in Pages; a red "Wrong" label
   sits under the page (not on it, where the question's number is). Edit → Practise wrong
   questions copies the marked pages into a new document; Got it right takes a mark off.
-- **Large objects** (blueprints, posters): stitch overlapping shots. Only after a patent check.
+- ✅ **Large objects** (blueprints, posters) (2026-10-26): photograph the thing in overlapping
+  parts as ordinary pages, then Edit → Pages, choose them and Join. The photos are joined into
+  one new page put before the parts (which stay, to delete once it looks right), and its outline
+  is found as for any photo. A flat thing seen from anywhere is one picture under a perspective
+  transform: each shot is placed by matching marks (SIFT) with one it overlaps, kept where most
+  agree (RANSAC), all laid on the middle shot's plane, each pixel from the shot it lies furthest
+  inside, brightness matched across the seams (`PageStitcher`). Three askew shots of a drawn
+  poster land within 3 px of where they belong; three photos of a real exam page on a desk join
+  into the whole page in the app, about 16 s on the emulator. Shots that don't overlap (two
+  different posters) are refused. Patent check (not legal advice): the document-specific patents
+  found align parts by their OCR'd text (US10356318) or flag text cut off at a part's edge and ask
+  for a reshoot (US11822216); neither is done here. Feature matching with a homography is the
+  panorama literature's method (Szeliski; Brown and Lowe 2003, 2007), SIFT's patent ran out in
+  2020, Microsoft's whiteboard-stitching patent (US7119816) in 2023, and Seiko Epson's image
+  stitching patent (US7894689) has lapsed.
 
 ### 3.5 Editing extras
 - ~~Pixelate / blur as a second style for black-out~~: not doing it. Pixelated or blurred text
