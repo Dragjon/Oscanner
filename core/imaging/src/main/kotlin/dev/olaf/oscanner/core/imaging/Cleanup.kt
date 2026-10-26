@@ -39,9 +39,15 @@ internal object Cleanup {
         }
         val (mask, mend) = plan(rgb, edits)
         if (mask != null) {
-            val paper = paperUnder(rgb, mask)
-            paper.copyTo(rgb, mask)
-            paper.release()
+            // On a photo, what's taken out (a stain brushed over) is filled with more of the
+            // picture; on a page, with the paper.
+            if (edits.filter == PageFilter.Photo) {
+                PatchFill.fill(rgb, mask)
+            } else {
+                val paper = paperUnder(rgb, mask)
+                paper.copyTo(rgb, mask)
+                paper.release()
+            }
             mask.release()
         }
         mend?.let { (where, color) ->

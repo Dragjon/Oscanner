@@ -1,5 +1,9 @@
 package dev.olaf.oscanner.core.imaging
 
+import dev.olaf.oscanner.core.model.Corner
+import dev.olaf.oscanner.core.model.InkMark
+import dev.olaf.oscanner.core.model.PageEdits
+import dev.olaf.oscanner.core.model.PageFilter
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -96,6 +100,24 @@ class TornPhotoTest {
         val below = Core.mean(photo.submat(Rect(W - 60, H / 2 + 40, 50, 60))).`val`
         assertTrue("sky ${above.toList()}", above[2] > above[1] && above[2] > 180)
         assertTrue("grass ${below.toList()}", below[1] > below[0] + 30 && below[1] > below[2] + 30)
+    }
+
+    @Test
+    fun aStainPaintedOverOnAPhotoIsFilledWithPicture() {
+        val photo = landscape()
+        // A big coffee stain on the grass, brushed over in Clean up.
+        Imgproc.circle(photo, Point(700.0, 700.0), 90, Scalar(120.0, 85.0, 50.0), -1)
+        val stroke = InkMark(listOf(Corner(530f / W, 700f / H), Corner(870f / W, 700f / H)), 0, 200f / W)
+        Cleanup.apply(photo, PageEdits(filter = PageFilter.Photo, erase = listOf(stroke)))
+        // Grass again, with grass's texture: not a smooth smear of its color.
+        val mean = MatOfDouble()
+        val spread = MatOfDouble()
+        Core.meanStdDev(photo.submat(Rect(650, 650, 100, 100)), mean, spread)
+        val grass = MatOfDouble()
+        val grassSpread = MatOfDouble()
+        Core.meanStdDev(photo.submat(Rect(200, 650, 100, 100)), grass, grassSpread)
+        for (c in 0..2) assertEquals("channel $c", grass.toArray()[c], mean.toArray()[c], 12.0)
+        assertTrue("texture ${spread.toArray()[1]} vs ${grassSpread.toArray()[1]}", spread.toArray()[1] > 0.5 * grassSpread.toArray()[1])
     }
 
     @Test
