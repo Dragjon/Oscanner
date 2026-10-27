@@ -1,0 +1,3 @@
+Better page finding on real photos: a page held up by hand, white paper on a pale desk or among clutter, and corners placed closer to the paper's edge. Outlines now sit only slightly inside the page.
+
+ID cards are found as before.
