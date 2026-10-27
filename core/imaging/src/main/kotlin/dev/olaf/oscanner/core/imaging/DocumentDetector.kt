@@ -560,7 +560,8 @@ class DocumentDetector(
      * The [cornerFinder]'s outline of the page in [gray] (loaded as [full]), or null if it has
      * none or its outline isn't the page's: page-shaped (card-shaped for [cards]), with at least
      * three sides on an edge, as the search's candidates must be, and the fourth partly (a hand
-     * holding the page up hides some of it).
+     * holding the page up hides some of it), or two plainly on an edge and the other two faintly
+     * (white paper on a pale desk).
      * A line printed near the bottom of a page can pass for its edge to the network, which then
      * cuts across the paper. Its sides are then snapped onto the edge, as a followed page's are:
      * its corners come from a coarse heatmap.
@@ -592,9 +593,12 @@ class DocumentDetector(
         val shares = sides(onSmall).map { (a, b, inward) -> raw.support(a, b, inward, either = cards).share }
         // A hand holding the page up may hide part of one side; the rest of it still shows. A side
         // that hardly shows at all is more likely cutting across the paper, at a line printed
-        // near its foot.
+        // near its foot. White paper on a pale desk, seen small, may show only faintly along two
+        // sides; then the other two must show plainly, or the network may have joined the page to
+        // something beside it, a side running across the bare desk between them.
         val off = shares.indices.filter { shares[it] < SIDE_MIN }
-        if (off.size > 1 || off.any { shares[it] < HIDDEN_SIDE }) return null
+        if (off.size > 2 || off.any { shares[it] < HIDDEN_SIDE }) return null
+        if (off.size == 2 && shares.indices.any { it !in off && shares[it] < PLAIN_SIDE }) return null
         // A card's thin edge runs beside lines printed near it, which snapping can slide onto.
         if (cards) return inset(quad)
         val reach = max(REFINE_REACH, (FOLLOW_REACH * max(gray.cols(), gray.rows())).toInt())
@@ -1329,6 +1333,8 @@ class DocumentDetector(
         private const val SIDE_MIN = 0.55
         /** The least share of a network outline's side a hand can leave showing; see [checked]. */
         private const val HIDDEN_SIDE = 0.25
+        /** How much of each other side must show when two sides of a network outline are faint; see [checked]. */
+        private const val PLAIN_SIDE = 0.7
         private const val MEAN_MIN = 0.72
         /** A side running along an edge for this share of its length is sure of itself. */
         private const val SURE_SIDE = 0.9

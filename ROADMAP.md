@@ -165,6 +165,9 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   (nothing found 51 → 37), the 113 photos unchanged (0.86), drawn scenes 226 of 240. The
   network alone gets SmartDoc to 0.92, so the detector's checks now throw away good outlines
   there: the next thing to look at.
+  Done: a network outline may now have two faint sides if the other two show plainly (white
+  paper on a pale desk, seen small). SmartDoc background05 0.66 → 0.73 (nothing found 37 → 28),
+  the 113 photos 0.86 (≥ 0.95 51%, CamScanner 65%), everything else unchanged.
 - **Auto filter parity.** Side-by-side test set against our own baseline: whiter paper, no grey
   cast, crisp but not crunchy text, colour kept where it matters. Add a "No shadow" style
   option if Auto can't cover both.
