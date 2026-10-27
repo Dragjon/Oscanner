@@ -214,12 +214,15 @@ def train(epochs, init, peak, out, paths, val):
     import torch.nn.functional as F
     torch.manual_seed(0)
     rng = np.random.default_rng(0)
+    dev = 'cuda' if torch.cuda.is_available() else 'cpu'
+    print('on', torch.cuda.get_device_name(0) if dev == 'cuda' else 'cpu', flush=True)
     if init.endswith('.onnx'):
         import onnx
         from onnx2torch import convert
         net = convert(onnx.load(init))
     else:
-        net = torch.load(init, weights_only=False)
+        net = torch.load(init, weights_only=False, map_location='cpu')
+    net.to(dev)
     data = [np.load(p) for p in paths]
     X = np.concatenate([d['X'] for d in data])
     Q = np.concatenate([d['Q'] for d in data])
@@ -234,14 +237,14 @@ def train(epochs, init, peak, out, paths, val):
 
     def batch(x):
         t = torch.from_numpy(x.astype(np.float32) / 255)[:, None]
-        return t.repeat(1, 3, 1, 1)
+        return t.repeat(1, 3, 1, 1).to(dev)
 
     def check():
         net.eval()
         errs, sure = [], []
         with torch.no_grad():
             for i in range(0, len(vx), 32):
-                p, v = peaks(net(batch(vx[i:i + 32])))
+                p, v = peaks(net(batch(vx[i:i + 32])).cpu())
                 errs.append(np.linalg.norm(p - vq[i:i + 32], axis=-1).max(1))
                 sure.append(v.min(1))
         e, s = np.concatenate(errs), np.concatenate(sure)
@@ -256,7 +259,7 @@ def train(epochs, init, peak, out, paths, val):
         for b in range(0, len(X), bs):
             idx = order_[b:b + bs]
             x = batch(X[idx])
-            y = heatmaps(Q[idx])
+            y = heatmaps(Q[idx]).to(dev)
             p = net(x).clamp(1e-6, 1 - 1e-6)
             # Cells near a corner weigh more: they're few among the 16,384.
             w = 1 + 20 * y
@@ -268,13 +271,14 @@ def train(epochs, init, peak, out, paths, val):
             tot += loss.item() * len(idx)
             if b // bs % 50 == 49:
                 print(f'  step {b // bs + 1} of {len(X) // bs + 1}, loss {tot / (b + len(idx)):.5f}', flush=True)
-        torch.save(net, out)
+        torch.save(net.cpu(), out)
+        net.to(dev)
         print(f'epoch {ep} loss {tot / len(X):.5f}' + (' | ' + check() if vx is not None else ''), flush=True)
 
 
 def export(model, out):
     import torch
-    net = torch.load(model, weights_only=False)
+    net = torch.load(model, weights_only=False, map_location='cpu')
     net.eval()
     torch.onnx.export(net, torch.zeros(1, 3, SIDE, SIDE), out, input_names=['img'], output_names=['heatmap'], opset_version=17, do_constant_folding=True)
     print('ok')

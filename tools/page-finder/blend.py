@@ -5,7 +5,7 @@ network blended back this way keeps most of what tuning gained and most of what 
 import sys, torch, onnx
 from onnx2torch import convert
 old = convert(onnx.load(sys.argv[1])).state_dict()
-new = torch.load(sys.argv[2], weights_only=False)
+new = torch.load(sys.argv[2], weights_only=False, map_location='cpu')
 a = float(sys.argv[3])
 sd = new.state_dict()
 for k, v in sd.items():
