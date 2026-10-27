@@ -84,6 +84,9 @@ ctrain_real.npz 8 11 <mendeley>`, `make ctrain_syn.npz 1 13 <mendeley> <scenes>`
 corners.onnx 2e-4 corner2.pt ctrain_*.npz --val cval.npz` (one pass, about 2 hours on a CPU:
 some 10 s a batch of 16). Held-out frames: worst corner's median error 0.024 → 0.012. Tuned
 alone it forgot pages among clutter and found pages in empty rooms, so the shipped
-`page_corners.onnx` is 0.8 DocAligner's weights plus 0.2 the tuned ones (`blend.py`): nearly
-all of the gain on photos, little of the loss. Cards keep `corners.onnx`, DocAligner's own:
+`page_corners.onnx` is DocAligner's weights blended with the tuned ones (`blend.py`): nearly
+all of the gain on photos, little of the loss. On a GPU (a GTX 1060: about 6 minutes a pass)
+4 passes at 1e-4 blended 0.7/0.3 did best, scored alone with `cornerscore.py`: Mendeley
+held-out photos 0.888, SmartDoc background05 0.923 (DocAligner's own 0.673 and 0.790); that
+is the one shipped. 8 passes did no better once blended. Cards keep `corners.onnx`, DocAligner's own:
 tuned, a card's corner now and then slipped off it in video.

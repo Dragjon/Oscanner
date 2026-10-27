@@ -161,6 +161,10 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   overlap 0.84 → 0.86, ≥ 0.95 43% → 50%, ≥ 0.90 62% → 72%, corners within 2% 36% → 42%, nothing
   found 9 → 5. Drawn scenes 206 → 225 of 240, SmartDoc background05 0.58 → 0.55, empty rooms
   still 0 of 7, a page video's jumps 7 → 5.
+  Then trained longer on a GPU (4 passes) and blended 70/30: SmartDoc background05 0.55 → 0.66
+  (nothing found 51 → 37), the 113 photos unchanged (0.86), drawn scenes 226 of 240. The
+  network alone gets SmartDoc to 0.92, so the detector's checks now throw away good outlines
+  there: the next thing to look at.
 - **Auto filter parity.** Side-by-side test set against our own baseline: whiter paper, no grey
   cast, crisp but not crunchy text, colour kept where it matters. Add a "No shadow" style
   option if Auto can't cover both.
