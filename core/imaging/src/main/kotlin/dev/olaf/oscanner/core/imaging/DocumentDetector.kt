@@ -563,8 +563,8 @@ class DocumentDetector(
      * holding the page up hides some of it), or two plainly on an edge and the other two faintly
      * (white paper on a pale desk).
      * A line printed near the bottom of a page can pass for its edge to the network, which then
-     * cuts across the paper. Its sides are then snapped onto the edge, as a followed page's are:
-     * its corners come from a coarse heatmap.
+     * cuts across the paper. Its corners are kept as it places them: snapped onto the strongest
+     * edge nearby, a side as often went to a shadow or a printed margin beside the paper's edge.
      */
     private fun fromCorners(gray: Mat): Quad? = cornerFinder?.corners(gray)?.let { checked(gray, it) }
 
@@ -599,15 +599,7 @@ class DocumentDetector(
         val off = shares.indices.filter { shares[it] < SIDE_MIN }
         if (off.size > 2 || off.any { shares[it] < HIDDEN_SIDE }) return null
         if (off.size == 2 && shares.indices.any { it !in off && shares[it] < PLAIN_SIDE }) return null
-        // A card's thin edge runs beside lines printed near it, which snapping can slide onto.
-        if (cards) return inset(quad)
-        val reach = max(REFINE_REACH, (FOLLOW_REACH * max(gray.cols(), gray.rows())).toInt())
-        val corners = quad.corners.map { P(it.x.toDouble() * gray.cols(), it.y.toDouble() * gray.rows()) }
-        val snapped = snapToPaper(corners, reach, maxMove = 1.5 * reach, nearest = true)
-            ?.let(::refine)
-            ?.let { points -> QuadGeometry.order(points.map { Corner((it.x / gray.cols()).toFloat(), (it.y / gray.rows()).toFloat()) }) }
-            ?.takeIf { plausible(it) && (!cards || cardShaped(it, gray)) }
-        return inset(snapped ?: quad)
+        return inset(quad)
     }
 
     /** Whether [quad], normalized to [gray], has an ID card's sides, seen in the frame's own pixels. */
@@ -1371,8 +1363,11 @@ class DocumentDetector(
         private const val MAX_SNAP = 8.0
         /** Share of the frame counted as "on the edge". */
         private const val BORDER = 0.015f
-        /** How far corners move toward the center, as a share of their distance to it. */
-        private const val INSET = 0.012f
+        /**
+         * How far corners move toward the center, as a share of their distance to it: about as
+         * far inside the paper's edge as CamScanner crops.
+         */
+        private const val INSET = 0.006f
         /** Inner corners near outer ones, both in normalized frame units. */
         private const val SHARED_CORNER = 0.03
         private const val OUTSIDE = 0.02

@@ -168,6 +168,13 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   Done: a network outline may now have two faint sides if the other two show plainly (white
   paper on a pale desk, seen small). SmartDoc background05 0.66 → 0.73 (nothing found 37 → 28),
   the 113 photos 0.86 (≥ 0.95 51%, CamScanner 65%), everything else unchanged.
+  Corner precision: the network's own corners were closer to the truth (median 1.5% off) than
+  what we output after snapping its sides to nearby edges (2.1%; CamScanner 1.8%), and every
+  outline was pulled 1.2% inside the paper where CamScanner crops about half that. Network
+  corners are now kept as placed and the inset is 0.6%. Same 113 photos: mean 0.86 → 0.87,
+  ≥ 0.95 51% → 59%, ≥ 0.90 73% → 74%, corners within 2% 43% → 50% (CamScanner 0.88, 65%, 79%,
+  57%); clearly better than CamScanner on 17, worse on 21 (was 13 and 39). SmartDoc
+  background05 0.73 → 0.74, drawn scenes 226 → 230 of 240, the rest unchanged.
 - **Auto filter parity.** Side-by-side test set against our own baseline: whiter paper, no grey
   cast, crisp but not crunchy text, colour kept where it matters. Add a "No shadow" style
   option if Auto can't cover both.
