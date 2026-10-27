@@ -1,6 +1,10 @@
 """Trains the page finder: a small U-Net from a 96x128 gray frame to the page's mask.
 
-python train.py <epochs> [init.pt] [peak lr] [out.pt]
+python train.py <epochs> [init.pt|init.onnx] [peak lr] [out.pt]
+
+Starting from an exported .onnx (the .pt it came from long gone), its weights have the batch norms
+folded into the convolutions: they're loaded as they are, and the batch norms left out of it, as
+they are in the export, so the network still starts out the one that shipped.
 """
 import glob
 import sys
@@ -50,6 +54,27 @@ class PageNet(nn.Module):
         return self.out(d0)
 
 
+def from_onnx(net, path):
+    """Loads [net] from its ONNX export, whose batch norms are folded in; see the top."""
+    import onnx
+    from onnx import numpy_helper
+    m = onnx.load(path)
+    weights = {i.name: numpy_helper.to_array(i) for i in m.graph.initializer}
+    convs = [n for n in m.graph.node if n.op_type == 'Conv']
+    mine = [c for c in net.modules() if isinstance(c, nn.Conv2d)]
+    assert len(convs) == len(mine)
+    with torch.no_grad():
+        for node, conv in zip(convs, mine):
+            conv.weight.copy_(torch.from_numpy(weights[node.input[1]]))
+            conv.bias.copy_(torch.from_numpy(weights[node.input[2]]))
+        for bn in net.modules():
+            if isinstance(bn, nn.BatchNorm2d):
+                bn.weight.fill_(1)
+                bn.bias.zero_()
+                bn.running_mean.zero_()
+                bn.running_var.fill_(1 - bn.eps)
+
+
 def load(paths):
     X, Y = [], []
     for p in paths:
@@ -80,7 +105,10 @@ def main():
     sets = [tensors(*load([v])) for v in vals]
     print('train', len(X), 'val', vals, flush=True)
     net = PageNet()
-    if len(sys.argv) > 2 and sys.argv[2] != '-':
+    folded = len(sys.argv) > 2 and sys.argv[2].endswith('.onnx')
+    if folded:
+        from_onnx(net, sys.argv[2])
+    elif len(sys.argv) > 2 and sys.argv[2] != '-':
         net.load_state_dict(torch.load(sys.argv[2]))
     print(sum(p.numel() for p in net.parameters()), 'params', flush=True)
     peak = float(sys.argv[3]) if len(sys.argv) > 3 else 3e-3
@@ -90,6 +118,10 @@ def main():
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, peak, total_steps=epochs * (len(X) // bs + 1))
     for ep in range(epochs):
         net.train()
+        if folded:
+            for bn in net.modules():
+                if isinstance(bn, nn.BatchNorm2d):
+                    bn.eval()
         order = np.random.permutation(len(X))
         tot = 0
         for b in range(0, len(X), bs):

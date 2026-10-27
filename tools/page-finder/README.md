@@ -60,3 +60,16 @@ ID (`svk_id`) is held out: `HOLD_OUT=svk_id` for the training sets, and
 sets, `python train.py 4 cardnet3.pt 1e-3 cardnet4.pt`: drawn cards 0.952, decoy scenes 0.924,
 the held-out real cards 0.891 (from 0.19), the user's frames 0.80. Because it learned from
 CC BY-SA data, `card.onnx` is under CC BY-SA 4.0 (see `licenses/THIRD_PARTY.md`).
+
+Real pages (2026-10-27): on real phone photos the drawn-only finder was unsure (held-out real
+frames: mean IoU 0.80, 52% ≥ 0.9), worst on a sheet held up by hand against a pale wall or a
+white radiator, where it ran the paper into the wall. `realpages.py` crops the Mendeley document
+corner photos (CC BY 4.0) the way the camera frames a page, its first 130 held out: those are
+the detector benchmark's real photos (`scene_m_<n>.png` is photo (n)). The `.pt` the shipped
+model came from was gone, so `train.py` can start from an `.onnx` (its batch norms folded into
+the convolutions, kept out of training). With fresh drawn and hard frames so it doesn't forget:
+`python realpages.py mendeley 12 trainreal1.npz 801 <dir>`, `HOLD=only python realpages.py
+mendeley 6 valreal.npz 899 <dir>`, `python gen.py 7500 train1.npz 101`, `python gen.py 2000
+val.npz 200`, `python hard.py 4000 trainhard1.npz 301`, `python hard.py 1000 valhard.npz 399`,
+then `python train.py 5 page.onnx 1e-3 real1.pt` (about 10 minutes a pass on a CPU): held-out
+real frames 0.90 (74% ≥ 0.9), drawn 0.991, hard 0.982 (from 0.994 and 0.988).

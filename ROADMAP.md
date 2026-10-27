@@ -146,6 +146,14 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   network misses them too (right on 1 of those 19, CamScanner 15). So the gap is finding a pale
   page on a pale background and a hand over its edge, then a few percent of corner accuracy.
   Bench: `oscanner-bench/csbench` (CamScanner's outlines, scripts).
+  2026-10-27, closing it, step 1: a corner-network outline now stands with one side partly
+  hidden (a hand holding the page; at least a quarter of it still on an edge), and the page
+  finder is fine-tuned on real photos (Mendeley photos 131 on; the benchmark's are held out,
+  though some were shot in the same rooms). Same 113 photos: mean overlap 0.79 → 0.84
+  (CamScanner 0.88), ≥ 0.90 59% → 62%, ≥ 0.80 71% → 78%, nothing found 19 → 9. Elsewhere:
+  SmartDoc background05 nothing found 86 → 48 of 142 (mean 0.32 → 0.58), drawn scenes 207 →
+  206 of 240, empty rooms outlined 2 → 0 of 7. What's left is mostly corner precision (≥ 0.95:
+  43% against 65%).
 - **Auto filter parity.** Side-by-side test set against our own baseline: whiter paper, no grey
   cast, crisp but not crunchy text, colour kept where it matters. Add a "No shadow" style
   option if Auto can't cover both.
