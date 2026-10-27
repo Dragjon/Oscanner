@@ -73,3 +73,17 @@ mendeley 6 valreal.npz 899 <dir>`, `python gen.py 7500 train1.npz 101`, `python 
 val.npz 200`, `python hard.py 4000 trainhard1.npz 301`, `python hard.py 1000 valhard.npz 399`,
 then `python train.py 5 page.onnx 1e-3 real1.pt` (about 10 minutes a pass on a CPU): held-out
 real frames 0.90 (74% ≥ 0.9), drawn 0.991, hard 0.982 (from 0.994 and 0.988).
+
+Corner network for pages (2026-10-27): `cornertrain.py` tunes DocAligner's corner model on the
+same Mendeley photos as the network sees frames (gray, padded to 4:3, 256x256), with frames from
+SmartDoc 2015 Challenge 1 (CC BY 4.0; backgrounds 01–04, 05 held out for the benchmark), frames
+with no page cut from beside the Mendeley pages, and drawn scenes: `python cornertrain.py make
+ctrain_real.npz 8 11 <mendeley>`, `make ctrain_syn.npz 1 13 <mendeley> <scenes>` (1,500 from
+`../detector-bench/make_scenes.py`), `HOLD=only python cornertrain.py make cval.npz 3 12 <mendeley>`, `smartdoc ctrain_sd.npz 3 7 <bg01> ..
+<bg04>`, `empty ctrain_empty.npz 800 8 <mendeley>`, then `python cornertrain.py train 1
+corners.onnx 2e-4 corner2.pt ctrain_*.npz --val cval.npz` (one pass, about 2 hours on a CPU:
+some 10 s a batch of 16). Held-out frames: worst corner's median error 0.024 → 0.012. Tuned
+alone it forgot pages among clutter and found pages in empty rooms, so the shipped
+`page_corners.onnx` is 0.8 DocAligner's weights plus 0.2 the tuned ones (`blend.py`): nearly
+all of the gain on photos, little of the loss. Cards keep `corners.onnx`, DocAligner's own:
+tuned, a card's corner now and then slipped off it in video.

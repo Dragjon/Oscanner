@@ -31,13 +31,16 @@ fun interface CornerFinder {
  * the heat-weighted middle of its largest such patch, as DocAligner's own code takes it; the
  * outline counts only if every corner's heatmap peaks at [SURE] or more. It was trained on color
  * and is given gray here: on cards it does as well, on documents on a cluttered desk worse, but
- * still better than the detector's search. Not thread-safe: one per thread.
+ * still better than the detector's search. [model] is the one for pages: DocAligner's, tuned
+ * further on phone photos of paper (tools/page-finder/cornertrain.py) and blended back towards
+ * where it started, so it keeps what it knew of pages among clutter. [CARDS] is DocAligner's own,
+ * which holds a card's corners steadier. Not thread-safe: one per thread.
  */
-class CornerNet(context: Context) : CornerFinder, AutoCloseable {
+class CornerNet(context: Context, model: String = PAGES) : CornerFinder, AutoCloseable {
 
     private val env = OrtEnvironment.getEnvironment()
     private val session = env.createSession(
-        context.assets.open(MODEL).use { it.readBytes() },
+        context.assets.open(model).use { it.readBytes() },
         OrtSession.SessionOptions().apply {
             setIntraOpNumThreads(2)
             setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
@@ -137,7 +140,8 @@ class CornerNet(context: Context) : CornerFinder, AutoCloseable {
     }
 
     companion object {
-        const val MODEL = "detect/corners.onnx"
+        const val PAGES = "detect/page_corners.onnx"
+        const val CARDS = "detect/corners.onnx"
         private const val SIDE = 256
         /** A corner's heatmap must peak at least this high; on frames with no document it stays near 0. */
         const val SURE = 0.5f

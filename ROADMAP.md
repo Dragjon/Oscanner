@@ -154,6 +154,13 @@ benchmark it belongs to, committed and pushed, released only when everything is 
   SmartDoc background05 nothing found 86 → 48 of 142 (mean 0.32 → 0.58), drawn scenes 207 →
   206 of 240, empty rooms outlined 2 → 0 of 7. What's left is mostly corner precision (≥ 0.95:
   43% against 65%).
+  Step 2: the corner network for pages is tuned on real photos too (Mendeley 131 on, SmartDoc
+  backgrounds 01–04, and frames with no page), then blended 80/20 back towards DocAligner's own:
+  tuned alone it lost pages among clutter (SmartDoc background05 0.58 → 0.15) and outlined empty
+  rooms. ID cards keep DocAligner's own, which holds a card steadier. Same 113 photos: mean
+  overlap 0.84 → 0.86, ≥ 0.95 43% → 50%, ≥ 0.90 62% → 72%, corners within 2% 36% → 42%, nothing
+  found 9 → 5. Drawn scenes 206 → 225 of 240, SmartDoc background05 0.58 → 0.55, empty rooms
+  still 0 of 7, a page video's jumps 7 → 5.
 - **Auto filter parity.** Side-by-side test set against our own baseline: whiter paper, no grey
   cast, crisp but not crunchy text, colour kept where it matters. Add a "No shadow" style
   option if Auto can't cover both.

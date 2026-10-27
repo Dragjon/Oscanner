@@ -46,9 +46,10 @@ internal class PageAnalyzer(
      * several frames' time, so it runs on its own thread on the latest frame whenever it's free,
      * and each outline it finds is checked against the frame it reaches and held until the next:
      * following edges in between brought back the jumps. Only when it misses twice running does
-     * the edge search take over (a page running out of view, an open book).
+     * the edge search take over (a page running out of view, an open book). Given true, the one
+     * for cards.
      */
-    private val cornerFinder: () -> CornerFinder? = { null },
+    private val cornerFinder: (cards: Boolean) -> CornerFinder? = { null },
 ) : ImageAnalysis.Analyzer {
 
     // Created on the analysis thread, after OpenCV's native code is loaded.
@@ -89,7 +90,7 @@ internal class PageAnalyzer(
                 held = null
                 misses = 0
                 corners = when (current) {
-                    CaptureMode.Document, CaptureMode.IdCard -> cornerFinder()?.turned(toScreen)
+                    CaptureMode.Document, CaptureMode.IdCard -> cornerFinder(current == CaptureMode.IdCard)?.turned(toScreen)
                     else -> null
                 }
             }

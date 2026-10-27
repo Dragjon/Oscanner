@@ -738,7 +738,8 @@ class PageStore(
     // Kept for the app's life and used by one detection at a time: its model takes a moment to load.
     private val pageNet by lazy { runCatching { PageNet(context) }.getOrNull() }
     private val cardNet by lazy { runCatching { PageNet(context, PageNet.CARDS) }.getOrNull() }
-    private val cornerNet by lazy { runCatching { CornerNet(context) }.getOrNull() }
+    private val pageCorners by lazy { runCatching { CornerNet(context) }.getOrNull() }
+    private val cardCorners by lazy { runCatching { CornerNet(context, CornerNet.CARDS) }.getOrNull() }
 
     // Reads which way up a book's or a card's text is; loaded the first time one is saved.
     private val turnReader by lazy { runCatching { PaddleReader(context) }.getOrNull() }
@@ -759,7 +760,11 @@ class PageStore(
             keepSpreads = kind == DocumentKind.Book,
             cards = kind == DocumentKind.IdCard,
             finder = finder?.let { net -> PageFinder { gray -> synchronized(net) { net.pageMask(gray) } } },
-            cornerFinder = cornerNet?.takeIf { kind == DocumentKind.Document || kind == DocumentKind.IdCard }
+            cornerFinder = when (kind) {
+                DocumentKind.Document -> pageCorners
+                DocumentKind.IdCard -> cardCorners
+                else -> null
+            }
                 ?.let { net -> CornerFinder { gray -> synchronized(net) { net.corners(gray) } } },
         )
         detector.detect(preview, seen).also { detector.release() }
