@@ -9,6 +9,9 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
 import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.view.HapticFeedbackConstants
 import android.view.SoundEffectConstants
 import android.view.View
@@ -818,10 +821,10 @@ private fun ModeWheel(selected: CaptureMode, onSelect: (CaptureMode) -> Unit) {
         snapshotFlow { list.layoutInfo.visibleItemsInfo.isNotEmpty() }.first { it }
         list.centerOn(modes.indexOf(currentSelected), animate = false)
         placed = true
-        // A light tick as each name passes the middle, like a dial's detents.
+        // A firm tick as each name passes the middle, like a dial's detents.
         launch {
             snapshotFlow { centered(list) }.filterNotNull().distinctUntilChanged().drop(1).collect {
-                view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                knock(view, heavy = false)
             }
         }
         snapshotFlow { list.isScrollInProgress }.drop(1).collect { moving ->
@@ -914,15 +917,39 @@ private fun ModeWheel(selected: CaptureMode, onSelect: (CaptureMode) -> Unit) {
     }
 }
 
-/** The index of the item whose middle is nearest the wheel's middle. */
-/** A click and a firmer buzz when the wheel lands on a new mode (both follow the system's touch settings). */
+/** A click and a heavy knock when the wheel lands on a new mode. */
 private fun chosen(view: View) {
     view.playSoundEffect(SoundEffectConstants.CLICK)
-    view.performHapticFeedback(
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.VIRTUAL_KEY,
-    )
+    knock(view, heavy = true)
 }
 
+/**
+ * A short, hard knock of the vibration motor at full strength, firmer than the system's own
+ * touch feedback (which is soft and quiet on many phones). Still off when touch feedback is
+ * turned off in the system's settings.
+ */
+private fun knock(view: View, heavy: Boolean) {
+    val context = view.context
+    if (Settings.System.getInt(context.contentResolver, Settings.System.HAPTIC_FEEDBACK_ENABLED, 1) == 0) return
+    val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        context.getSystemService(VibratorManager::class.java)?.defaultVibrator
+    } else {
+        @Suppress("DEPRECATION")
+        context.getSystemService(Vibrator::class.java)
+    }
+    if (vibrator == null || !vibrator.hasVibrator()) {
+        view.performHapticFeedback(if (heavy) HapticFeedbackConstants.LONG_PRESS else HapticFeedbackConstants.VIRTUAL_KEY)
+        return
+    }
+    val effect = when {
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ->
+            VibrationEffect.createPredefined(if (heavy) VibrationEffect.EFFECT_HEAVY_CLICK else VibrationEffect.EFFECT_CLICK)
+        else -> VibrationEffect.createOneShot(if (heavy) 30L else 15L, 255)
+    }
+    vibrator.vibrate(effect)
+}
+
+/** The index of the item whose middle is nearest the wheel's middle. */
 private fun centered(list: LazyListState): Int? {
     val info = list.layoutInfo
     val middle = (info.viewportStartOffset + info.viewportEndOffset) / 2f

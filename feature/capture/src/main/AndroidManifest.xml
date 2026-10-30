@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- The mode wheel's ticks, firmer than the system's touch feedback. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
     <!-- Import still works without a camera, so it isn't required. -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
