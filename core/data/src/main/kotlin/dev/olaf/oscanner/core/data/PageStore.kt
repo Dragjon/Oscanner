@@ -12,6 +12,7 @@ import dev.olaf.oscanner.core.imaging.BookPages
 import dev.olaf.oscanner.core.imaging.BookSplitter
 import dev.olaf.oscanner.core.imaging.DocumentDetector
 import dev.olaf.oscanner.core.imaging.Figures
+import dev.olaf.oscanner.core.imaging.HandMask
 import dev.olaf.oscanner.core.imaging.IdPhoto
 import dev.olaf.oscanner.core.imaging.PageSignature
 import dev.olaf.oscanner.core.imaging.CornerFinder
@@ -114,6 +115,10 @@ class PageStore(
     /** Clean-up still on its way to a page (handwriting found later, or copied from another page). */
     private val cleanupJobs = ConcurrentHashMap<Long, Job>()
     private val docsDir get() = File(context.filesDir, "docs")
+
+    init {
+        HandMask.install(context)
+    }
     private val exportsDir get() = File(context.cacheDir, "exports")
 
     fun observePages(documentId: Long): Flow<List<Page>> =
@@ -1236,9 +1241,9 @@ class PageStore(
         private const val MIN_PAPER = 0.45
         /**
          * Raised when handwriting removal changes how a page comes out, so pages already cleaned
-         * are drawn again (see [redrawCleanedPages]). 1: printed rules kept on bent paper; 2: dots and signs kept; 3: signs kept from color sorting too (0.8.6).
+         * are drawn again (see [redrawCleanedPages]). 1: printed rules kept on bent paper; 2: dots and signs kept; 3: signs kept from color sorting too (0.8.6); 4: handwriting found by the handwriting network (HandMask); 5: that network trained longer.
          */
-        private const val CLEANUP_VERSION = 3
+        private const val CLEANUP_VERSION = 5
         /** Times a PDF tries to copy a page's render that's being replaced; see [writePdf]. */
         private const val RENDER_TRIES = 3
         private const val PAPER_CHECK_SIDE = 800

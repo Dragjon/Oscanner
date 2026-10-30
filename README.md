@@ -56,7 +56,7 @@ follows, in [`PLAN.md`](PLAN.md).
 - **Documents**: named for what they are once read ("Receipt – Greenleaf Market – 18 Oct 2026",
   "Letter from Riverside Council – 7 Oct 2026"), folders (renamed or deleted with a long press;
   All groups documents by folder), tags and notes, Trash, merge, reorder/rotate/copy out pages, sign,
-  draw, type text and stamps, erase, remove handwriting (told from print by a small on-device
+  draw, type text and stamps, erase, remove handwriting (found pixel by pixel by a small on-device
   network) or fingers, black out private details (found automatically or by hand, and removed
   from the text layer too), password-protected PDFs (AES-256), page and file size options,
   watermark, App lock. Edits can be applied to other pages at once. Test papers: split into
@@ -110,7 +110,7 @@ look, sliders, marks, clean-up), and what you see is a render that can always be
 
 ## Not done yet
 
-- Model-based clean-up (LaMa inpainting, a handwriting classifier)
+- Model-based filling of removed marks (LaMa inpainting)
 - App-level encryption at rest (Android's file-based encryption protects data meanwhile)
 - Source builds of OpenCV, Tesseract and ONNX Runtime for F-Droid; a baseline profile for faster cold start
 - A freedom-to-operate review of the areas flagged ⚠ in `PLAN.md` before any public release

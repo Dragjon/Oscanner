@@ -71,7 +71,16 @@ internal object Cleanup {
         val h = rgb.rows()
         val mask = Mat.zeros(h, w, CvType.CV_8UC1)
         var mend: Pair<Mat, Scalar>? = null
-        if (edits.removePenInk) {
+        // The handwriting network, when it's there, sees pen, pencil and print together and
+        // decides alone; the rules below (ink color, print boxes, rules and underlines) are kept
+        // for when it isn't.
+        val hand = if (edits.removePenInk) HandMask.of(rgb) else null
+        if (hand != null) {
+            // Charts, photos and coloured boxes: no pen draws that thick.
+            val solid = solidShapes(rgb)
+            handwriting(rgb, hand).also { Core.subtract(it, solid, it); Core.bitwise_or(mask, it, mask); it.release() }
+            listOf(hand, solid).forEach(Mat::release)
+        } else if (edits.removePenInk) {
             // Charts, photos and coloured boxes are pen-coloured in places, but no pen draws that thick.
             val solid = solidShapes(rgb)
             penInk(rgb).also { Core.subtract(it, solid, it); Core.bitwise_or(mask, it, mask); it.release() }
@@ -129,6 +138,46 @@ internal object Cleanup {
             return null to mend
         }
         return mask to mend
+    }
+
+    /**
+     * What to remove, from [HandMask]'s chances: strokes it is sure of somewhere, taken whole,
+     * down to where it is only a little sure (a stroke fades at its ends and where it thins), and
+     * grown by the soft rim a stroke leaves in the photo. Ink it is sure isn't handwriting stays,
+     * rim or not: the answer line under the writing, the print it touches.
+     */
+    private fun handwriting(rgb: Mat, chance: Mat): Mat {
+        val w = chance.cols()
+        val h = chance.rows()
+        val maybe = Mat()
+        Imgproc.threshold(chance, maybe, HAND_MAYBE, 255.0, Imgproc.THRESH_BINARY)
+        val labels = Mat()
+        val count = Imgproc.connectedComponents(maybe, labels, 8, CvType.CV_32S)
+        maybe.release()
+        val ids = IntArray(w * h)
+        labels.get(0, 0, ids)
+        labels.release()
+        val chances = ByteArray(w * h)
+        chance.get(0, 0, chances)
+        val sure = BooleanArray(count)
+        for (i in ids.indices) if (ids[i] > 0 && (chances[i].toInt() and 0xFF) > HAND_SURE) sure[ids[i]] = true
+        val out = ByteArray(w * h)
+        for (i in ids.indices) if (sure[ids[i]] && ids[i] > 0) out[i] = 255.toByte()
+        val mask = Mat(h, w, CvType.CV_8UC1)
+        mask.put(0, 0, out)
+        val rim = max(3, (max(w, h) / HAND_RIM_PER) or 1).toDouble()
+        Imgproc.dilate(mask, mask, Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(rim, rim)))
+        val gray = Mat()
+        Imgproc.cvtColor(rgb, gray, Imgproc.COLOR_RGB2GRAY)
+        val ink = Mat()
+        Imgproc.adaptiveThreshold(gray, ink, 255.0, Imgproc.ADAPTIVE_THRESH_MEAN_C, Imgproc.THRESH_BINARY_INV, max(15, (max(w, h) / 70) or 1), 12.0)
+        gray.release()
+        val notHand = Mat()
+        Imgproc.threshold(chance, notHand, HAND_NOT, 255.0, Imgproc.THRESH_BINARY_INV)
+        Core.bitwise_and(ink, notHand, ink)
+        Core.subtract(mask, ink, mask)
+        listOf(ink, notHand).forEach(Mat::release)
+        return mask
     }
 
     /**
@@ -1233,6 +1282,14 @@ internal object Cleanup {
     private const val SHOW_SUNK = 0.9
     /** A solid shape is at least this many of those wide and tall. */
     private const val SOLID_PIECE = 3.0
+
+    /** Handwriting: strokes [HandMask] is this sure of (of 255) somewhere, taken down to where it's [HAND_MAYBE] sure. */
+    private const val HAND_SURE = 128
+    private const val HAND_MAYBE = 38.0
+    /** Ink it gives under this chance is surely not handwriting, and is never taken. */
+    private const val HAND_NOT = 26.0
+    /** ...and grown by about one pixel per this many of the page's long side, for the stroke's soft rim. */
+    private const val HAND_RIM_PER = 1000
 
     /** A printed sign between words is at most this share of its line's height across... */
     private const val SIGN_SIZE = 0.9
