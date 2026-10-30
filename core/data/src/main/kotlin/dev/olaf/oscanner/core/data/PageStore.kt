@@ -1241,9 +1241,9 @@ class PageStore(
         private const val MIN_PAPER = 0.45
         /**
          * Raised when handwriting removal changes how a page comes out, so pages already cleaned
-         * are drawn again (see [redrawCleanedPages]). 1: printed rules kept on bent paper; 2: dots and signs kept; 3: signs kept from color sorting too (0.8.6); 4: handwriting found by the handwriting network (HandMask); 5: that network trained longer.
+         * are drawn again (see [redrawCleanedPages]). 1: printed rules kept on bent paper; 2: dots and signs kept; 3: signs kept from color sorting too (0.8.6); 4: handwriting found by the handwriting network (HandMask); 5: that network trained longer; 6: and on colored print.
          */
-        private const val CLEANUP_VERSION = 5
+        private const val CLEANUP_VERSION = 6
         /** Times a PDF tries to copy a page's render that's being replaced; see [writePdf]. */
         private const val RENDER_TRIES = 3
         private const val PAPER_CHECK_SIDE = 800

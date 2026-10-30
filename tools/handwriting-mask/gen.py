@@ -130,6 +130,12 @@ def print_layer(a, h, w):
     px = int(random.choice([random.uniform(8, 14), random.uniform(12, 22), random.uniform(18, 34)]))
     lead = px * random.uniform(1.25, 2.2)
     ink = random.choice([(0, 0, 0)] * 4 + [(30, 30, 30), (55, 55, 55), (20, 20, 60), (70, 40, 30)])
+    # Printed color, in the same shades as pens: red notices, blue links, green headings. Told
+    # from handwriting by its shapes, not its color.
+    accent = random.choice([(200, 30, 30), (170, 20, 20), (220, 60, 40), (30, 70, 200), (20, 50, 150),
+                            (40, 120, 60), (110, 40, 150), (230, 120, 20), (20, 130, 140)])
+    if random.random() < 0.08:
+        ink = accent
     answer_lines = []
     kind = random.random()
     if kind < 0.12:
@@ -158,7 +164,7 @@ def print_layer(a, h, w):
             if random.random() < 0.25:
                 text = random.choice(['1', '2', '3', '(a)', '(b)', '(i)', '(ii)', 'A', 'B', 'C', 'D']) + '   ' + text
             f = font if random.random() < 0.85 else random.choice(a.fonts)
-            L.add(mask_text(h, w, a, x, y, text, f, px), ink)
+            L.add(mask_text(h, w, a, x, y, text, f, px), accent if random.random() < 0.15 else ink)
             if random.random() < 0.15:
                 L.add(mask_text(h, w, a, w - px * 3, y, random.choice(['[1]', '[2]', '[3]', '[4]', '(2 marks)']), font, px), ink)
             y += lead
@@ -269,7 +275,8 @@ def print_layer(a, h, w):
                 L.add(band * random.uniform(0.25, 0.9), random.choice([(80, 80, 80), (60, 90, 140), (150, 60, 60)]))
                 L.add(mask_text(h, w, a, x_left, y, phrase(a, random.randint(1, 4)), f, big), (255, 255, 255) if random.random() < 0.5 else ink)
             else:
-                L.add(mask_text(h, w, a, x_left, y, phrase(a, random.randint(1, 5)), f, big), ink)
+                L.add(mask_text(h, w, a, x_left, y, phrase(a, random.randint(1, 5)), f, big),
+                      accent if random.random() < 0.35 else ink)
             y += big * 1.6
         else:
             y += lead * random.uniform(0.5, 3)

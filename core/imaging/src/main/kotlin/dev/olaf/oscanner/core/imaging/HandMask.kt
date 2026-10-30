@@ -191,7 +191,7 @@ object HandMask {
     private const val TAG = "HandMask"
     private const val MODEL = "clean/hand.onnx"
     /** Bumped with the model, so answers from an older one aren't reused. */
-    private const val VERSION = "2"
+    private const val VERSION = "3"
     /** The page's long side as the network sees it: writing near the size it was trained on. */
     private const val SIDE = 2200.0
     private const val TILE = 512
