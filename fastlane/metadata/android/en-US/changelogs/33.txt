@@ -1,0 +1,3 @@
+Handwriting removal rebuilt: a new on-device network finds handwriting pixel by pixel, so pen, pencil and red marking come out while answer lines, ruled lines, tables, pictures and coloured print stay.
+
+The scan mode wheel ticks as it turns and clicks when it lands on a mode.
