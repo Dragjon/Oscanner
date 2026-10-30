@@ -5,6 +5,7 @@ import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import android.content.Context
 import android.util.Log
+import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
 import org.opencv.core.Rect
@@ -14,10 +15,10 @@ import org.opencv.imgproc.Imgproc
 import java.io.File
 import java.nio.FloatBuffer
 import java.security.MessageDigest
-import kotlin.math.exp
+import kotlin.math.ceil
+import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.roundToInt
 
 /**
  * Where a page's handwriting is, pixel by pixel, from a small network trained for Oscanner
@@ -47,6 +48,9 @@ object HandMask {
                     app.assets.open(MODEL).use { it.readBytes() },
                     OrtSession.SessionOptions().apply {
                         setIntraOpNumThreads(4)
+                        // Without its pool ONNX Runtime frees each tile's working memory, so a big
+                        // tile wants about 170 MB at its peak rather than twice that.
+                        setCPUArenaAllocator(false)
                         setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
                     },
                 )
@@ -91,56 +95,80 @@ object HandMask {
         val out = Mat(h, w, CvType.CV_8UC1)
         val env = OrtEnvironment.getEnvironment()
         // In tiles: the whole page at once would want hundreds of megabytes. Each tile reaches
-        // [MARGIN] past its share, so strokes cut at a tile's edge are judged with what's beside them.
-        val step = TILE - 2 * MARGIN
-        var y0 = 0
-        while (y0 < h) {
-            var x0 = 0
-            while (x0 < w) {
-                val tx = max(0, min(x0 - MARGIN, w - TILE))
-                val ty = max(0, min(y0 - MARGIN, h - TILE))
-                val tw = min(TILE, w - tx)
-                val th = min(TILE, h - ty)
+        // [MARGIN] past its share, so strokes cut at a tile's edge are judged with what's beside
+        // them. Tiles start on the network's 16-pixel grid and stop at the page's edge, as the
+        // whole page would be seen, so their answers join up with almost no seams.
+        for ((y0, sh) in shares(h)) {
+            for ((x0, sw) in shares(w)) {
+                val tx = max(0, x0 - MARGIN)
+                val ty = max(0, y0 - MARGIN)
+                val tw = min(w, x0 + sw + MARGIN) - tx
+                val th = min(h, y0 + sh + MARGIN) - ty
                 // Sides a multiple of 16, for the network's four halvings; padded with the edge.
                 val pw = (tw + 15) / 16 * 16
                 val ph = (th + 15) / 16 * 16
                 val tile = Mat(page, Rect(tx, ty, tw, th))
                 val padded = Mat()
-                org.opencv.core.Core.copyMakeBorder(tile, padded, 0, ph - th, 0, pw - tw, org.opencv.core.Core.BORDER_REPLICATE)
+                Core.copyMakeBorder(tile, padded, 0, ph - th, 0, pw - tw, Core.BORDER_REPLICATE)
                 tile.release()
-                val pixels = ByteArray(pw * ph * 3)
-                padded.get(0, 0, pixels)
+                // Channels apart and 0 to 1, as the network takes them.
+                val scaled = Mat()
+                padded.convertTo(scaled, CvType.CV_32FC3, 1.0 / 255)
                 padded.release()
+                val planes = ArrayList<Mat>(3)
+                Core.split(scaled, planes)
+                scaled.release()
                 val plane = pw * ph
                 val input = FloatArray(3 * plane)
-                for (i in 0 until plane) {
-                    input[i] = (pixels[3 * i].toInt() and 0xFF) / 255f
-                    input[plane + i] = (pixels[3 * i + 1].toInt() and 0xFF) / 255f
-                    input[2 * plane + i] = (pixels[3 * i + 2].toInt() and 0xFF) / 255f
+                val part = FloatArray(plane)
+                planes.forEachIndexed { c, m ->
+                    m.get(0, 0, part)
+                    System.arraycopy(part, 0, input, c * plane, plane)
+                    m.release()
                 }
                 val logits = OnnxTensor.createTensor(env, FloatBuffer.wrap(input), longArrayOf(1, 3, ph.toLong(), pw.toLong())).use { tensor ->
                     net.run(mapOf(net.inputNames.first() to tensor)).use { result ->
-                        @Suppress("UNCHECKED_CAST")
-                        (result[0].value as Array<Array<Array<FloatArray>>>)[0][0]
+                        val buffer = (result[0] as OnnxTensor).floatBuffer
+                        FloatArray(buffer.remaining()).also { buffer.get(it) }
                     }
                 }
                 // Only this tile's own share is written: its margins belong to its neighbours.
                 val sx = x0 - tx
                 val sy = y0 - ty
-                val sw = min(step, w - x0)
-                val sh = min(step, h - y0)
                 val row = ByteArray(sw)
                 for (y in 0 until sh) {
-                    val line = logits[sy + y]
-                    for (x in 0 until sw) row[x] = (255.0 / (1.0 + exp(-line[sx + x].toDouble()))).roundToInt().toByte()
+                    val at = (sy + y) * pw + sx
+                    for (x in 0 until sw) row[x] = chance(logits[at + x])
                     out.put(y0 + y, x0, row)
                 }
-                x0 += step
             }
-            y0 += step
         }
         page.release()
         return out
+    }
+
+    /** A side cut into even shares on the 16-pixel grid, each with its tile no longer than [TILE]: (start, length). */
+    private fun shares(length: Int): List<Pair<Int, Int>> {
+        val n = max(1, ceil(length.toDouble() / (TILE - 2 * MARGIN)).toInt())
+        val share = (length + n * 16 - 1) / (n * 16) * 16
+        return (0 until length step share).map { it to min(share, length - it) }
+    }
+
+    /** 255 / (1 + e^-[logit]) rounded, found among the logits where it steps up rather than by exp. */
+    private fun chance(logit: Float): Byte {
+        var lo = 0
+        var hi = STEPS.size
+        while (lo < hi) {
+            val mid = (lo + hi) ushr 1
+            if (logit >= STEPS[mid]) lo = mid + 1 else hi = mid
+        }
+        return lo.toByte()
+    }
+
+    /** STEPS[k] is the logit at which the rounded chance reaches k + 1. */
+    private val STEPS = FloatArray(255) { k ->
+        val p = (k + 0.5) / 255
+        ln(p / (1 - p)).toFloat()
     }
 
     /** How the page looks, coarsely: the same page at another size gives the same digest. */
@@ -194,8 +222,9 @@ object HandMask {
     private const val VERSION = "3"
     /** The page's long side as the network sees it: writing near the size it was trained on. */
     private const val SIDE = 2200.0
-    private const val TILE = 512
-    private const val MARGIN = 32
+    /** The longest tile side: bigger tiles waste less on margins seen twice, but want more memory. */
+    private const val TILE = 768
+    private const val MARGIN = 48
     private const val DIGEST_W = 48
     private const val DIGEST_H = 64
     private const val DIGEST_SHIFT = 3
