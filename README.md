@@ -1,7 +1,34 @@
-# Oscanner
+<p align="center">
+  <img src="docs/logo.svg" width="128" height="128" alt="Oscanner logo: a page with a snowman's face">
+</p>
 
-A private document scanner for Android. Paper to clean, shareable PDFs in a few taps, with
-everything happening on the phone: no account, no ads, no tracking, no watermark of its own.
+<h1 align="center">Oscanner</h1>
+
+<p align="center">
+  A private document scanner for Android. Paper to clean, shareable PDFs in a few taps, with
+  everything happening on the phone: no account, no ads, no tracking, no watermark of its own.
+</p>
+
+<p align="center">
+  <a href="https://github.com/Dragjon/Oscanner/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Dragjon/Oscanner?style=flat-square&color=FF6A3D"></a>
+  <a href="https://github.com/Dragjon/Oscanner/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/Dragjon/Oscanner/total?style=flat-square"></a>
+  <a href="LICENSE"><img alt="License: GPL v3" src="https://img.shields.io/github/license/Dragjon/Oscanner?style=flat-square"></a>
+  <img alt="Android 8.0 and later" src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?style=flat-square&logo=android&logoColor=white">
+  <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-Jetpack%20Compose-7F52FF?style=flat-square&logo=kotlin&logoColor=white">
+  <br>
+  <img alt="Works offline" src="https://img.shields.io/badge/works-offline-2A2420?style=flat-square">
+  <img alt="No account, no ads, no tracking" src="https://img.shields.io/badge/no%20account%20%C2%B7%20ads%20%C2%B7%20tracking-2A2420?style=flat-square">
+  <img alt="No Google Play services" src="https://img.shields.io/badge/Google%20Play%20services-not%20needed-2A2420?style=flat-square">
+  <img alt="On-device OCR and translation" src="https://img.shields.io/badge/OCR%20%26%20translation-on%20device-2A2420?style=flat-square">
+</p>
+
+<p align="center">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/1.png" width="19%" alt="Screenshot 1">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/2.png" width="19%" alt="Screenshot 2">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/3.png" width="19%" alt="Screenshot 3">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/4.png" width="19%" alt="Screenshot 4">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/5.png" width="19%" alt="Screenshot 5">
+</p>
 
 Licensed under the GNU GPL v3. Third-party components are listed in
 [`licenses/THIRD_PARTY.md`](licenses/THIRD_PARTY.md). Product goals live in
@@ -46,6 +73,11 @@ follows, in [`PLAN.md`](PLAN.md).
   watermark, reading text, the app lock and library order. Settings → Set up defaults runs it again.
 
 What's next, measured against CamScanner, is in [`ROADMAP.md`](ROADMAP.md).
+
+## Install
+
+Download the APK for your phone from the [latest release](https://github.com/Dragjon/Oscanner/releases/latest)
+(`arm64-v8a` for almost every phone from the last few years) and open it to install.
 
 ## Building
 

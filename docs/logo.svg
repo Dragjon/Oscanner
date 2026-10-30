@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 108 108">
+  <!-- The launcher icon (app/src/main/res/drawable/ic_launcher_foreground.xml) on its background. -->
+  <rect width="108" height="108" rx="24" fill="#161412"/>
+  <g transform="translate(-2.7 -3.225) scale(1.05)">
+    <path d="M49.5,34.5 L46,26 M55.5,34.5 L57,24 M61,34.5 L65,27 M63.4,29.8 L67.2,29.6" stroke="#9A6A45" stroke-width="2" stroke-linecap="round" fill="none"/>
+    <path d="M41,34 h21 l9,9 v28 a4,4 0 0 1 -4,4 h-26 a4,4 0 0 1 -4,-4 v-33 a4,4 0 0 1 4,-4 z" fill="#F4EEE6"/>
+    <path d="M62,34 v6 a3,3 0 0 0 3,3 h6 z" fill="#D9CFC3"/>
+    <path d="M44.9,47 a2.6,2.6 0 1 0 5.2,0 a2.6,2.6 0 1 0 -5.2,0 z M55.9,47 a2.6,2.6 0 1 0 5.2,0 a2.6,2.6 0 1 0 -5.2,0 z" fill="#2A2420"/>
+    <path d="M52,51.2 L75,55.8 L52,56.4 a2.6,2.6 0 0 1 0,-5.2 z" fill="#FF6A3D"/>
+    <path d="M58,52.6 l-0.6,2.4 M64,53.6 l-0.5,1.8" stroke="#C94E28" stroke-width="0.9" stroke-linecap="round" fill="none"/>
+    <path d="M42,62 h20 v2.4 h-20 z M42,67 h14 v2.4 h-14 z" fill="#B3A99D"/>
+  </g>
+</svg>
