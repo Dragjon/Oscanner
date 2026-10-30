@@ -8,7 +8,10 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
+import android.os.Build
 import android.view.HapticFeedbackConstants
+import android.view.SoundEffectConstants
+import android.view.View
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -153,7 +156,9 @@ import dev.olaf.oscanner.core.design.rememberPageImage
 import dev.olaf.oscanner.core.design.rememberReducedMotion
 import dev.olaf.oscanner.core.model.Quad
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import java.io.File
 import java.time.LocalDateTime
@@ -793,6 +798,7 @@ private fun ModeWheel(selected: CaptureMode, onSelect: (CaptureMode) -> Unit) {
     val colors = MaterialTheme.colorScheme
     val currentSelected by rememberUpdatedState(selected)
     val currentOnSelect by rememberUpdatedState(onSelect)
+    val view = LocalView.current
 
     // Each name gets a slot as wide as it is, with the same gap between every two names, so a
     // short word like Book sits as close to its neighbors as a long one like Whiteboard.
@@ -812,10 +818,19 @@ private fun ModeWheel(selected: CaptureMode, onSelect: (CaptureMode) -> Unit) {
         snapshotFlow { list.layoutInfo.visibleItemsInfo.isNotEmpty() }.first { it }
         list.centerOn(modes.indexOf(currentSelected), animate = false)
         placed = true
+        // A light tick as each name passes the middle, like a dial's detents.
+        launch {
+            snapshotFlow { centered(list) }.filterNotNull().distinctUntilChanged().drop(1).collect {
+                view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+            }
+        }
         snapshotFlow { list.isScrollInProgress }.drop(1).collect { moving ->
             if (moving) return@collect
             val middle = centered(list) ?: return@collect
-            if (modes[middle] != currentSelected) currentOnSelect(modes[middle])
+            if (modes[middle] != currentSelected) {
+                chosen(view)
+                currentOnSelect(modes[middle])
+            }
         }
     }
     // A mode set from elsewhere brings the wheel round to it.
@@ -869,6 +884,7 @@ private fun ModeWheel(selected: CaptureMode, onSelect: (CaptureMode) -> Unit) {
                         .fillMaxHeight()
                         .clickable(onClickLabel = labels[index]) {
                             // Chosen at the tap; the wheel turns to it after.
+                            if (mode != currentSelected) chosen(view)
                             currentOnSelect(mode)
                             scope.launch { list.centerOn(index, animate = true) }
                         }
@@ -899,6 +915,14 @@ private fun ModeWheel(selected: CaptureMode, onSelect: (CaptureMode) -> Unit) {
 }
 
 /** The index of the item whose middle is nearest the wheel's middle. */
+/** A click and a firmer buzz when the wheel lands on a new mode (both follow the system's touch settings). */
+private fun chosen(view: View) {
+    view.playSoundEffect(SoundEffectConstants.CLICK)
+    view.performHapticFeedback(
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.VIRTUAL_KEY,
+    )
+}
+
 private fun centered(list: LazyListState): Int? {
     val info = list.layoutInfo
     val middle = (info.viewportStartOffset + info.viewportEndOffset) / 2f
