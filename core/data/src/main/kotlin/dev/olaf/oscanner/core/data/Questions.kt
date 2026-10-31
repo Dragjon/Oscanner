@@ -40,7 +40,9 @@ object Questions {
      * Each question of [pages] cut into the stretches of pages it covers, in order: from its
      * number down to the next question's, over the page if need be. A page's running head and
      * foot and its number are left out, and so are blank pages; the last question runs on over
-     * the page until the paper ends, but no further than a few pages. Empty under two questions.
+     * the page until the paper ends, but no further than a few pages. When the first question
+     * found isn't number 1 (the first ones are blanks in a passage, say), what comes before it,
+     * after the cover, is a part of its own, numbered 0. Empty under two questions.
      */
     fun parts(pages: List<List<PdfWord>>): List<Part> {
         val starts = starts(pages)
@@ -49,30 +51,47 @@ object Questions {
         val furniture = furniture(lines)
         val body = lines.mapIndexed { p, page -> page.filterNot { it in furniture[p] } }
         fun empty(p: Int) = body[p].isEmpty() || blankPage.containsMatchIn(body[p].joinToString(" ") { text(it) })
+        fun textTop(p: Int) = body[p].minOf { line -> line.minOf { it.top } }
+
+        /**
+         * Where a stretch of page [p] below [below] ends, [pad] under its text: at the page's foot,
+         * with the room left to answer in, or at "End of paper" (true: nothing follows).
+         */
+        fun foot(p: Int, below: Float, pad: Float): Pair<Float, Boolean> {
+            val end = body[p].filter { line -> line.minOf { it.top } > below && endOfPaper.containsMatchIn(text(line)) }
+                .minOfOrNull { line -> line.minOf { it.top } }
+            if (end != null) return (body[p].flatten().filter { it.bottom <= end }.maxOfOrNull { it.bottom } ?: below) + pad to true
+            val text = body[p].maxOf { line -> line.maxOf { it.bottom } }
+            val foot = furniture[p].map { line -> line.minOf { it.top } }.filter { it > max(below, 0.5f) }.minOrNull()
+            return max(text + pad, foot?.let { it - pad } ?: 1f) to false
+        }
+
         val parts = mutableListOf<Part>()
+        val first = starts.first()
+        if (first.number > 1) {
+            var p = 0
+            while (p < first.page && (empty(p) || cover.containsMatchIn(body[p].joinToString(" ") { text(it) }))) p++
+            if (first.page - p <= LEAD_PAGES) {
+                val pad = first.lineHeight * PAD
+                for (q in p..first.page) {
+                    if (empty(q)) continue
+                    val top = textTop(q) - pad
+                    val bottom = if (q == first.page) first.top - pad else foot(q, -1f, pad).first
+                    if (bottom - top > MIN_PART) parts += Part(q, 0, top.coerceIn(0f, 1f), bottom.coerceIn(0f, 1f))
+                }
+            }
+        }
         for ((i, start) in starts.withIndex()) {
             val next = starts.getOrNull(i + 1)
             val pad = start.lineHeight * PAD
             var p = start.page
             while (true) {
                 if (!empty(p)) {
-                    val top = if (p == start.page) start.top - pad else body[p].minOf { line -> line.minOf { it.top } } - pad
-                    var ended = false
-                    val bottom = if (next != null && p == next.page) {
-                        next.top - next.lineHeight * PAD
+                    val top = if (p == start.page) start.top - pad else textTop(p) - pad
+                    val (bottom, ended) = if (next != null && p == next.page) {
+                        next.top - next.lineHeight * PAD to false
                     } else {
-                        // Down to the page's foot, with the room left to answer in; not past "End of paper".
-                        val below = if (p == start.page) start.top else -1f
-                        val end = body[p].filter { line -> line.minOf { it.top } > below && endOfPaper.containsMatchIn(text(line)) }
-                            .minOfOrNull { line -> line.minOf { it.top } }
-                        if (end != null) {
-                            ended = true
-                            (body[p].flatten().filter { it.bottom <= end }.maxOfOrNull { it.bottom } ?: below) + pad
-                        } else {
-                            val text = body[p].maxOf { line -> line.maxOf { it.bottom } }
-                            val foot = furniture[p].map { line -> line.minOf { it.top } }.filter { it > max(below, 0.5f) }.minOrNull()
-                            max(text + pad, foot?.let { it - pad } ?: 1f)
-                        }
+                        foot(p, if (p == start.page) start.top else -1f, pad)
                     }
                     if (bottom - top > MIN_PART) parts += Part(p, start.number, top.coerceIn(0f, 1f), bottom.coerceIn(0f, 1f))
                     if (ended) break
@@ -209,6 +228,11 @@ object Questions {
     private val digits = Regex("""\d+""")
     private val folio = Regex("""^([^\p{L}\p{N}]*\d{1,3}[^\p{L}\p{N}]*|page \d+( of \d+)?|.*\[?turn over\]?)$""", RegexOption.IGNORE_CASE)
     private val blankPage = Regex("""blank page|intentionally (been )?left blank|this page is (intentionally )?(left )?blank""", RegexOption.IGNORE_CASE)
+    /** Words of a paper's cover: its instructions and the boxes for the candidate's details. */
+    private val cover = Regex(
+        """instructions|index number|register number|candidate|printed pages|answer all|this (paper|document|question paper) consists|姓名|班级|说明|考生|nama|arahan|for examiner""",
+        RegexOption.IGNORE_CASE,
+    )
     private val endOfPaper = Regex("""end of (the )?(question )?paper|end of (section|test|exam)""", RegexOption.IGNORE_CASE)
 
     private const val MIN_QUESTIONS = 2
@@ -227,4 +251,6 @@ object Questions {
     private const val MIN_PART = 0.02f
     /** Pages the last question may run on over before the paper is taken to have ended. */
     private const val LAST_PAGES = 3
+    /** Pages the questions before the first one found may take; more, and it's not taken to be questions. */
+    private const val LEAD_PAGES = 4
 }

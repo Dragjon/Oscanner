@@ -105,4 +105,13 @@ class QuestionsTest {
         assertEquals(listOf(1, 2, 3), starts.map { it.number })
         assertEquals(0.1f + 2 * 0.04f, starts[1].top, 1e-6f)
     }
+
+    @Test
+    fun questionsNotFoundBeforeTheFirstComeAlongAfterTheCover() {
+        val cover = page(0.1f to "Answer all questions.", 0.1f to "Write your name and index number")
+        val passage = page(0.1f to "Fill in the blanks: the sky is 1 ( blue / red ) and", 0.1f to "the grass is 2 ( green / grey ) today.")
+        val questions = page(0.1f to "3 Why is the sky blue ?", 0.1f to "4 Why is grass green ?")
+        val parts = Questions.parts(listOf(cover, passage, questions))
+        assertEquals(listOf(0 to 1, 3 to 2, 4 to 2), parts.map { it.number to it.page })
+    }
 }
