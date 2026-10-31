@@ -1,0 +1,5 @@
+Split into questions works on far more real test papers: questions opening with a diagram, missed numbers, "3(a)" style numbers. Headers, footers and blank pages are left out, answer space kept, and Chinese cloze passages come along.
+
+Pages being cleaned up or redrawn now say so.
+
+Clean up is laid out like Sign and draw, and the bottom bar stands out from the list under it.
