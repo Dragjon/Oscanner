@@ -9,6 +9,7 @@ import dev.olaf.oscanner.core.data.SettingsRepository
 import dev.olaf.oscanner.core.data.TagRepository
 import dev.olaf.oscanner.core.model.Document
 import dev.olaf.oscanner.core.model.Folder
+import dev.olaf.oscanner.core.model.ProcessingState
 import dev.olaf.oscanner.core.model.SortOrder
 import dev.olaf.oscanner.core.model.Tag
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -137,8 +138,14 @@ class LibraryViewModel(
     private val filters = combine(selectedFolder, selectedTag, query, sortOrder, ::Filters)
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    private val visibleDocuments = filters
-        .flatMapLatest { f -> documents.observeDocuments(f.folder, f.tag, f.query, f.sort) }
+    private val visibleDocuments = combine(
+        filters.flatMapLatest { f -> documents.observeDocuments(f.folder, f.tag, f.query, f.sort) },
+        pages.working,
+    ) { docs, working ->
+        // A document whose pages are being cleaned up or redrawn says so, like one being made.
+        val busy = working.values.mapTo(HashSet()) { it.documentId }
+        docs.map { if (it.state == ProcessingState.Idle && it.id in busy) it.copy(state = ProcessingState.Enhancing) else it }
+    }
 
     val state: StateFlow<LibraryUiState> = combine(
         documents.observeHasDocuments(),

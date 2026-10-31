@@ -106,6 +106,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.olaf.oscanner.core.design.ChalkSnowman
 import dev.olaf.oscanner.core.design.Dock
+import dev.olaf.oscanner.core.design.DockFade
 import dev.olaf.oscanner.core.design.DockAction
 import dev.olaf.oscanner.core.design.DocumentCard
 import dev.olaf.oscanner.core.design.OlafSays
@@ -380,6 +381,8 @@ fun LibraryScreen(
             }
         }
 
+        // The list fades out under the dock rather than running into it.
+        DockFade(Modifier.align(Alignment.BottomCenter))
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)

@@ -8,6 +8,7 @@ import dev.olaf.oscanner.core.model.PdfQuality
 import dev.olaf.oscanner.core.data.DocumentRepository
 import dev.olaf.oscanner.core.data.FolderRepository
 import dev.olaf.oscanner.core.data.PageStore
+import dev.olaf.oscanner.core.data.PageWork
 import dev.olaf.oscanner.core.data.TagRepository
 import dev.olaf.oscanner.core.model.Document
 import dev.olaf.oscanner.core.model.Folder
@@ -35,6 +36,8 @@ data class DocumentUiState(
     val allTags: List<Tag> = emptyList(),
     /** Set while a PDF or images are being prepared; the dock shows it in words. */
     val busy: Busy? = null,
+    /** Pages (by id) being cleaned up or rendered again in the background. */
+    val working: Map<Long, PageWork> = emptyMap(),
 )
 
 enum class Busy { PreparingPdf, PreparingImages, Saving, Importing, Splitting }
@@ -73,9 +76,17 @@ class DocumentViewModel(
         documents.observeDocument(documentId),
         store.observePages(documentId),
         combine(folders.observeFolders(), tags.observeTags(), ::Pair),
-        busy,
-    ) { document, pages, (folderList, tagList), working ->
-        DocumentUiState(loading = false, document = document, pages = pages, folders = folderList, allTags = tagList, busy = working)
+        combine(busy, store.working, ::Pair),
+    ) { document, pages, (folderList, tagList), (working, pageWork) ->
+        DocumentUiState(
+            loading = false,
+            document = document,
+            pages = pages,
+            folders = folderList,
+            allTags = tagList,
+            busy = working,
+            working = pageWork.filterValues { it.documentId == documentId }.mapValues { it.value.work },
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DocumentUiState())
 
     fun sharePdf(password: String? = null) = work(Busy.PreparingPdf) { DocumentEvent.SharePdf(store.exportPdf(documentId, password)) }

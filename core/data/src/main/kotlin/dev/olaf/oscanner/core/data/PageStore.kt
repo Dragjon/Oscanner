@@ -56,7 +56,11 @@ import dev.olaf.oscanner.core.pdf.TableLayout
 import dev.olaf.oscanner.core.pdf.XlsxWriter
 import dev.olaf.oscanner.core.model.PdfPageFormat
 import dev.olaf.oscanner.core.model.PdfQuality
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -94,6 +98,12 @@ data class CapturedImage(
     val words: OcrResult? = null,
 )
 
+/** What's being done to a page in the background, for the screens to say so. */
+enum class PageWork { CleaningUp, Rendering }
+
+/** A page of [documentId] with [work] going on. */
+data class Working(val documentId: Long, val work: PageWork)
+
 /** A capture moved into its document and ready to be a page. */
 private data class Prepared(val original: File, val edits: PageEdits, val flat: Boolean, val words: OcrResult? = null)
 
@@ -114,6 +124,9 @@ class PageStore(
     private val renderJobs = ConcurrentHashMap<Long, Job>()
     /** Clean-up still on its way to a page (handwriting found later, or copied from another page). */
     private val cleanupJobs = ConcurrentHashMap<Long, Job>()
+    private val _working = MutableStateFlow<Map<Long, Working>>(emptyMap())
+    /** The pages (by id) being cleaned up or rendered again right now. */
+    val working: StateFlow<Map<Long, Working>> = _working.asStateFlow()
     private val docsDir get() = File(context.filesDir, "docs")
 
     init {
@@ -220,7 +233,7 @@ class PageStore(
             if (known.isNotEmpty()) text.nameAfterHeading(documentId)
             renderDocument(documentId)
             text.scheduleIfWanted(documentId, delay = Duration.ofSeconds(30))
-            if (fixes.removeHandwriting) removeHandwritingLater(added)
+            if (fixes.removeHandwriting) removeHandwritingLater(documentId, added)
         }
     }
 
@@ -266,8 +279,8 @@ class PageStore(
      * gives them its look. Brush strokes stay with their page: they fit only its picture.
      * Handwriting removal is turned on once each page's print is found.
      */
-    fun copyCleanup(pageIds: List<Long>, from: PageEdits) {
-        cleanupLater(pageIds) {
+    fun copyCleanup(documentId: Long, pageIds: List<Long>, from: PageEdits) {
+        cleanupLater(documentId, pageIds) {
             for (id in pageIds) {
                 val edits = db.pages().get(id)?.let { EditsJson.read(it.editsJson) } ?: continue
                 val wanted = edits.copy(
@@ -287,7 +300,7 @@ class PageStore(
      * Turns on handwriting removal for new pages once their print is found (a few seconds a page,
      * in the background). A page edited meanwhile is left as the person has it.
      */
-    private fun removeHandwritingLater(pageIds: List<Long>) = cleanupLater(pageIds) { removeHandwriting(pageIds) }
+    private fun removeHandwritingLater(documentId: Long, pageIds: List<Long>) = cleanupLater(documentId, pageIds) { removeHandwriting(pageIds) }
 
     private suspend fun removeHandwriting(pageIds: List<Long>) {
         for (id in pageIds) {
@@ -373,36 +386,23 @@ class PageStore(
 
     /**
      * A new document with each numbered question of [documentId] on a page of its own, for doing
-     * again: cut from the page it's on (see [Questions]), and a question running onto the next
-     * page gets that part as a page too. Pages not read yet are read first. Null if fewer than
+     * again: cut from the page it's on (see [Questions.parts]), and a question running onto the
+     * next page gets that part as a page too. Pages not read yet are read first. Null if fewer than
      * two questions are found.
      */
     suspend fun splitQuestions(documentId: Long, title: String): Long? {
         text.readDocument(documentId)
         val pages = db.pages().forDocument(documentId)
         val words = pages.map { visibleWords(it) }
-        val starts = Questions.starts(words)
-        if (starts.isEmpty()) return null
-        fun textTop(page: Int) = words[page].minOfOrNull { it.top } ?: 0f
-        fun textBottom(page: Int) = words[page].maxOfOrNull { it.bottom } ?: 1f
-        // Each question's stretch of a page: which page, and from where to where down it.
-        val parts = mutableListOf<Triple<Int, Float, Float>>()
-        for ((i, start) in starts.withIndex()) {
-            val next = starts.getOrNull(i + 1)
-            val pad = start.lineHeight * QUESTION_PAD
-            for (p in start.page..(next?.page ?: start.page)) {
-                val top = if (p == start.page) start.top - pad else textTop(p) - pad
-                val bottom = if (next != null && p == next.page) next.top - next.lineHeight * QUESTION_PAD else textBottom(p) + pad
-                if (bottom - top > MIN_QUESTION) parts += Triple(p, top.coerceIn(0f, 1f), bottom.coerceIn(0f, 1f))
-            }
-        }
+        val parts = Questions.parts(words)
+        if (parts.isEmpty()) return null
         val source = db.documents().getRow(documentId)
         val now = System.currentTimeMillis()
         val target = db.documents().insert(
             DocumentEntity(title = title, folderId = source?.folderId, createdAt = now, updatedAt = now, kind = source?.kind ?: DocumentKind.Document.name),
         )
-        val copies = copyPages(parts.map { pages[it.first] }, target).mapIndexed { i, copy ->
-            val (_, top, bottom) = parts[i]
+        val copies = copyPages(parts.map { pages[it.page] }, target).mapIndexed { i, copy ->
+            val (_, _, top, bottom) = parts[i]
             // The whole page's render and thumbnail are left behind: each part is rendered afresh.
             copy.copy(editsJson = EditsJson.write(cutOut(EditsJson.read(copy.editsJson), top, bottom)), ocrText = null, renderPath = null, thumbPath = null)
         }
@@ -568,16 +568,31 @@ class PageStore(
         }
     }
 
-    /** [block], run in the background, counted as clean-up on its way to [pageIds]; see [awaitRenders]. */
-    private fun cleanupLater(pageIds: List<Long>, block: suspend () -> Unit) {
+    /** [block], run in the background, counted as clean-up on its way to [pageIds] of [documentId]; see [awaitRenders]. */
+    private fun cleanupLater(documentId: Long, pageIds: List<Long>, block: suspend () -> Unit) {
         val job = scope.launch { block() }
         pageIds.forEach { id ->
             // Clean-up already on its way to the page is waited for too.
             val tracked = cleanupJobs.compute(id) { _, before ->
                 if (before == null || before.isCompleted) job else scope.launch { before.join(); job.join() }
             }!!
-            tracked.invokeOnCompletion { cleanupJobs.remove(id, tracked) }
+            tracked.invokeOnCompletion {
+                cleanupJobs.remove(id, tracked)
+                showWork(id, documentId)
+            }
+            showWork(id, documentId)
         }
+    }
+
+    /** Updates [working] for [pageId] from the jobs on their way to it; one at a time, so a finished job's word is the last. */
+    @Synchronized
+    private fun showWork(pageId: Long, documentId: Long) {
+        val work = when {
+            cleanupJobs[pageId]?.isActive == true -> PageWork.CleaningUp
+            renderJobs[pageId]?.isActive == true -> PageWork.Rendering
+            else -> null
+        }
+        _working.update { if (work == null) it - pageId else it + (pageId to Working(documentId, work)) }
     }
 
     fun renderDocument(documentId: Long) {
@@ -593,7 +608,11 @@ class PageStore(
         renderJobs.remove(page.id)?.cancel()
         val job = scope.launch { renderNow(page) }
         renderJobs[page.id] = job
-        job.invokeOnCompletion { renderJobs.remove(page.id, job) }
+        job.invokeOnCompletion {
+            renderJobs.remove(page.id, job)
+            showWork(page.id, page.documentId)
+        }
+        showWork(page.id, page.documentId)
         return job
     }
 
@@ -1232,9 +1251,6 @@ class PageStore(
         private const val ID_SOURCE_SIDE = 3000
         /** Plenty for a page's signature, which is a small grid. */
         private const val SIGNATURE_SIDE = 800
-        /** Room left above a question and below it, in its line heights; parts thinner than [MIN_QUESTION] are dropped. */
-        private const val QUESTION_PAD = 0.8f
-        private const val MIN_QUESTION = 0.02f
         /** The kinds of scan that are paper with a plain margin, for filling in their edges. */
         private val PAPER_KINDS = setOf(DocumentKind.Document, DocumentKind.Book, DocumentKind.Whiteboard)
         /** Automatic handwriting removal waits for a page at least this much paper. */

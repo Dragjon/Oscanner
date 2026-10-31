@@ -45,6 +45,10 @@
     <string name="document_split_questions_description">Each numbered question on a page of its own, in a new document, to do again</string>
     <string name="document_split_questions_none">No numbered questions found. They need to start with 1., 2) or Q3 at the left.</string>
     <string name="document_splitting">Finding the questions…</string>
+    <string name="document_working_handwriting">Removing handwriting…</string>
+    <string name="document_working_render">Updating page…</string>
+    <string name="document_working_preview">Updating the preview…</string>
+    <string name="document_cleanup_remove">Remove</string>
     <string name="document_questions_title">%1$s – questions</string>
     <string name="document_mark_wrong">Mark wrong</string>
     <string name="document_mark_wrong_description">A question answered wrong, to practise again</string>

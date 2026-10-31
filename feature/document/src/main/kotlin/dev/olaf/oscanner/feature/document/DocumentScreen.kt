@@ -106,6 +106,8 @@ import dev.olaf.oscanner.core.design.Dock
 import dev.olaf.oscanner.core.design.DockAction
 import dev.olaf.oscanner.core.design.SheetAction
 import dev.olaf.oscanner.core.design.StatusChip
+import dev.olaf.oscanner.core.design.WorkChip
+import dev.olaf.oscanner.core.data.PageWork
 import dev.olaf.oscanner.core.design.printPdf
 import dev.olaf.oscanner.core.design.rememberPageImage
 import dev.olaf.oscanner.core.design.share
@@ -248,6 +250,7 @@ fun DocumentRoute(
             ) { index ->
                 PageView(
                     state.pages[index],
+                    work = state.working[state.pages[index].id],
                     onDelete = if (state.pages.size > 1) ({ deletingPage = index }) else null,
                     modifier = Modifier.fillMaxSize(),
                 )
@@ -476,7 +479,7 @@ fun DocumentRoute(
 }
 
 @Composable
-private fun PageView(page: Page, onDelete: (() -> Unit)?, modifier: Modifier = Modifier) {
+private fun PageView(page: Page, work: PageWork?, onDelete: (() -> Unit)?, modifier: Modifier = Modifier) {
     // The full render once it exists; until then the small thumbnail or the original photo.
     val path = page.renderPath ?: page.thumbPath ?: page.originalPath
     val image by rememberPageImage(path, maxSide = 2000)
@@ -507,10 +510,20 @@ private fun PageView(page: Page, onDelete: (() -> Unit)?, modifier: Modifier = M
                 }
             }
         }
-        if (page.renderPath == null) {
-            StatusChip(ProcessingState.Enhancing, Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp))
+        // Over the foot of the page while it's being redone, so it doesn't look stuck: the page
+        // shown is the old one until then.
+        val chip = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp)
+        when {
+            work != null -> WorkChip(stringResource(workLabel(work, page)), chip)
+            page.renderPath == null -> StatusChip(ProcessingState.Enhancing, chip)
         }
     }
+}
+
+/** What's being done to [page], in words. */
+internal fun workLabel(work: PageWork, page: Page) = when {
+    work == PageWork.CleaningUp || page.edits.removePenInk -> R.string.document_working_handwriting
+    else -> R.string.document_working_render
 }
 
 /** A small heading that splits a sheet into groups of related actions. */

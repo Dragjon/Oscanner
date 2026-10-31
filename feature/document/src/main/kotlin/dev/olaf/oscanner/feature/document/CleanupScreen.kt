@@ -1,6 +1,13 @@
 package dev.olaf.oscanner.feature.document
 
 import androidx.activity.compose.BackHandler
+import kotlinx.coroutines.delay
+import dev.olaf.oscanner.core.design.fadingEdges
+import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -133,7 +140,6 @@ fun CleanupRoute(viewModel: CleanupViewModel, onDone: () -> Unit) {
             doneLabel = stringResource(R.string.document_apply),
             onDone = viewModel::save,
         ) {
-            if (state.working) CircularProgressIndicator(Modifier.padding(horizontal = 8.dp).size(18.dp), strokeWidth = 2.dp, color = colors.onSurfaceVariant)
             // Press and hold to see the page as it was; let go to see the result again.
             Box(
                 Modifier
@@ -178,42 +184,28 @@ fun CleanupRoute(viewModel: CleanupViewModel, onDone: () -> Unit) {
         }
 
         if (edits != null) {
-            // One row: the switches that find things on their own, then the brush you paint with.
-            EditorToolbar(Modifier.navigationBarsPadding()) {
-                ToolbarButton(
-                    Icons.Rounded.Gesture,
-                    stringResource(R.string.document_remove_handwriting),
-                    selected = edits.removePenInk,
-                    onClick = { viewModel.setRemovePenInk(!edits.removePenInk) },
-                )
-                ToolbarButton(
-                    Icons.Rounded.FrontHand,
-                    stringResource(R.string.document_remove_fingers),
-                    selected = edits.removeFingers,
-                    onClick = { viewModel.setRemoveFingers(!edits.removeFingers) },
-                )
-                ToolbarButton(
-                    Icons.Rounded.FlipToBack,
-                    stringResource(R.string.document_remove_show_through),
-                    selected = edits.removeShowThrough,
-                    onClick = { viewModel.setRemoveShowThrough(!edits.removeShowThrough) },
-                )
-                ToolbarButton(
-                    Icons.Rounded.WaterDrop,
-                    stringResource(R.string.document_remove_stains),
-                    selected = edits.removeStains,
-                    onClick = { viewModel.setRemoveStains(!edits.removeStains) },
-                )
-                ToolbarButton(
-                    Icons.Rounded.CropFree,
-                    stringResource(R.string.document_fill_edges),
-                    selected = edits.fillEdges,
-                    onClick = { viewModel.setFillEdges(!edits.fillEdges) },
-                )
-                if (state.pages.size > 1) {
-                    ToolbarButton(Icons.Rounded.CopyAll, stringResource(R.string.document_cleanup_other_pages_short), selected = null, onClick = { choosingPages = true })
+            // Two rows, as in Sign and draw: what's found and removed on its own, switched on and
+            // off; under it, the brush you paint with yourself.
+            Surface(color = colors.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
+                val scroll = rememberScrollState()
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .fadingEdges(scroll)
+                        .horizontalScroll(scroll)
+                        .padding(start = 16.dp, end = 8.dp, top = 10.dp, bottom = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(stringResource(R.string.document_cleanup_remove), style = MaterialTheme.typography.labelLarge, color = colors.onSurfaceVariant)
+                    RemoveSwitch(Icons.Rounded.Gesture, stringResource(R.string.document_remove_handwriting), edits.removePenInk) { viewModel.setRemovePenInk(!edits.removePenInk) }
+                    RemoveSwitch(Icons.Rounded.FrontHand, stringResource(R.string.document_remove_fingers), edits.removeFingers) { viewModel.setRemoveFingers(!edits.removeFingers) }
+                    RemoveSwitch(Icons.Rounded.FlipToBack, stringResource(R.string.document_remove_show_through), edits.removeShowThrough) { viewModel.setRemoveShowThrough(!edits.removeShowThrough) }
+                    RemoveSwitch(Icons.Rounded.WaterDrop, stringResource(R.string.document_remove_stains), edits.removeStains) { viewModel.setRemoveStains(!edits.removeStains) }
+                    RemoveSwitch(Icons.Rounded.CropFree, stringResource(R.string.document_fill_edges), edits.fillEdges) { viewModel.setFillEdges(!edits.fillEdges) }
                 }
-                VerticalDivider(Modifier.height(36.dp).padding(horizontal = 6.dp), color = colors.outlineVariant)
+            }
+            EditorToolbar(Modifier.navigationBarsPadding()) {
                 ToolbarButton(
                     Icons.Rounded.Brush,
                     stringResource(R.string.document_brush_erase),
@@ -226,20 +218,12 @@ fun CleanupRoute(viewModel: CleanupViewModel, onDone: () -> Unit) {
                     selected = state.brush == CleanupBrush.Keep,
                     onClick = { viewModel.setBrush(CleanupBrush.Keep) },
                 )
-                // The brush width, one tap to the next: thin, medium, wide.
-                val sizes = BrushSize.entries
-                ToolbarButton(
-                    Icons.Rounded.LineWeight,
-                    stringResource(
-                        when (state.size) {
-                            BrushSize.Small -> R.string.document_brush_small
-                            BrushSize.Medium -> R.string.document_brush_medium
-                            BrushSize.Large -> R.string.document_brush_large
-                        },
-                    ),
-                    selected = null,
-                    onClick = { viewModel.setSize(sizes[(state.size.ordinal + 1) % sizes.size]) },
-                )
+                VerticalDivider(Modifier.height(28.dp).padding(horizontal = 6.dp), color = colors.outlineVariant)
+                BrushSizes(state.size, viewModel::setSize)
+                if (state.pages.size > 1) {
+                    Spacer(Modifier.weight(1f))
+                    ToolbarButton(Icons.Rounded.CopyAll, stringResource(R.string.document_cleanup_other_pages_short), selected = null, onClick = { choosingPages = true })
+                }
             }
         }
     }
@@ -274,12 +258,25 @@ fun CleanupRoute(viewModel: CleanupViewModel, onDone: () -> Unit) {
     }
 }
 
-/** A word over the bottom of the page, when there's something to say. */
+/**
+ * A word over the bottom of the page, when there's something to say: what's being worked out
+ * (after a moment, so quick changes don't flash it), or how many pages were just cleaned up too.
+ */
 @Composable
 private fun CleanupHint(state: CleanupUiState, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
+    var slow by remember { mutableStateOf(false) }
+    LaunchedEffect(state.working) {
+        slow = false
+        if (state.working) {
+            delay(SLOW_MS)
+            slow = true
+        }
+    }
+    val busy = state.findingPrint || (state.working && slow)
     val text = when {
         state.findingPrint -> R.string.document_finding_print
+        state.working && slow -> if (state.edits?.removePenInk == true) R.string.document_working_handwriting else R.string.document_working_preview
         state.noPrintFound -> R.string.document_no_print_found
         state.appliedTo > 0 -> null
         else -> return
@@ -291,7 +288,7 @@ private fun CleanupHint(state: CleanupUiState, modifier: Modifier = Modifier) {
         modifier = modifier.padding(horizontal = 16.dp),
     ) {
         Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (state.findingPrint) {
+            if (busy) {
                 CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = colors.inverseOnSurface)
                 Spacer(Modifier.width(8.dp))
             }
@@ -299,6 +296,61 @@ private fun CleanupHint(state: CleanupUiState, modifier: Modifier = Modifier) {
                 if (text != null) stringResource(text) else pluralStringResource(R.plurals.document_cleanup_applied, state.appliedTo, state.appliedTo),
                 style = MaterialTheme.typography.bodyMedium,
             )
+        }
+    }
+}
+
+/** How long a preview may take before the hint says it's being worked on. */
+private const val SLOW_MS = 400L
+
+/** A thing found and removed on its own, as a pill: ticked and filled while it's on. */
+@Composable
+private fun RemoveSwitch(icon: ImageVector, label: String, on: Boolean, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = if (on) colors.secondaryContainer else colors.surfaceContainer,
+        contentColor = if (on) colors.onSecondaryContainer else colors.onSurfaceVariant,
+        border = if (on) null else BorderStroke(1.dp, colors.outlineVariant),
+        modifier = Modifier
+            .height(40.dp)
+            .semantics {
+                role = Role.Switch
+                toggleableState = ToggleableState(on)
+            },
+    ) {
+        Row(Modifier.padding(start = 12.dp, end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(if (on) Icons.Rounded.Check else icon, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+        }
+    }
+}
+
+/** The brush's three widths, each a dot of about that size; the chosen one filled behind. */
+@Composable
+private fun BrushSizes(chosen: BrushSize, onPick: (BrushSize) -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    BrushSize.entries.forEachIndexed { index, size ->
+        val selected = size == chosen
+        val name = stringResource(
+            when (size) {
+                BrushSize.Small -> R.string.document_brush_small
+                BrushSize.Medium -> R.string.document_brush_medium
+                BrushSize.Large -> R.string.document_brush_large
+            },
+        )
+        Box(
+            Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(if (selected) colors.primaryContainer else Color.Transparent)
+                .selectable(selected = selected, role = Role.RadioButton, onClick = { onPick(size) })
+                .semantics { contentDescription = name },
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(Modifier.size((6 + index * 6).dp).clip(CircleShape).background(if (selected) colors.onPrimaryContainer else colors.onSurfaceVariant))
         }
     }
 }

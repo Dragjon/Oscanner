@@ -1,6 +1,12 @@
 package dev.olaf.oscanner.core.design
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -63,11 +69,13 @@ fun Dock(
     content: @Composable () -> Unit,
 ) {
     val shape = MaterialTheme.shapes.extraLarge
-    val shadow = if (LocalOscannerExtras.current.dockShadow) Modifier.shadow(1.dp, shape) else Modifier
+    val extras = LocalOscannerExtras.current
+    val shadow = if (extras.dockShadow) Modifier.shadow(6.dp, shape) else Modifier
     Surface(
         modifier = modifier.then(shadow),
         shape = shape,
-        color = MaterialTheme.colorScheme.surfaceContainer,
+        color = extras.dock,
+        border = BorderStroke(1.dp, extras.dockEdge),
     ) {
         // Spread out like a row, but no word is cut short while there's room for all of them:
         // the [PrimaryPill] keeps its whole word, and the other actions get what their words
@@ -132,6 +140,27 @@ private fun cappedScale(style: TextStyle): TextStyle {
 
 private const val MAX_DOCK_SCALE = 1.3f
 
+/**
+ * The page's background fading in under a floating [Dock], put behind it on screens whose
+ * content scrolls beneath, so what passes under the dock fades out rather than meeting its edge.
+ */
+@Composable
+fun DockFade(modifier: Modifier = Modifier) {
+    val background = MaterialTheme.colorScheme.background
+    Column(modifier.fillMaxWidth()) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(DOCK_FADE)
+                .background(Brush.verticalGradient(0f to background.copy(alpha = 0f), 0.5f to background.copy(alpha = 0.85f), 1f to background)),
+        )
+        // Under the gesture bar too.
+        Box(Modifier.fillMaxWidth().windowInsetsBottomHeight(WindowInsets.navigationBars).background(background))
+    }
+}
+
+private val DOCK_FADE = 176.dp
+
 /** A neutral action: icon above a word. Never colored, because it is not the primary action. */
 @Composable
 fun DockAction(
@@ -153,7 +182,7 @@ fun DockAction(
             .pressScale(interaction)
             .then(if (on != null) Modifier.semantics { toggleableState = ToggleableState(on) } else Modifier),
         shape = MaterialTheme.shapes.large,
-        color = if (on == true) colors.secondaryContainer else colors.surfaceContainer,
+        color = if (on == true) colors.secondaryContainer else Color.Transparent,
         contentColor = if (on == true) colors.onSecondaryContainer else colors.onSurface,
         interactionSource = interaction,
     ) {

@@ -113,6 +113,12 @@ data class OscannerExtras(
     val maskHatch: Color,
     /** Light theme gives the floating dock one soft ambient shadow; dark relies on tone alone. */
     val dockShadow: Boolean,
+    /**
+     * The floating dock: a step lighter than the cards under it (in light, white on the shadow),
+     * with a hairline edge, so it stays apart from whatever scrolls behind it.
+     */
+    val dock: Color,
+    val dockEdge: Color,
 )
 
 private val NightExtras = OscannerExtras(
@@ -120,6 +126,8 @@ private val NightExtras = OscannerExtras(
     detectionQuad = Color(0xFFF4EEE6),
     maskHatch = Color(0x59F4EEE6),
     dockShadow = false,
+    dock = Color(0xFF302B27),
+    dockEdge = Color(0x24F4EEE6),
 )
 
 private val DayExtras = OscannerExtras(
@@ -127,6 +135,8 @@ private val DayExtras = OscannerExtras(
     detectionQuad = Color(0xFFF4EEE6),
     maskHatch = Color(0x4D2B241F),
     dockShadow = true,
+    dock = Color(0xFFFFFFFF),
+    dockEdge = Color(0xFFE6D9CB),
 )
 
 val LocalOscannerExtras = staticCompositionLocalOf { NightExtras }

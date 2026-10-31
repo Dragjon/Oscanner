@@ -180,14 +180,22 @@ fun StatusChip(state: ProcessingState, modifier: Modifier = Modifier) {
         ProcessingState.ReadingText -> R.string.design_state_reading_text
         ProcessingState.Failed -> R.string.design_state_failed
     }
-    val label = stringResource(labelRes)
-    val failed = state == ProcessingState.Failed
+    WorkChip(stringResource(labelRes), modifier, failed = state == ProcessingState.Failed)
+}
+
+/**
+ * A small pill saying what's going on in the background, with a spinner (or, when it
+ * [failed], a warning): out of the way, so nothing waits on it, but the app never looks stuck.
+ */
+@Composable
+fun WorkChip(label: String, modifier: Modifier = Modifier, failed: Boolean = false) {
     val ink = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
     Surface(
         modifier = modifier.height(24.dp),
         shape = CircleShape,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         contentColor = ink,
+        shadowElevation = 1.dp,
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 10.dp),

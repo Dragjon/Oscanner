@@ -47,4 +47,53 @@ class QuestionsTest {
         // One numbered line isn't a test.
         assertEquals(emptyList<Questions.Start>(), Questions.starts(listOf(page(0.1f to "1. Only one"))))
     }
+
+    @Test
+    fun aNumberAloneOverADiagramStartsAQuestion() {
+        val one = page(0.1f to "1 Solve the equation", 0.1f to "2")
+        val two = page(0.1f to "3. Find x", 0.1f to "4 (a) Sketch the graph")
+        assertEquals(listOf(1, 2, 3, 4), Questions.starts(listOf(one, two)).map { it.number })
+    }
+
+    @Test
+    fun aMissedNumberDoesNotBreakTheRun() {
+        val sheet = page(0.1f to "1 First", 0.1f to "2 Second", 0.1f to "the third lost its number", 0.1f to "4 Fourth", 0.1f to "5 Fifth")
+        assertEquals(listOf(1, 2, 4, 5), Questions.starts(listOf(sheet)).map { it.number })
+    }
+
+    @Test
+    fun partsRunOnGluedAndLetteredNumbersCount() {
+        val sheet = page(0.1f to "1(a) Solve", 0.1f to "2.(a)(i) Shade", 0.1f to "3a) Name", 0.1f to "3b) Explain", 0.1f to "4 Last")
+        assertEquals(listOf(1, 2, 3, 4), Questions.starts(listOf(sheet)).map { it.number })
+    }
+
+    @Test
+    fun aTableOfMarksAndLinesToAnswerOnAreNotQuestions() {
+        val cover = page(0.1f to "Question 1 2 3 4", 0.1f to "Question 5 6 7 8", 0.1f to "Marks")
+        val sheet = page(0.1f to "1 Name two gases", 0.1f to "1 ..........", 0.1f to "2 ..........", 0.1f to "2 Why ?", 0.1f to "3 How ?")
+        val starts = Questions.starts(listOf(cover, sheet))
+        assertEquals(listOf(1 to 1, 1 to 2, 1 to 3), starts.map { it.page to it.number })
+        assertEquals(0.1f, starts[0].top, 1e-6f)
+    }
+
+    @Test
+    fun partsLeaveOutRunningHeadsFeetAndBlankPagesAndFollowTheLastQuestion() {
+        fun at(top: Float, text: String) = PdfWord(text, 0.1f, top, 0.1f + 0.015f * text.length, top + 0.02f)
+        fun sheet(n: Int, vararg body: PdfWord) = listOf(PdfWord("$n", 0.5f, 0.02f, 0.52f, 0.04f)) + body + PdfWord("PRELIM/2025", 0.4f, 0.95f, 0.6f, 0.97f)
+        val pages = listOf(
+            sheet(1, at(0.2f, "1"), PdfWord("Solve", 0.15f, 0.2f, 0.25f, 0.22f), at(0.6f, "2"), PdfWord("Find", 0.15f, 0.6f, 0.25f, 0.62f)),
+            sheet(2, at(0.15f, "(b) Hence")),
+            sheet(3, PdfWord("BLANK PAGE", 0.4f, 0.5f, 0.6f, 0.52f)),
+            sheet(4, at(0.1f, "3"), PdfWord("Prove", 0.15f, 0.1f, 0.25f, 0.12f)),
+            sheet(5, at(0.1f, "(c) Show"), at(0.5f, "End of Paper")),
+        )
+        val parts = Questions.parts(pages)
+        assertEquals(listOf(1 to 0, 2 to 0, 2 to 1, 3 to 3, 3 to 4), parts.map { it.number to it.page })
+        // Down to the foot, not over it; a page over starts under its running head.
+        assertEquals(0.6f - 0.016f, parts[0].bottom, 1e-4f)
+        assertEquals(0.95f - 0.016f, parts[1].bottom, 1e-4f)
+        assertEquals(0.15f - 0.016f, parts[2].top, 1e-4f)
+        // The last question stops at "End of Paper".
+        assertEquals(0.12f + 0.016f, parts[4].bottom, 1e-4f)
+    }
 }
