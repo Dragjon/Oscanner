@@ -1,0 +1,3 @@
+Handwriting removal is about a fifth faster, with the same results.
+
+The scan mode wheel's ticks are firmer: a hard knock as each mode passes and a heavier one when it lands.
