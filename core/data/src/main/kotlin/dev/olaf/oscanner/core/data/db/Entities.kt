@@ -40,8 +40,8 @@ data class DocumentEntity(
     /** [dev.olaf.oscanner.core.model.DocumentKind] name. Added in schema 2. */
     @ColumnInfo(defaultValue = "Document") val kind: String = "Document",
     /**
-     * Still has the name it was made with ("Scan …", "Import …"), so it may be named after its
-     * heading once read. Cleared by any rename. Added in schema 3; older documents keep theirs.
+     * Once: still had the name it was made with, to be named after its heading when read. Nothing
+     * names documents any more; kept so the schema stays as it is. Added in schema 3.
      */
     @ColumnInfo(defaultValue = "0") val autoTitle: Boolean = false,
 )

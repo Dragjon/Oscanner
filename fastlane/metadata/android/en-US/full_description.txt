@@ -19,7 +19,7 @@
 
 <p><b>Documents</b></p>
 <ul>
-<li>Documents named for what they are (receipt, letter, invoice…), folders, search, tags and a Trash that keeps things for 30 days</li>
+<li>Folders, search, tags and a Trash that keeps things for 30 days</li>
 <li>Merge, reorder, rotate, copy out and delete pages</li>
 <li>Sign, write, highlight and add text on pages; remove handwriting, fingers, stains and show-through</li>
 <li>Black out private details, also removed from the text</li>

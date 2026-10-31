@@ -53,8 +53,7 @@ follows, in [`PLAN.md`](PLAN.md).
   20 to 70 MB); the text itself never leaves the phone. The page's picture shows the
   translation in place of its own words, in the same layout, to read full screen or share,
   and a translation is kept with the document to show again next time.
-- **Documents**: named for what they are once read ("Receipt – Greenleaf Market – 18 Oct 2026",
-  "Letter from Riverside Council – 7 Oct 2026"), folders (renamed or deleted with a long press;
+- **Documents**: folders (renamed or deleted with a long press;
   All groups documents by folder), tags and notes, Trash, merge, reorder/rotate/copy out pages, sign,
   draw, type text and stamps, erase, remove handwriting (found pixel by pixel by a small on-device
   network) or fingers, black out private details (found automatically or by hand, and removed

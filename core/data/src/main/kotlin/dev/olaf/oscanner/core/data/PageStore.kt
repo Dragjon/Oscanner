@@ -182,8 +182,6 @@ class PageStore(
                 updatedAt = now,
                 state = ProcessingState.Enhancing.name,
                 kind = kind.name,
-                // An ID card's text is a name and numbers, not a title.
-                autoTitle = kind != DocumentKind.IdCard,
             ),
         )
         addPages(docId, images)
@@ -230,7 +228,6 @@ class PageStore(
         withContext(NonCancellable) {
             // Text that came with a page needn't be read: it's kept now, and reading skips the page.
             known.forEach { (page, words) -> text.keep(page, words) }
-            if (known.isNotEmpty()) text.nameAfterHeading(documentId)
             renderDocument(documentId)
             text.scheduleIfWanted(documentId, delay = Duration.ofSeconds(30))
             if (fixes.removeHandwriting) removeHandwritingLater(documentId, added)
