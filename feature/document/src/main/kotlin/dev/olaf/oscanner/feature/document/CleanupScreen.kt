@@ -2,11 +2,8 @@ package dev.olaf.oscanner.feature.document
 
 import androidx.activity.compose.BackHandler
 import kotlinx.coroutines.delay
-import dev.olaf.oscanner.core.design.fadingEdges
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.semantics.toggleableState
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -15,6 +12,9 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -114,6 +114,7 @@ import kotlin.math.min
  * Remove things from a page. The hatch shows exactly what will go; holding Compare shows the
  * result. Nothing is changed until Apply, and Apply can be undone by coming back here.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun CleanupRoute(viewModel: CleanupViewModel, onDone: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -187,22 +188,33 @@ fun CleanupRoute(viewModel: CleanupViewModel, onDone: () -> Unit) {
             // Two rows, as in Sign and draw: what's found and removed on its own, switched on and
             // off; under it, the brush you paint with yourself.
             Surface(color = colors.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
-                val scroll = rememberScrollState()
-                Row(
+                // Wrapped rather than scrolled, so no switch, nor "Apply to other pages", is out of sight.
+                FlowRow(
                     Modifier
                         .fillMaxWidth()
-                        .fadingEdges(scroll)
-                        .horizontalScroll(scroll)
-                        .padding(start = 16.dp, end = 8.dp, top = 10.dp, bottom = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                        .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 2.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text(stringResource(R.string.document_cleanup_remove), style = MaterialTheme.typography.labelLarge, color = colors.onSurfaceVariant)
+                    Text(
+                        stringResource(R.string.document_cleanup_remove),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = colors.onSurfaceVariant,
+                        modifier = Modifier.align(Alignment.CenterVertically),
+                    )
                     RemoveSwitch(Icons.Rounded.Gesture, stringResource(R.string.document_remove_handwriting), edits.removePenInk) { viewModel.setRemovePenInk(!edits.removePenInk) }
                     RemoveSwitch(Icons.Rounded.FrontHand, stringResource(R.string.document_remove_fingers), edits.removeFingers) { viewModel.setRemoveFingers(!edits.removeFingers) }
                     RemoveSwitch(Icons.Rounded.FlipToBack, stringResource(R.string.document_remove_show_through), edits.removeShowThrough) { viewModel.setRemoveShowThrough(!edits.removeShowThrough) }
                     RemoveSwitch(Icons.Rounded.WaterDrop, stringResource(R.string.document_remove_stains), edits.removeStains) { viewModel.setRemoveStains(!edits.removeStains) }
                     RemoveSwitch(Icons.Rounded.CropFree, stringResource(R.string.document_fill_edges), edits.fillEdges) { viewModel.setFillEdges(!edits.fillEdges) }
+                    if (state.pages.size > 1) {
+                        // These switches, handwriting and all, for other pages too.
+                        TextButton(onClick = { choosingPages = true }, modifier = Modifier.height(36.dp), contentPadding = PaddingValues(horizontal = 12.dp)) {
+                            Icon(Icons.Rounded.CopyAll, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.document_cleanup_other_pages), style = MaterialTheme.typography.labelLarge)
+                        }
+                    }
                 }
             }
             EditorToolbar(Modifier.navigationBarsPadding()) {
@@ -220,10 +232,6 @@ fun CleanupRoute(viewModel: CleanupViewModel, onDone: () -> Unit) {
                 )
                 VerticalDivider(Modifier.height(28.dp).padding(horizontal = 6.dp), color = colors.outlineVariant)
                 BrushSizes(state.size, viewModel::setSize)
-                if (state.pages.size > 1) {
-                    Spacer(Modifier.weight(1f))
-                    ToolbarButton(Icons.Rounded.CopyAll, stringResource(R.string.document_cleanup_other_pages_short), selected = null, onClick = { choosingPages = true })
-                }
             }
         }
     }
@@ -314,7 +322,7 @@ private fun RemoveSwitch(icon: ImageVector, label: String, on: Boolean, onClick:
         contentColor = if (on) colors.onSecondaryContainer else colors.onSurfaceVariant,
         border = if (on) null else BorderStroke(1.dp, colors.outlineVariant),
         modifier = Modifier
-            .height(40.dp)
+            .height(36.dp)
             .semantics {
                 role = Role.Switch
                 toggleableState = ToggleableState(on)
