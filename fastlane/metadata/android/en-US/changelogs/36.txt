@@ -1,0 +1,1 @@
+Split into questions: a comprehension passage now goes with the questions after it. Headings like "Section B", "Read the following passage", "Questions 16-20" or "三 阅读理解二" start the next question's page, so each question comes with the text it asks about.
