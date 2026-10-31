@@ -23,9 +23,9 @@ object Questions {
     /** The questions' starts across [pages] (each its read words), in reading order; empty under two. */
     fun starts(pages: List<List<PdfWord>>): List<Start> {
         val candidates = mutableListOf<Start>()
-        for (start in pages.flatMapIndexed { index, words -> candidates(index, words) }) {
+        for ((start, part) in pages.flatMapIndexed { index, words -> candidates(index, words) }) {
             // "9a)" then "9b)": one question in parts, starting at the first.
-            if (candidates.lastOrNull()?.number == start.number) continue
+            if (part && candidates.lastOrNull()?.number == start.number) continue
             candidates += start
         }
         val first = run(candidates)
@@ -116,8 +116,11 @@ object Questions {
         return if (run.size < MIN_QUESTIONS) emptyList() else run
     }
 
-    /** Lines of [words] that open with a question number, top to bottom. */
-    private fun candidates(page: Int, words: List<PdfWord>): List<Start> {
+    /**
+     * Lines of [words] that open with a question number, top to bottom, each with whether it
+     * opens a later part of its question ("9b)", "9(c)").
+     */
+    private fun candidates(page: Int, words: List<PdfWord>): List<Pair<Start, Boolean>> {
         if (words.isEmpty()) return emptyList()
         val left = words.minOf { it.left }
         val right = words.maxOf { it.right }
@@ -126,7 +129,8 @@ object Questions {
             // At the margin, not in the middle of a line or far indented.
             if (first.left - left > MARGIN * (right - left)) return@mapNotNull null
             val number = number(line) ?: return@mapNotNull null
-            Start(page, number, line.minOf { it.top }, line.map { it.bottom - it.top }.average().toFloat(), first.left)
+            Start(page, number, line.minOf { it.top }, line.map { it.bottom - it.top }.average().toFloat(), first.left) to
+                laterPart.containsMatchIn(clean(first.text))
         }
     }
 
@@ -152,8 +156,8 @@ object Questions {
     private fun counting(n: Int, rest: List<String>) =
         rest.size >= 2 && rest.take(3).withIndex().all { (k, r) -> r == (n + 1 + k).toString() }
 
-    /** A numbered line to write an answer on: nothing but dots after the number. */
-    private fun answerLine(rest: List<String>) = rest.isNotEmpty() && rest.all { dots.matches(it) }
+    /** A numbered line to write an answer on: nothing but dots after the number, and perhaps its marks ("[2]"). */
+    private fun answerLine(rest: List<String>) = rest.filterNot { marks.matches(it) }.let { it.isNotEmpty() && it.all { r -> dots.matches(r) } }
 
     /**
      * For each page, its lines that are the paper's furniture rather than its questions: near
@@ -198,6 +202,8 @@ object Questions {
      */
     private val numbered = Regex("""^((?:Q|Question)\.?\s*)?\(?(\d{1,2})([.):]?(?:\([a-z]{1,4}\))+|[a-h]\)|[.):])?$""", RegexOption.IGNORE_CASE)
     private val word = Regex("""^(Q|Question)\.?$""", RegexOption.IGNORE_CASE)
+    private val laterPart = Regex("""^\d{1,2}[.)]?\(?[b-h]\)?""")
+    private val marks = Regex("""^[\[(]\d{1,2}[\])]$""")
     private val dots = Regex("""^[.…_—-]+$""")
     private val invisible = Regex("[​‌‍﻿]")
     private val digits = Regex("""\d+""")

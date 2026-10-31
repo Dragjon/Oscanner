@@ -96,4 +96,13 @@ class QuestionsTest {
         // The last question stops at "End of Paper".
         assertEquals(0.12f + 0.016f, parts[4].bottom, 1e-4f)
     }
+
+    @Test
+    fun aStrayRepeatOfANumberDoesNotHideTheQuestion() {
+        // An answer line "2. ...... [2]" in question 1, then question 2 itself.
+        val sheet = page(0.1f to "1 Name the organ", 0.1f to "2. .......... [2]", 0.1f to "2 Fig. 2.1 shows", 0.1f to "3 Explain")
+        val starts = Questions.starts(listOf(sheet))
+        assertEquals(listOf(1, 2, 3), starts.map { it.number })
+        assertEquals(0.1f + 2 * 0.04f, starts[1].top, 1e-6f)
+    }
 }
