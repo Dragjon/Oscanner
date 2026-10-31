@@ -42,7 +42,8 @@ object Questions {
      * foot and its number are left out, and so are blank pages; the last question runs on over
      * the page until the paper ends, but no further than a few pages. When the first question
      * found isn't number 1 (the first ones are blanks in a passage, say), what comes before it,
-     * after the cover, is a part of its own, numbered 0. Empty under two questions.
+     * after the cover, is a part of its own, numbered 0. A heading between two questions goes
+     * with the second, and so does the passage under it. Empty under two questions.
      */
     fun parts(pages: List<List<PdfWord>>): List<Part> {
         val starts = starts(pages)
@@ -66,6 +67,40 @@ object Questions {
             return max(text + pad, foot?.let { it - pad } ?: 1f) to false
         }
 
+        // Headings at the margin, or a centred "Section B": where a run of headings starts (with
+        // a line or two of instructions allowed between them), as (page, top, line height).
+        val heads = mutableListOf<Pair<Int, Float>>()
+        val groups = mutableListOf<Triple<Int, Float, Float>>()
+        for (p in pages.indices) {
+            if (body[p].isEmpty()) continue
+            val left = body[p].minOf { line -> line.minOf { it.left } }
+            val right = body[p].maxOf { line -> line.maxOf { it.right } }
+            var group: Triple<Int, Float, Float>? = null
+            var since = 0
+            for (line in body[p]) {
+                val t = text(line)
+                val centred = section.containsMatchIn(t) && line.size <= 6
+                if (heading.containsMatchIn(t) && (centred || line.first().left - left <= HEAD_MARGIN * (right - left))) {
+                    if (group == null || since > HEAD_GAP) group = Triple(p, line.minOf { it.top }, line.map { it.bottom - it.top }.average().toFloat())
+                    heads += p to line.minOf { it.top }
+                    groups += group
+                    since = 0
+                } else {
+                    since++
+                }
+            }
+        }
+
+        /** Above the last run of headings between (page, top) [a] and [b], if there is one there. */
+        fun cut(a: Pair<Int, Float>, b: Pair<Int, Float>): Pair<Int, Float>? {
+            val last = heads.indices.lastOrNull { h ->
+                before(a.first, a.second + 1e-4f, heads[h].first, heads[h].second) && before(heads[h].first, heads[h].second, b.first, b.second - 1e-4f)
+            } ?: return null
+            val (p, top, height) = groups[last]
+            if (!before(a.first, a.second + 1e-4f, p, top)) return null
+            return p to top - height * PAD
+        }
+
         val parts = mutableListOf<Part>()
         val first = starts.first()
         if (first.number > 1) {
@@ -81,25 +116,43 @@ object Questions {
                 }
             }
         }
+        // A heading between two questions ("Section B", "Read the passage below", "A 组 阅读下文，完成
+        // 第16至20题") starts what the next one needs: the passage under it goes with that question.
+        val cuts = mutableListOf<Pair<Int, Float>?>()
+        val lead = parts.firstOrNull()
+        val leadCut = lead?.let { cut(it.page to it.top + LEAD_SKIP, first.page to first.top) }
+        if (lead != null && leadCut != null) {
+            // The questions before the first one found end at a heading over the first one's passage.
+            val kept = parts.filter { before(it.page, it.top, leadCut.first, leadCut.second) }
+                .map { if (it.page == leadCut.first) it.copy(bottom = min(it.bottom, leadCut.second.coerceIn(0f, 1f))) else it }
+                .filter { it.bottom - it.top > MIN_PART }
+            parts.clear()
+            parts += kept
+        }
+        cuts += leadCut
+        starts.zipWithNext { a, b -> cuts += cut(a.page to a.top, b.page to b.top) }
+
         for ((i, start) in starts.withIndex()) {
             val next = starts.getOrNull(i + 1)
             val pad = start.lineHeight * PAD
-            var p = start.page
+            val begin = cuts[i] ?: (start.page to start.top - pad)
+            val end = if (next == null) null else cuts[i + 1] ?: (next.page to next.top - next.lineHeight * PAD)
+            var p = begin.first
             while (true) {
                 if (!empty(p)) {
-                    val top = if (p == start.page) start.top - pad else textTop(p) - pad
-                    val (bottom, ended) = if (next != null && p == next.page) {
-                        next.top - next.lineHeight * PAD to false
+                    val top = if (p == begin.first) begin.second else textTop(p) - pad
+                    val (bottom, ended) = if (end != null && p == end.first) {
+                        end.second to false
                     } else {
-                        foot(p, if (p == start.page) start.top else -1f, pad)
+                        foot(p, if (p == begin.first) begin.second + pad else -1f, pad)
                     }
                     if (bottom - top > MIN_PART) parts += Part(p, start.number, top.coerceIn(0f, 1f), bottom.coerceIn(0f, 1f))
                     if (ended) break
                 }
                 p++
                 if (p >= pages.size) break
-                if (next != null) {
-                    if (p > next.page) break
+                if (end != null) {
+                    if (p > end.first) break
                 } else if (p > start.page + LAST_PAGES || empty(p) || candidates(p, pages[p]).isNotEmpty()) {
                     break
                 }
@@ -107,6 +160,9 @@ object Questions {
         }
         return parts
     }
+
+    /** Whether (page [p], [y] down it) comes before (page [q], [z]) in reading order. */
+    private fun before(p: Int, y: Float, q: Int, z: Float) = p < q || (p == q && y < z)
 
     /**
      * The longest run of [candidates] numbered going up, in reading order: up by one, or by a
@@ -233,6 +289,17 @@ object Questions {
         """instructions|index number|register number|candidate|printed pages|answer all|this (paper|document|question paper) consists|姓名|班级|说明|考生|nama|arahan|for examiner""",
         RegexOption.IGNORE_CASE,
     )
+    /**
+     * A heading that starts a section or the passage its questions are on: "Section B", "Text 2",
+     * "Read the following passage", "Questions 16-20", a Chinese "三 " or "A 组", Malay "Soalan 5".
+     */
+    private val heading = Regex(
+        """^((section|part|bahagian)\s+[A-H1-9]\b|(text|passage|source|extract|article|poem)\s+[A-H1-9]\b(?![\s,]+[A-H0-9]\b)(?!.*/)|""" +
+            """read (the|this|these) (following|passages?|texts?|extracts?|articles?|poems?|sources?)\b|questions?\s+\d+\s*(-|–|to|and)\s*\d+|""" +
+            """soalan\s+\d+|baca\b|[一二三四五六七八九十]{1,2}[、\s\u3000]|[A-F][\s\u3000]*组)""",
+        RegexOption.IGNORE_CASE,
+    )
+    private val section = Regex("""^(section|part|bahagian)\s+[A-H1-9]\b""", RegexOption.IGNORE_CASE)
     private val endOfPaper = Regex("""end of (the )?(question )?paper|end of (section|test|exam)""", RegexOption.IGNORE_CASE)
 
     private const val MIN_QUESTIONS = 2
@@ -253,4 +320,10 @@ object Questions {
     private const val LAST_PAGES = 3
     /** Pages the questions before the first one found may take; more, and it's not taken to be questions. */
     private const val LEAD_PAGES = 4
+    /** How far into the stretch before the first question found its own headings may be (page heights). */
+    private const val LEAD_SKIP = 0.03f
+    /** A heading starts this share of the text's width from its left edge, at most. */
+    private const val HEAD_MARGIN = 0.15f
+    /** Lines of instructions there may be between two headings of one run. */
+    private const val HEAD_GAP = 2
 }

@@ -114,4 +114,23 @@ class QuestionsTest {
         val parts = Questions.parts(listOf(cover, passage, questions))
         assertEquals(listOf(0 to 1, 3 to 2, 4 to 2), parts.map { it.number to it.page })
     }
+
+    @Test
+    fun aPassageUnderAHeadingGoesWithTheQuestionsAfterIt() {
+        val sheet = page(
+            0.1f to "1 What is a dialect ?",
+            0.1f to "2 Who speaks it ?",
+            0.1f to "Read the following passage and answer questions 3 to 4",
+            0.1f to "Long ago in a village by the sea",
+            0.1f to "there lived an old fisherman.",
+            0.1f to "3 Where did he live ?",
+            0.1f to "4 What was his work ?",
+        )
+        val parts = Questions.parts(listOf(sheet))
+        assertEquals(listOf(1, 2, 3, 4), parts.map { it.number })
+        // Question 2 stops above the heading; question 3 starts there, with the passage.
+        val heading = 0.1f + 2 * 0.04f - 0.016f
+        assertEquals(heading, parts[1].bottom, 1e-4f)
+        assertEquals(heading, parts[2].top, 1e-4f)
+    }
 }
