@@ -1,0 +1,7 @@
+Handwriting removal no longer leaves a faint outline where writing was, and keeps more of the printed letters a pen ran through.
+
+The code scanner reads barcodes held level in front of an upright phone.
+
+Clean up shows every switch and Apply to other pages without scrolling.
+
+Documents are no longer renamed after what they say.
