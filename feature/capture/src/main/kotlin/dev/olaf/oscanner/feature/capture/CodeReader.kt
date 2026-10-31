@@ -60,12 +60,18 @@ data class ScannedCode(val text: String, val format: String) {
 
 enum class CodeKind { Link, Wifi, Product, Text }
 
-/** ZXing over the luminance plane of preview frames. One per analysis thread. */
+/**
+ * ZXing over the luminance plane of preview frames. One per analysis thread. A barcode is read
+ * along the frame's rows, and the camera's frames lie on their side: one held level in front of
+ * a phone held upright runs down the frame, so a frame with nothing found is tried a quarter
+ * turn round too.
+ */
 internal class CodeReader {
 
     private val reader = MultiFormatReader().apply {
         setHints(
             mapOf(
+                DecodeHintType.TRY_HARDER to true,
                 DecodeHintType.POSSIBLE_FORMATS to listOf(
                     BarcodeFormat.QR_CODE, BarcodeFormat.DATA_MATRIX, BarcodeFormat.AZTEC, BarcodeFormat.PDF_417,
                     BarcodeFormat.EAN_13, BarcodeFormat.EAN_8, BarcodeFormat.UPC_A, BarcodeFormat.UPC_E,
@@ -75,6 +81,7 @@ internal class CodeReader {
         )
     }
     private var bytes = ByteArray(0)
+    private var turned = ByteArray(0)
 
     fun read(image: ImageProxy): ScannedCode? {
         val plane = image.planes[0]
@@ -85,8 +92,19 @@ internal class CodeReader {
         return read(bytes, image.width, image.height, plane.rowStride)
     }
 
-    /** Decodes an 8-bit luminance image laid out [rowStride] bytes per row. */
-    fun read(luminance: ByteArray, width: Int, height: Int, rowStride: Int = width): ScannedCode? {
+    /** Decodes an 8-bit luminance image laid out [rowStride] bytes per row, either way round. */
+    fun read(luminance: ByteArray, width: Int, height: Int, rowStride: Int = width): ScannedCode? =
+        decode(luminance, width, height, rowStride) ?: run {
+            // A quarter turn clockwise: the frame's columns become rows.
+            if (turned.size != width * height) turned = ByteArray(width * height)
+            for (y in 0 until height) {
+                val row = y * rowStride
+                for (x in 0 until width) turned[x * height + (height - 1 - y)] = luminance[row + x]
+            }
+            decode(turned, height, width, height)
+        }
+
+    private fun decode(luminance: ByteArray, width: Int, height: Int, rowStride: Int): ScannedCode? {
         val source = PlanarYUVLuminanceSource(luminance, rowStride, height, 0, 0, width, height, false)
         return try {
             val result = reader.decodeWithState(BinaryBitmap(HybridBinarizer(source)))
