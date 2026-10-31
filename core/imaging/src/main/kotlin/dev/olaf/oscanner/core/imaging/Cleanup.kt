@@ -46,8 +46,13 @@ internal object Cleanup {
                 PatchFill.fill(rgb, mask)
             } else {
                 val paper = paperUnder(rgb, mask)
+                val rim = rimAround(rgb, mask)
                 paper.copyTo(rgb, mask)
-                paper.release()
+                // Lifted to the paper's shade, never darkened: what's there is the rim's gray.
+                val lifted = Mat()
+                Core.max(rgb, paper, lifted)
+                lifted.copyTo(rgb, rim)
+                listOf(paper, rim, lifted).forEach(Mat::release)
             }
             mask.release()
         }
@@ -78,7 +83,7 @@ internal object Cleanup {
         if (hand != null) {
             // Charts, photos and coloured boxes: no pen draws that thick.
             val solid = solidShapes(rgb)
-            handwriting(rgb, hand).also { Core.subtract(it, solid, it); Core.bitwise_or(mask, it, mask); it.release() }
+            handwriting(rgb, hand, edits.printed?.takeIf { edits.printByLook }).also { Core.subtract(it, solid, it); Core.bitwise_or(mask, it, mask); it.release() }
             listOf(hand, solid).forEach(Mat::release)
         } else if (edits.removePenInk) {
             // Charts, photos and coloured boxes are pen-coloured in places, but no pen draws that thick.
@@ -144,9 +149,11 @@ internal object Cleanup {
      * What to remove, from [HandMask]'s chances: strokes it is sure of somewhere, taken whole,
      * down to where it is only a little sure (a stroke fades at its ends and where it thins), and
      * grown by the soft rim a stroke leaves in the photo. Ink it is sure isn't handwriting stays,
-     * rim or not: the answer line under the writing, the print it touches.
+     * rim or not: the answer line under the writing, the print it touches. In a [printed] word,
+     * only what it is very sure of goes, and not grown: there, a letter the pen ran through
+     * matters more than a scrap of the pen.
      */
-    private fun handwriting(rgb: Mat, chance: Mat): Mat {
+    private fun handwriting(rgb: Mat, chance: Mat, printed: List<Area>?): Mat {
         val w = chance.cols()
         val h = chance.rows()
         val maybe = Mat()
@@ -174,10 +181,68 @@ internal object Cleanup {
         gray.release()
         val notHand = Mat()
         Imgproc.threshold(chance, notHand, HAND_NOT, 255.0, Imgproc.THRESH_BINARY_INV)
-        Core.bitwise_and(ink, notHand, ink)
-        Core.subtract(mask, ink, mask)
-        listOf(ink, notHand).forEach(Mat::release)
+        val handInk = Mat()
+        Imgproc.threshold(chance, handInk, HAND_SURE.toDouble(), 255.0, Imgproc.THRESH_BINARY)
+        Core.bitwise_and(handInk, ink, handInk)
+        Core.bitwise_and(ink, notHand, notHand)
+        Core.subtract(mask, notHand, mask)
+        notHand.release()
+        if (!printed.isNullOrEmpty()) {
+            val words = Mat.zeros(h, w, CvType.CV_8UC1)
+            for (a in printed) {
+                // Neat handwriting can look printed; the network knows better. A word that's
+                // mostly writing to it isn't one to keep letters of.
+                val box = Rect(
+                    Point((a.left * w).toDouble().coerceIn(0.0, w.toDouble()), (a.top * h).toDouble().coerceIn(0.0, h.toDouble())),
+                    Point((a.right * w).toDouble().coerceIn(0.0, w.toDouble()), (a.bottom * h).toDouble().coerceIn(0.0, h.toDouble())),
+                )
+                if (box.width < 1 || box.height < 1) continue
+                val inkIn = ink.submat(box)
+                val handIn = handInk.submat(box)
+                val inked = Core.countNonZero(inkIn)
+                val written = Core.countNonZero(handIn)
+                listOf(inkIn, handIn).forEach(Mat::release)
+                if (inked == 0 || written > inked * WRITTEN_WORD) continue
+                // A little above and below, for accents and the tails of g and y.
+                val grow = (a.bottom - a.top) * PRINT_REACH
+                Imgproc.rectangle(
+                    words,
+                    Point(a.left * w.toDouble(), (a.top - grow) * h.toDouble()),
+                    Point(a.right * w.toDouble(), (a.bottom + grow) * h.toDouble()),
+                    Scalar(255.0),
+                    -1,
+                )
+            }
+            val unsure = Mat()
+            Imgproc.threshold(chance, unsure, HAND_IN_PRINT, 255.0, Imgproc.THRESH_BINARY_INV)
+            Core.bitwise_and(unsure, words, unsure)
+            Core.subtract(mask, unsure, mask)
+            listOf(words, unsure).forEach(Mat::release)
+        }
+        listOf(ink, handInk).forEach(Mat::release)
         return mask
+    }
+
+    /**
+     * The band just around [mask]: a removed stroke's soft gray edge in the photo, which would
+     * otherwise outline the paper put in its place. Ink in it, and a pixel round that, isn't band.
+     */
+    private fun rimAround(rgb: Mat, mask: Mat): Mat {
+        val side = max(rgb.cols(), rgb.rows())
+        val reach = max(3, (side / RIM_PER) or 1)
+        val band = Mat()
+        Imgproc.dilate(mask, band, Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(2.0 * reach + 1, 2.0 * reach + 1)))
+        Core.subtract(band, mask, band)
+        val gray = Mat()
+        Imgproc.cvtColor(rgb, gray, Imgproc.COLOR_RGB2GRAY)
+        val ink = Mat()
+        Imgproc.adaptiveThreshold(gray, ink, 255.0, Imgproc.ADAPTIVE_THRESH_MEAN_C, Imgproc.THRESH_BINARY_INV, max(15, (side / 70) or 1), 12.0)
+        gray.release()
+        Core.subtract(ink, mask, ink)
+        Imgproc.dilate(ink, ink, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0)))
+        Core.subtract(band, ink, band)
+        ink.release()
+        return band
     }
 
     /**
@@ -1228,6 +1293,8 @@ internal object Cleanup {
     }
 
     private const val FILL_SIDE = 320.0
+    /** The band around what's removed reaches about one pixel per this many of the page's long side. */
+    private const val RIM_PER = 500
     /** Edges are looked at on a copy this big; off the paper by this many levels in any channel is background. */
     private const val EDGE_SIDE = 600.0
     private const val EDGE_STEP = 45.0
@@ -1290,6 +1357,11 @@ internal object Cleanup {
     private const val HAND_NOT = 26.0
     /** ...and grown by about one pixel per this many of the page's long side, for the stroke's soft rim. */
     private const val HAND_RIM_PER = 1000
+    /** In a printed word, only what it's this sure of goes... */
+    private const val HAND_IN_PRINT = 200.0
+    /** ...the word taken this share of its height further up and down; but not a word over this share of whose ink is surely writing. */
+    private const val PRINT_REACH = 0.2f
+    private const val WRITTEN_WORD = 0.6
 
     /** A printed sign between words is at most this share of its line's height across... */
     private const val SIGN_SIZE = 0.9
